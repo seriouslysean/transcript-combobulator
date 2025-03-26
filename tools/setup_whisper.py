@@ -31,12 +31,9 @@ def setup_whisper(model_name):
 
     # Create tmp directories if they don't exist
     tmp_dir = root_dir / 'tmp'
-    input_dir = tmp_dir / 'input'
     output_dir = tmp_dir / 'output'
-    models_dir = tmp_dir / 'models'
 
-    for directory in [input_dir, output_dir, models_dir]:
-        directory.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Download sample files
     print("\nDownloading sample files...")
@@ -44,16 +41,6 @@ def setup_whisper(model_name):
     if not samples_dir.exists():
         if not run_command(['bash', 'download-jfk.sh'], cwd=samples_dir):
             return False
-
-    # Copy JFK sample to input directory
-    jfk_source = samples_dir / 'jfk.wav'
-    jfk_dest = input_dir / 'jfk.wav'
-    if jfk_source.exists():
-        import shutil
-        shutil.copy2(jfk_source, jfk_dest)
-        print(f"\nCopied {jfk_source} to {jfk_dest}")
-    else:
-        print(f"\nWarning: Sample file {jfk_source} not found")
 
     return True
 

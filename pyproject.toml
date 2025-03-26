@@ -1,22 +1,37 @@
 [project]
 name = "transcript-precombobulator"
 version = "0.1.0"
-description = "A tool to preprocess audio files for transcription by removing silence and preparing them for whisper.cpp"
-authors = [
-    {name = "Sean Kennedy", email = "sean@codeserious.com"}
-]
-license = {text = "MIT"}
+description = "Pre-processes audio files for better Whisper transcription"
+readme = "docs/README.md"
 requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+    { name = "Kennedy Smith", email = "kennedys1@users.noreply.github.com" }
+]
 dependencies = [
+    "mypy>=1.0.0",
     "openai-whisper",
+    "pytest>=7.0.0",
+    "python-dotenv>=1.0.0",
+    "soundfile>=0.12.1",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
-    "soundfile>=0.12.1",
-    "python-dotenv>=1.0.0",
     "webvtt-py>=0.4.6",
-    "pytest>=7.0.0",
-    "mypy>=1.0.0",
+    "silero-vad>=0.4.0",
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[project.urls]
+Homepage = "https://github.com/kennedys1/transcript-precombobulator"
+Repository = "https://github.com/kennedys1/transcript-precombobulator.git"
+Issues = "https://github.com/kennedys1/transcript-precombobulator/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -36,6 +51,14 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
 
 [tool.black]
 line-length = 88

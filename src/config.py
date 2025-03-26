@@ -39,10 +39,10 @@ def validate_whisper_settings() -> None:
 
 # Audio processing settings
 SAMPLE_RATE: Final[int] = int(os.getenv('SAMPLE_RATE', '16000'))
-VAD_THRESHOLD: Final[float] = float(os.getenv('VAD_THRESHOLD', '0.5'))
-VAD_MIN_SPEECH_DURATION: Final[float] = float(os.getenv('VAD_MIN_SPEECH_DURATION', '0.1')) * 1000
-VAD_MIN_SILENCE_DURATION: Final[float] = float(os.getenv('VAD_MIN_SILENCE_DURATION', '0.1')) * 1000
-PADDING_SECONDS: Final[float] = float(os.getenv('PADDING_SECONDS', '0.1'))
+VAD_THRESHOLD: Final[float] = float(os.getenv('VAD_THRESHOLD', '0.2'))
+VAD_MIN_SPEECH_DURATION: Final[float] = float(os.getenv('VAD_MIN_SPEECH_DURATION', '0.3')) * 1000
+VAD_MIN_SILENCE_DURATION: Final[float] = float(os.getenv('VAD_MIN_SILENCE_DURATION', '0.5')) * 1000
+PADDING_SECONDS: Final[float] = float(os.getenv('PADDING_SECONDS', '0.3'))
 
 # Directory paths
 ROOT_DIR: Final[Path] = Path(__file__).parent.parent
@@ -50,13 +50,17 @@ INPUT_DIR: Final[Path] = ROOT_DIR / 'tmp' / 'input'
 OUTPUT_DIR: Final[Path] = ROOT_DIR / 'tmp' / 'output'
 TRANSCRIPTIONS_DIR: Final[Path] = ROOT_DIR / 'tmp' / 'transcriptions'
 
-# Whisper configuration
-WHISPER_MODEL: Final[str] = os.getenv('WHISPER_MODEL', 'large-v3')
-WHISPER_PROMPT: Final[str] = os.getenv('WHISPER_PROMPT', 'This is a live-play Dungeons & Dragons 5e session.')
-WHISPER_BEAM_SIZE: Final[int] = int(os.getenv('WHISPER_BEAM_SIZE', '5'))
-WHISPER_ENTROPY_THOLD: Final[float] = float(os.getenv('WHISPER_ENTROPY_THOLD', '2.8'))
-WHISPER_MAX_CONTEXT: Final[int] = int(os.getenv('WHISPER_MAX_CONTEXT', '64'))
+# Whisper.cpp paths
+WHISPER_CPP_PATH: Final[Path] = ROOT_DIR / os.getenv('WHISPER_CPP_PATH', 'deps/whisper.cpp/build/bin')
+WHISPER_MODEL_PATH: Final[Path] = ROOT_DIR / os.getenv('WHISPER_MODEL_PATH', 'deps/whisper.cpp/models/ggml-large-v3.bin')
+
+# Whisper.cpp settings
+WHISPER_PROMPT: Final[str] = os.getenv('WHISPER_PROMPT', '')
+WHISPER_BEAM_SIZE: Final[int] = int(os.getenv('WHISPER_BEAM_SIZE', '8'))
+WHISPER_ENTROPY_THOLD: Final[float] = float(os.getenv('WHISPER_ENTROPY_THOLD', '2.4'))
+WHISPER_MAX_CONTEXT: Final[int] = int(os.getenv('WHISPER_MAX_CONTEXT', '128'))
 WHISPER_TEMPERATURE: Final[float] = float(os.getenv('WHISPER_TEMPERATURE', '0.0'))
+WHISPER_WORD_THOLD: Final[float] = float(os.getenv('WHISPER_WORD_THOLD', '0.6'))
 WHISPER_LANGUAGE: Final[str] = os.getenv('WHISPER_LANGUAGE', 'en')
 
 # Validate settings

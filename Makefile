@@ -1,4 +1,4 @@
-.PHONY: setup run clean test setup-whisper install lint
+.PHONY: setup run clean test setup-whisper install lint create-sample-files
 
 ROOT_DIR := $(shell pwd)
 
@@ -14,26 +14,29 @@ setup:
 	cd $(ROOT_DIR) && . .venv/bin/activate && pip install --upgrade pip
 	cd $(ROOT_DIR) && . .venv/bin/activate && pip install -e .
 
-# Run the main script
+# Run the main script on all WAV files in tmp/input
 run:
-	@if [ ! -f "$(ROOT_DIR)/tmp/input/jfk.wav" ]; then \
-		echo "No input file found in tmp/input/jfk.wav"; \
+	@if [ ! -f "$(ROOT_DIR)/tmp/input/jfk_1.wav" ]; then \
+		echo "No input files found in tmp/input/"; \
+		echo "Run 'make create-sample-files' to create sample files."; \
 		exit 1; \
 	fi
-	cd $(ROOT_DIR) && . .venv/bin/activate && python transcribe.py
+	@for file in $(ROOT_DIR)/tmp/input/*.wav; do \
+		echo "\nProcessing $$(basename $$file)..."; \
+		cd $(ROOT_DIR) && . .venv/bin/activate && python -c "from pathlib import Path; from src.transcribe import transcribe_audio; transcribe_audio(Path('$$file'))"; \
+	done
 
-# Clean up generated files but keep models and .gitkeep files
+# Clean up generated files
 clean:
-	cd $(ROOT_DIR) && find tmp/output -type f ! -name '.gitkeep' -delete
-	cd $(ROOT_DIR) && find tmp/transcriptions -type f ! -name '.gitkeep' -delete
+	cd $(ROOT_DIR) && find tmp -type f ! -name ".gitkeep" -delete
 	cd $(ROOT_DIR) && rm -rf __pycache__/ */__pycache__/ */*/__pycache__/
-	cd $(ROOT_DIR) && rm -rf .pytest_cache/
-	cd $(ROOT_DIR) && rm -rf .coverage
-	cd $(ROOT_DIR) && rm -rf .mypy_cache/
+	cd $(ROOT_DIR) && rm -rf .pytest_cache/ .coverage .mypy_cache/
 
-# Clean everything including models
-clean-all: clean
-	cd $(ROOT_DIR) && find tmp/models -type f ! -name '.gitkeep' -delete
+# Clean everything and recreate directory structure
+clean-all:
+	cd $(ROOT_DIR) && rm -rf tmp/*
+	cd $(ROOT_DIR) && mkdir -p tmp/input tmp/output tmp/transcriptions
+	cd $(ROOT_DIR) && touch tmp/input/.gitkeep tmp/output/.gitkeep tmp/transcriptions/.gitkeep
 
 # Install dependencies
 install:
@@ -42,6 +45,7 @@ install:
 # Run all tests
 test:
 	cd $(ROOT_DIR) && . .venv/bin/activate && python -m pytest tests/ -v
+	$(MAKE) clean
 
 # Check code style
 lint:
@@ -51,3 +55,11 @@ lint:
 # Setup whisper and download sample files
 setup-whisper:
 	cd $(ROOT_DIR) && . .venv/bin/activate && python tools/setup_whisper.py --model large-v3 --samples
+
+# Create sample files for running the transcription
+create-sample-files:
+	@if [ ! -f "$(ROOT_DIR)/deps/whisper.cpp/samples/jfk.wav" ]; then \
+		echo "JFK sample file not found. Run 'make setup-whisper' first."; \
+		exit 1; \
+	fi
+	cd $(ROOT_DIR) && . .venv/bin/activate && python tools/create_sample_files.py

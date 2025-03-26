@@ -27,7 +27,8 @@ def process_audio(input_path: Path) -> Path:
     try:
         output_path, processed_segments = process_vad(input_path)
 
-        # Save timestamp mapping
+        # Save timestamp mapping - preserve test_ prefix if present
+        stem = input_path.stem
         mapping = {
             'original_file': str(input_path),
             'processed_file': str(output_path),
@@ -36,7 +37,7 @@ def process_audio(input_path: Path) -> Path:
             'created_at': datetime.now().isoformat()
         }
 
-        mapping_path = output_path.parent / f"{input_path.stem}_mapping.json"
+        mapping_path = output_path.parent / f"{stem}_mapping.json"
         with open(mapping_path, 'w') as f:
             json.dump(mapping, f, indent=2)
 

@@ -1,25 +1,19 @@
 """Whisper transcription utilities."""
 
-import whisper
 from pathlib import Path
-from typing import Dict, Any
 import json
+from typing import Dict, Any, List
 
-from src.config import (
-    WHISPER_MODEL,
-    WHISPER_PROMPT,
-    WHISPER_BEAM_SIZE,
-    WHISPER_TEMPERATURE,
-    WHISPER_LANGUAGE,
-    OUTPUT_DIR
-)
+from src.config import OUTPUT_DIR, TRANSCRIPTIONS_DIR
+from src.whisper_cpp import transcribe_audio_segments, WhisperCppError
+from src.process_audio import process_audio
 
 class TranscriptionError(Exception):
     """Base exception for transcription-related errors."""
     pass
 
 def transcribe_audio(audio_path: Path) -> Dict[str, Any]:
-    """Transcribe audio file using Whisper.
+    """Transcribe audio file using whisper.cpp.
 
     Args:
         audio_path: Path to the audio file to transcribe.
@@ -37,25 +31,44 @@ def transcribe_audio(audio_path: Path) -> Dict[str, Any]:
         raise TranscriptionError(f"Audio file must be a WAV file: {audio_path}")
 
     try:
-        # Load Whisper model
-        model = whisper.load_model(WHISPER_MODEL)
+        # First, process audio with VAD to get segments
+        processed_path = process_audio(audio_path)
+        mapping_file = processed_path.parent / f"{audio_path.stem}_mapping.json"
 
-        # Transcribe audio
-        result = model.transcribe(
-            str(audio_path),
-            prompt=WHISPER_PROMPT,
-            beam_size=WHISPER_BEAM_SIZE,
-            temperature=WHISPER_TEMPERATURE,
-            language=WHISPER_LANGUAGE,
-            fp16=False  # Ensure we use FP32 for CPU
-        )
+        with open(mapping_file) as f:
+            mapping = json.load(f)
 
-        # Save transcription
-        output_path = OUTPUT_DIR / f"{audio_path.stem}_transcription.json"
-        with open(output_path, 'w') as f:
+        # Create output paths - preserve test_ prefix if present
+        stem = audio_path.stem
+        output_vtt = TRANSCRIPTIONS_DIR / f"{stem}.vtt"
+        output_json = OUTPUT_DIR / f"{stem}_transcription.json"
+
+        # Prepare segments for transcription
+        segments_to_transcribe = [
+            {
+                'audio_path': segment['segment_file'],
+                'start': segment['start_seconds']
+            }
+            for segment in mapping['segments']
+        ]
+
+        print(f"Found {len(segments_to_transcribe)} segments to transcribe")
+
+        # Transcribe the audio segments
+        segments = transcribe_audio_segments(segments_to_transcribe, output_vtt)
+
+        # Save transcription results as JSON
+        result = {
+            'audio_path': str(audio_path),
+            'segments': segments
+        }
+
+        with open(output_json, 'w') as f:
             json.dump(result, f, indent=2)
 
         return result
 
+    except WhisperCppError as e:
+        raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
     except Exception as e:
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
