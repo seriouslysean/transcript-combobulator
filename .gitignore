@@ -1,0 +1,16 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Virtual environment
+.venv/
+
+# Project-specific
+tmp/**/*
+!tmp/*/.gitkeep
