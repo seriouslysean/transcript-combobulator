@@ -63,6 +63,10 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
             resampler = torchaudio.transforms.Resample(sr, SAMPLE_RATE)
             wav = resampler(wav)
 
+        # Convert stereo to mono by averaging channels if needed
+        if wav.shape[0] == 2:
+            wav = wav.mean(dim=0, keepdim=True)
+
         # Get speech timestamps with more sensitive settings
         speech_timestamps = get_speech_timestamps(
             wav,

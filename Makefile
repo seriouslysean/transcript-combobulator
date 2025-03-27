@@ -2,6 +2,9 @@
 
 ROOT_DIR := $(shell pwd)
 
+# Helper to run commands in virtual environment
+VENV_CMD = cd $(ROOT_DIR) && . .venv/bin/activate &&
+
 # Ensure Python environment is set up
 setup:
 	@if ! command -v pyenv &> /dev/null; then \
@@ -11,19 +14,15 @@ setup:
 	cd $(ROOT_DIR) && git submodule update --init --recursive
 	cd $(ROOT_DIR) && pyenv install --skip-existing 3.10
 	cd $(ROOT_DIR) && python3.10 -m venv .venv
-	cd $(ROOT_DIR) && . .venv/bin/activate && pip install --upgrade pip
-	cd $(ROOT_DIR) && . .venv/bin/activate && pip install -e .
+	$(VENV_CMD) pip install --upgrade pip
+	$(VENV_CMD) pip install -e .
 
-# Run the main script on all WAV files in tmp/input
+# Run the transcription on all WAV files in tmp/input
 run:
-	@if [ ! -f "$(ROOT_DIR)/tmp/input/jfk_1.wav" ]; then \
-		echo "No input files found in tmp/input/"; \
-		echo "Run 'make create-sample-files' to create sample files."; \
-		exit 1; \
-	fi
+	@echo "Found $$(ls -1 $(ROOT_DIR)/tmp/input/*.wav 2>/dev/null | wc -l) WAV files to process"
 	@for file in $(ROOT_DIR)/tmp/input/*.wav; do \
 		echo "\nProcessing $$(basename $$file)..."; \
-		cd $(ROOT_DIR) && . .venv/bin/activate && python -c "from pathlib import Path; from src.transcribe import transcribe_audio; transcribe_audio(Path('$$file'))"; \
+		$(VENV_CMD) python -c "from pathlib import Path; from src.transcribe import transcribe_audio; transcribe_audio(Path('$$file'))"; \
 	done
 
 # Clean up generated files
@@ -40,21 +39,21 @@ clean-all:
 
 # Install dependencies
 install:
-	cd $(ROOT_DIR) && . .venv/bin/activate && pip install -e .
+	$(VENV_CMD) pip install -e .
 
 # Run all tests
 test:
-	cd $(ROOT_DIR) && . .venv/bin/activate && python -m pytest tests/ -v
+	$(VENV_CMD) python -m pytest tests/ -v
 	$(MAKE) clean
 
 # Check code style
 lint:
-	cd $(ROOT_DIR) && . .venv/bin/activate && flake8 .
-	cd $(ROOT_DIR) && . .venv/bin/activate && mypy .
+	$(VENV_CMD) flake8 .
+	$(VENV_CMD) mypy .
 
 # Setup whisper and download sample files
 setup-whisper:
-	cd $(ROOT_DIR) && . .venv/bin/activate && python tools/setup_whisper.py --model large-v3 --samples
+	$(VENV_CMD) python tools/setup_whisper.py --model large-v3 --samples
 
 # Create sample files for running the transcription
 create-sample-files:
@@ -62,4 +61,4 @@ create-sample-files:
 		echo "JFK sample file not found. Run 'make setup-whisper' first."; \
 		exit 1; \
 	fi
-	cd $(ROOT_DIR) && . .venv/bin/activate && python tools/create_sample_files.py
+	$(VENV_CMD) python tools/create_sample_files.py
