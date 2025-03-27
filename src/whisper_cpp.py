@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import re
 from datetime import timedelta
+import os
+import json
 
 from src.config import (
     WHISPER_CPP_PATH,
@@ -21,6 +23,27 @@ from src.config import (
 class WhisperCppError(Exception):
     """Base exception for whisper.cpp-related errors."""
     pass
+
+def parse_timestamp(timestamp: str) -> float:
+    """Parse timestamp format into seconds.
+
+    Handles both VTT format (HH:MM:SS.mmm) and JSON format (HH:MM:SS,mmm).
+    """
+    try:
+        # Try VTT format first (HH:MM:SS.mmm)
+        h, m, s = timestamp.split(':')
+        s, ms = s.split('.')
+        return float(h) * 3600 + float(m) * 60 + float(s) + float(ms) / 1000
+    except ValueError:
+        try:
+            # Try JSON format (HH:MM:SS,mmm)
+            h, m, s = timestamp.split(':')
+            s, ms = s.split(',')
+            return float(h) * 3600 + float(m) * 60 + float(s) + float(ms) / 1000
+        except ValueError:
+            # If no milliseconds, treat as whole seconds
+            h, m, s = timestamp.split(':')
+            return float(h) * 3600 + float(m) * 60 + float(s)
 
 def format_timestamp(seconds: float) -> str:
     """Format seconds into VTT timestamp format (HH:MM:SS.mmm)."""
@@ -80,7 +103,7 @@ def transcribe_segment(
 
     Args:
         audio_path: Path to the audio file to transcribe
-        output_path: Optional path to save the VTT file
+        output_path: Optional path to save the VTT file (only used for final output)
         offset: Time offset in seconds to add to timestamps
 
     Returns:
@@ -102,27 +125,26 @@ def transcribe_segment(
     if not whisper_cli.exists():
         raise WhisperCppError(f"whisper-cli not found in {WHISPER_CPP_PATH}")
 
-    # If no output path specified, use the same name as input but with .vtt extension
-    if output_path is None:
-        output_path = audio_path.with_suffix('.vtt')
-
     # Build whisper.cpp command
     cmd = [
         str(whisper_cli),
         '-m', str(WHISPER_MODEL_PATH),
         '-f', str(audio_path),
-        '--output-vtt',
+        '--output-json',  # Output JSON instead of VTT
         '--print-colors',
-        '--output-file', str(output_path.with_suffix('')),
+        '--output-file', str(audio_path.with_suffix('')),  # Use audio path as base
         '--beam-size', str(WHISPER_BEAM_SIZE),
         '--entropy-thold', str(WHISPER_ENTROPY_THOLD),
         '--temperature', str(WHISPER_TEMPERATURE),
         '--max-context', str(WHISPER_MAX_CONTEXT),
         '--word-thold', str(WHISPER_WORD_THOLD),
         '--no-fallback',
-        '--language', WHISPER_LANGUAGE,
-        '--prompt', WHISPER_PROMPT
+        '--language', WHISPER_LANGUAGE
     ]
+
+    # Only add prompt if it's not empty
+    if WHISPER_PROMPT:
+        cmd.extend(['--prompt', WHISPER_PROMPT])
 
     try:
         # Run whisper.cpp
@@ -130,13 +152,26 @@ def transcribe_segment(
         if result.returncode != 0:
             raise WhisperCppError(f"whisper.cpp failed: {result.stderr}")
 
-        # Parse the VTT file
-        segments = parse_vtt_file(output_path)
+        # Parse the JSON output
+        temp_json = audio_path.with_suffix('.json')
+        with open(temp_json) as f:
+            json_data = json.load(f)
 
-        # Add offset to timestamps
-        for segment in segments:
-            segment['start'] += offset
-            segment['end'] += offset
+        # Clean up temporary JSON file
+        temp_json.unlink()
+
+        # Extract segments and add offset to timestamps
+        segments = []
+        for segment in json_data['transcription']:
+            # Convert timestamp to seconds
+            start = parse_timestamp(segment['timestamps']['from'])
+            end = parse_timestamp(segment['timestamps']['to'])
+
+            segments.append({
+                'start': start + offset,
+                'end': end + offset,
+                'text': segment['text'].strip()
+            })
 
         return segments
 
@@ -176,7 +211,99 @@ def transcribe_audio_segments(
     with open(output_path, 'w') as f:
         f.write('WEBVTT\n\n')
         for segment in all_segments:
-            f.write(f"{format_timestamp(segment['start'])} --> {format_timestamp(segment['end'])}\n")
-            f.write(f"{segment['text'].strip()}\n\n")
+            # Format timestamps in VTT format (HH:MM:SS.mmm)
+            start_time = format_timestamp(segment['start'])
+            end_time = format_timestamp(segment['end'])
+            f.write(f"{start_time} --> {end_time}\n")
+            f.write(f"{segment['text']}\n\n")
 
     return all_segments
+
+def transcribe_audio(audio_path: Path, output_path: Path, prompt: str = "") -> None:
+    """Transcribe audio file using whisper.cpp."""
+    if not audio_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+    # Get whisper settings from environment
+    beam_size = int(os.getenv('WHISPER_BEAM_SIZE', '8'))
+    entropy_thold = float(os.getenv('WHISPER_ENTROPY_THOLD', '2.4'))
+    temperature = float(os.getenv('WHISPER_TEMPERATURE', '0.0'))
+    max_context = int(os.getenv('WHISPER_MAX_CONTEXT', '128'))
+    word_thold = float(os.getenv('WHISPER_WORD_THOLD', '0.6'))
+    confidence_threshold = int(os.getenv('WHISPER_CONFIDENCE_THRESHOLD', '50'))
+
+    # Build whisper.cpp command
+    cmd = [
+        'deps/whisper.cpp/build/bin/whisper-cli',
+        '-m', os.getenv('WHISPER_MODEL_PATH', 'deps/whisper.cpp/models/ggml-large-v3.bin'),
+        '-f', str(audio_path),
+        '--output-vtt',
+        '--print-colors',
+        '--print-special',
+        '--output-file', str(output_path.with_suffix('')),
+        '--beam-size', str(beam_size),
+        '--entropy-thold', str(entropy_thold),
+        '--temperature', str(temperature),
+        '--max-context', str(max_context),
+        '--word-thold', str(word_thold),
+        '--no-fallback',
+        '--language', os.getenv('WHISPER_LANGUAGE', 'en')
+    ]
+
+    # Add prompt if provided
+    if prompt:
+        cmd.extend(['--prompt', prompt])
+
+    # Run whisper.cpp
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"whisper.cpp failed: {result.stderr}")
+
+        # Filter out low-confidence transcriptions
+        if confidence_threshold > 0:
+            with open(output_path) as f:
+                content = f.read()
+
+            # Parse VTT content and filter by confidence
+            filtered_content = []
+            current_segment = []
+            for line in content.split('\n'):
+                if line.strip() and not line.startswith('WEBVTT'):
+                    if '-->' in line:
+                        if current_segment:
+                            # Check confidence of previous segment
+                            confidence = 0
+                            for seg_line in current_segment:
+                                if '[_TT_' in seg_line:
+                                    match = re.search(r'\[_TT_(\d+)\]', seg_line)
+                                    if match:
+                                        confidence = int(match.group(1))
+                                        break
+
+                            # Only keep segment if confidence is above threshold
+                            if confidence >= confidence_threshold:
+                                filtered_content.extend(current_segment)
+                            current_segment = []
+                    current_segment.append(line)
+
+            # Add any remaining segment
+            if current_segment:
+                confidence = 0
+                for seg_line in current_segment:
+                    if '[_TT_' in seg_line:
+                        match = re.search(r'\[_TT_(\d+)\]', seg_line)
+                        if match:
+                            confidence = int(match.group(1))
+                            break
+
+                if confidence >= confidence_threshold:
+                    filtered_content.extend(current_segment)
+
+            # Write filtered content back to file
+            with open(output_path, 'w') as f:
+                f.write('WEBVTT\n\n')
+                f.write('\n'.join(filtered_content))
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to transcribe audio: {e}")

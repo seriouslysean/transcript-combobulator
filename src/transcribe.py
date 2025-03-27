@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 from src.config import OUTPUT_DIR, TRANSCRIPTIONS_DIR
 from src.whisper_cpp import transcribe_audio_segments, WhisperCppError
 from src.process_audio import process_audio
+from src.utils.logging import error, info
 
 class TranscriptionError(Exception):
     """Base exception for transcription-related errors."""
@@ -25,13 +26,16 @@ def transcribe_audio(audio_path: Path) -> Dict[str, Any]:
         TranscriptionError: If transcription fails.
     """
     if not audio_path.exists():
+        error(f"Audio file not found: {audio_path}")
         raise TranscriptionError(f"Audio file not found: {audio_path}")
 
     if not audio_path.suffix.lower() == '.wav':
+        error(f"Audio file must be a WAV file: {audio_path}")
         raise TranscriptionError(f"Audio file must be a WAV file: {audio_path}")
 
     try:
         # First, process audio with VAD to get segments
+        info("Processing audio with VAD...")
         processed_path = process_audio(audio_path)
         mapping_file = processed_path.parent / f"{audio_path.stem}_mapping.json"
 
@@ -52,23 +56,30 @@ def transcribe_audio(audio_path: Path) -> Dict[str, Any]:
             for segment in mapping['segments']
         ]
 
-        print(f"Found {len(segments_to_transcribe)} segments to transcribe")
+        info(f"Found {len(segments_to_transcribe)} segments to transcribe")
 
         # Transcribe the audio segments
+        info("Transcribing segments...")
         segments = transcribe_audio_segments(segments_to_transcribe, output_vtt)
 
         # Save transcription results as JSON
+        info("Saving transcription results...")
         result = {
             'audio_path': str(audio_path),
-            'segments': segments
+            'segments': segments,
+            'mapping_file': str(mapping_file),
+            'processed_path': str(processed_path)
         }
 
         with open(output_json, 'w') as f:
             json.dump(result, f, indent=2)
 
+        info("Transcription complete")
         return result
 
     except WhisperCppError as e:
+        error(f"Failed to transcribe audio: {e}")
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
     except Exception as e:
+        error(f"Failed to transcribe audio: {e}")
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e

@@ -67,6 +67,9 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
         if wav.shape[0] == 2:
             wav = wav.mean(dim=0, keepdim=True)
 
+        # Normalize audio to [-1, 1] range
+        wav = wav / (wav.abs().max() + 1e-8)
+
         # Get speech timestamps with more sensitive settings
         speech_timestamps = get_speech_timestamps(
             wav,
