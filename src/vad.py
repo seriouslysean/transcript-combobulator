@@ -42,7 +42,7 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
         input_path: Path to the input audio file.
 
     Returns:
-        Tuple[Path, List[Dict[str, Any]]]: Path to processed audio and list of speech segments.
+        Tuple[Path, List[Dict[str, Any]]]: Path to output directory and list of speech segments.
 
     Raises:
         VADError: If audio processing fails.
@@ -54,6 +54,10 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
         raise VADError(f"Input file must be a WAV file: {input_path}")
 
     try:
+        # Create output directory for this audio file
+        output_dir = OUTPUT_DIR / input_path.stem
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         # Load VAD model
         model, _ = load_vad_model()
 
@@ -77,8 +81,8 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
             return_seconds=True,
             sampling_rate=SAMPLE_RATE,
             threshold=VAD_THRESHOLD,
-            min_speech_duration_ms=VAD_MIN_SPEECH_DURATION,
-            min_silence_duration_ms=VAD_MIN_SILENCE_DURATION,
+            min_speech_duration_ms=int(VAD_MIN_SPEECH_DURATION * 1000),
+            min_silence_duration_ms=int(VAD_MIN_SILENCE_DURATION * 1000),
         )
 
         if not speech_timestamps:
@@ -86,11 +90,7 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
 
         # Extract speech segments and save them
         processed_segments = []
-        segments = []
         padding_samples = int(0.5 * SAMPLE_RATE)  # 500ms padding on each side
-
-        # Preserve test_ prefix if present
-        stem = input_path.stem
 
         for i, ts in enumerate(speech_timestamps):
             # Add padding to segment boundaries
@@ -99,8 +99,8 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
             segment = wav[:, start:end]
 
             # Save individual segment
-            segment_path = OUTPUT_DIR / f"{stem}_segment_{i}.wav"
-            sf.write(segment_path, segment.T.numpy(), SAMPLE_RATE)
+            segment_path = output_dir / f"segment_{i:03d}.wav"
+            sf.write(segment_path.absolute(), segment.T.numpy(), SAMPLE_RATE)
 
             processed_segments.append({
                 'start_seconds': ts['start'],
@@ -108,36 +108,8 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
                 'segment_file': str(segment_path)
             })
 
-            segments.append(segment)
-
-        # Create processed audio with crossfade between segments
-        if len(segments) > 1:
-            # Add small overlap between segments for smooth transitions
-            overlap_samples = int(0.1 * SAMPLE_RATE)  # 100ms overlap
-            processed_wav = segments[0]
-
-            for i in range(1, len(segments)):
-                # Create crossfade
-                fade_in = torch.linspace(0, 1, overlap_samples)
-                fade_out = torch.linspace(1, 0, overlap_samples)
-
-                # Apply crossfade to overlapping regions
-                processed_wav[:, -overlap_samples:] *= fade_out
-                segments[i][:, :overlap_samples] *= fade_in
-
-                # Concatenate with overlap
-                processed_wav = torch.cat([
-                    processed_wav[:, :-overlap_samples],
-                    segments[i]
-                ], dim=1)
-        else:
-            processed_wav = segments[0]
-
-        # Save processed audio
-        output_path = OUTPUT_DIR / f"{stem}_processed.wav"
-        sf.write(output_path, processed_wav.T.numpy(), SAMPLE_RATE)
-
-        return output_path, processed_segments
+        # Return the output directory and segments
+        return output_dir, processed_segments
 
     except Exception as e:
         raise VADError(f"Failed to process audio: {e}") from e

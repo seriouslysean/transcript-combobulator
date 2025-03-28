@@ -1,72 +1,89 @@
-"""Configuration settings for the project.
-
-This module loads and validates environment variables for audio processing
-and Whisper transcription settings. It provides type-safe access to these
-settings with sensible defaults.
-"""
+"""Configuration module for the application."""
 
 import os
 from pathlib import Path
-from typing import Final
+from typing import Any, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-def validate_audio_settings() -> None:
-    """Validate audio processing settings are within acceptable ranges."""
-    if SAMPLE_RATE <= 0:
-        raise ValueError("SAMPLE_RATE must be positive")
-    if not 0 <= VAD_THRESHOLD <= 1:
-        raise ValueError("VAD_THRESHOLD must be between 0 and 1")
-    if VAD_MIN_SPEECH_DURATION <= 0:
-        raise ValueError("VAD_MIN_SPEECH_DURATION must be positive")
-    if VAD_MIN_SILENCE_DURATION <= 0:
-        raise ValueError("VAD_MIN_SILENCE_DURATION must be positive")
-    if PADDING_SECONDS < 0:
-        raise ValueError("PADDING_SECONDS must be non-negative")
+def get_bool_env(key: str, default: bool = False) -> bool:
+    """Get boolean environment variable."""
+    value = os.getenv(key, str(default)).lower()
+    return value in ('true', '1', 'yes', 'on')
 
-def validate_whisper_settings() -> None:
-    """Validate Whisper transcription settings are within acceptable ranges."""
-    if WHISPER_BEAM_SIZE <= 0:
-        raise ValueError("WHISPER_BEAM_SIZE must be positive")
-    if WHISPER_ENTROPY_THOLD <= 0:
-        raise ValueError("WHISPER_ENTROPY_THOLD must be positive")
-    if WHISPER_MAX_CONTEXT <= 0:
-        raise ValueError("WHISPER_MAX_CONTEXT must be positive")
-    if not 0 <= WHISPER_TEMPERATURE <= 1:
-        raise ValueError("WHISPER_TEMPERATURE must be between 0 and 1")
+def get_float_env(key: str, default: float) -> float:
+    """Get float environment variable."""
+    try:
+        return float(os.getenv(key, default))
+    except (TypeError, ValueError):
+        return default
 
-# Audio processing settings
-SAMPLE_RATE: Final[int] = int(os.getenv('SAMPLE_RATE', '16000'))
-VAD_THRESHOLD: Final[float] = float(os.getenv('VAD_THRESHOLD', '0.2'))
-VAD_MIN_SPEECH_DURATION: Final[float] = float(os.getenv('VAD_MIN_SPEECH_DURATION', '0.3')) * 1000
-VAD_MIN_SILENCE_DURATION: Final[float] = float(os.getenv('VAD_MIN_SILENCE_DURATION', '0.5')) * 1000
-PADDING_SECONDS: Final[float] = float(os.getenv('PADDING_SECONDS', '0.3'))
+def get_int_env(key: str, default: int) -> int:
+    """Get integer environment variable."""
+    try:
+        return int(os.getenv(key, default))
+    except (TypeError, ValueError):
+        return default
 
-# Directory paths
-ROOT_DIR: Final[Path] = Path(__file__).parent.parent
-INPUT_DIR: Final[Path] = ROOT_DIR / 'tmp' / 'input'
-OUTPUT_DIR: Final[Path] = ROOT_DIR / 'tmp' / 'output'
-TRANSCRIPTIONS_DIR: Final[Path] = ROOT_DIR / 'tmp' / 'transcriptions'
+def require_env(key: str) -> str:
+    """Get required environment variable."""
+    value = os.getenv(key)
+    if not value:
+        raise ValueError(f"{key} must be set in .env file")
+    return value
 
-# Whisper.cpp paths
-WHISPER_CPP_PATH: Final[Path] = ROOT_DIR / os.getenv('WHISPER_CPP_PATH', 'deps/whisper.cpp/build/bin')
-WHISPER_MODEL_PATH: Final[Path] = ROOT_DIR / os.getenv('WHISPER_MODEL_PATH', 'deps/whisper.cpp/models/ggml-large-v3.bin')
+# Base Directories
+TMP_DIR = Path('tmp')
+OUTPUT_DIR = TMP_DIR / 'output'
+TRANSCRIPTIONS_DIR = TMP_DIR / 'transcriptions'
+WHISPER_MODELS_DIR = Path('models')
 
-# Whisper.cpp settings
-WHISPER_PROMPT: Final[str] = os.getenv('WHISPER_PROMPT', '')
-WHISPER_BEAM_SIZE: Final[int] = int(os.getenv('WHISPER_BEAM_SIZE', '8'))
-WHISPER_ENTROPY_THOLD: Final[float] = float(os.getenv('WHISPER_ENTROPY_THOLD', '2.4'))
-WHISPER_MAX_CONTEXT: Final[int] = int(os.getenv('WHISPER_MAX_CONTEXT', '128'))
-WHISPER_TEMPERATURE: Final[float] = float(os.getenv('WHISPER_TEMPERATURE', '0.0'))
-WHISPER_WORD_THOLD: Final[float] = float(os.getenv('WHISPER_WORD_THOLD', '0.6'))
-WHISPER_LANGUAGE: Final[str] = os.getenv('WHISPER_LANGUAGE', 'en')
+# Audio Processing Settings
+SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)
+TRANSCRIPTION_MODE = require_env('TRANSCRIPTION_MODE')
 
-# Validate settings
-validate_audio_settings()
-validate_whisper_settings()
+# VAD Settings
+VAD_THRESHOLD = float(require_env('VAD_THRESHOLD'))
+VAD_MIN_SPEECH_DURATION = float(require_env('VAD_MIN_SPEECH_DURATION'))
+VAD_MIN_SILENCE_DURATION = float(require_env('VAD_MIN_SILENCE_DURATION'))
+PADDING_SECONDS = float(require_env('PADDING_SECONDS'))
 
-# Create directories if they don't exist
-for directory in [INPUT_DIR, OUTPUT_DIR, TRANSCRIPTIONS_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+# Whisper Model Configuration
+WHISPER_MODEL = require_env('WHISPER_MODEL')
+WHISPER_DEVICE = require_env('WHISPER_DEVICE')
+WHISPER_COMPUTE_TYPE = require_env('WHISPER_COMPUTE_TYPE')
+
+# Whisper Transcription Settings
+WHISPER_LANGUAGE = require_env('WHISPER_LANGUAGE')
+WHISPER_TEMPERATURE = get_float_env('WHISPER_TEMPERATURE', 0.0)
+WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 5)
+WHISPER_NO_SPEECH_THRESHOLD = get_float_env('WHISPER_NO_SPEECH_THRESHOLD', 0.6)
+WHISPER_LOGPROB_THRESHOLD = get_float_env('WHISPER_LOGPROB_THRESHOLD', -1.0)
+WHISPER_COMPRESSION_RATIO_THRESHOLD = get_float_env('WHISPER_COMPRESSION_RATIO_THRESHOLD', 1.2)
+WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', True)
+WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', True)
+
+# Context Settings
+WHISPER_PROMPT = os.getenv('WHISPER_PROMPT', '')
+
+# Confidence Settings
+WHISPER_CONFIDENCE_THRESHOLD = get_float_env('WHISPER_CONFIDENCE_THRESHOLD', 50.0)
+
+# Output Settings
+SAVE_JSON = get_bool_env('SAVE_JSON', True)
+
+def get_whisper_options() -> Dict[str, Any]:
+    """Get all whisper options as a dictionary."""
+    return {
+        'language': WHISPER_LANGUAGE,
+        'temperature': WHISPER_TEMPERATURE,
+        'beam_size': WHISPER_BEAM_SIZE,
+        'condition_on_previous_text': WHISPER_CONDITION_ON_PREVIOUS,
+        'no_speech_threshold': WHISPER_NO_SPEECH_THRESHOLD,
+        'logprob_threshold': WHISPER_LOGPROB_THRESHOLD,
+        'compression_ratio_threshold': WHISPER_COMPRESSION_RATIO_THRESHOLD,
+        'word_timestamps': WHISPER_WORD_TIMESTAMPS,
+        'initial_prompt': WHISPER_PROMPT if WHISPER_PROMPT else None,
+    }

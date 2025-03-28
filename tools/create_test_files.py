@@ -44,7 +44,7 @@ def create_padded_audio(
 def main():
     """Create test files from the JFK audio."""
     root_dir = Path(__file__).parent.parent
-    source_file = root_dir / 'deps' / 'whisper.cpp' / 'samples' / 'jfk.wav'
+    source_file = root_dir / 'samples' / 'jfk.wav'
     input_dir = root_dir / 'tmp' / 'input'
 
     if not source_file.exists():

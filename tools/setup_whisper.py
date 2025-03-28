@@ -1,59 +1,96 @@
 #!/usr/bin/env python3
-import subprocess
-import argparse
+"""Setup whisper and download model."""
+
+import os
 from pathlib import Path
+import torch
+import whisper
+from dotenv import load_dotenv
 
-def run_command(cmd, cwd=None):
-    """Run a command and return True if successful."""
-    print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=cwd, text=True)
-    if result.returncode != 0:
-        print(f"Error: Command failed with return code {result.returncode}")
+from src.config import TMP_DIR, WHISPER_MODEL
+
+def get_whisper_config() -> dict:
+    """Get whisper configuration from environment variables.
+
+    Returns:
+        dict: Configuration for whisper with device and compute type
+    """
+    load_dotenv()
+
+    device = os.getenv('WHISPER_DEVICE', 'cpu')
+    compute_type = os.getenv('WHISPER_COMPUTE_TYPE', 'float32')
+
+    # Validate compute type based on device
+    if device == 'cpu' and compute_type == 'float16':
+        print("Warning: FP16 not supported on CPU, forcing FP32")
+        compute_type = 'float32'
+
+    return {
+        'device': device,
+        'compute_type': compute_type
+    }
+
+def setup_whisper(model_name: str, models_dir: Path) -> bool:
+    """Set up whisper and download model.
+
+    Args:
+        model_name: Name of the whisper model to download
+        models_dir: Directory to store models
+
+    Returns:
+        bool: True if setup was successful, False otherwise
+    """
+    try:
+        # Create models directory if it doesn't exist
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+        # Set WHISPER_MODELS_DIR environment variable
+        os.environ['WHISPER_MODELS_DIR'] = str(models_dir)
+
+        # Get whisper configuration
+        config = get_whisper_config()
+
+        # Check if model already exists
+        model_path = models_dir / f"{model_name}.pt"
+        if model_path.exists():
+            print(f"Model {model_name} already exists at {model_path}")
+            return True
+
+        print(f"Downloading {model_name} model to {models_dir}...")
+
+        # This will download the model to the specified cache location
+        model = whisper.load_model(
+            model_name,
+            device=config['device'],
+            download_root=str(models_dir)
+        )
+
+        print(f"Successfully downloaded {model_name} model")
+        return True
+
+    except Exception as e:
+        print(f"Error setting up whisper: {e}")
         return False
-    return True
-
-def setup_whisper(model_name):
-    """Set up whisper.cpp and download model."""
-    root_dir = Path(__file__).parent.parent
-    whisper_dir = root_dir / 'deps' / 'whisper.cpp'
-
-    print("Initializing whisper.cpp submodule...")
-    if not run_command(['git', 'submodule', 'update', '--init', '--recursive'], cwd=root_dir):
-        return False
-
-    print("\nBuilding whisper.cpp...")
-    if not run_command(['make'], cwd=whisper_dir):
-        return False
-
-    print("\nDownloading model...")
-    if not run_command(['./models/download-ggml-model.sh', model_name], cwd=whisper_dir):
-        return False
-
-    # Create tmp directories if they don't exist
-    tmp_dir = root_dir / 'tmp'
-    output_dir = tmp_dir / 'output'
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Download sample files
-    print("\nDownloading sample files...")
-    samples_dir = whisper_dir / 'samples'
-    if not samples_dir.exists():
-        if not run_command(['bash', 'download-jfk.sh'], cwd=samples_dir):
-            return False
-
-    return True
 
 def main():
-    parser = argparse.ArgumentParser(description='Setup whisper.cpp and download model')
-    parser.add_argument('--model', default='large-v3', help='Model to download')
-    parser.add_argument('--samples', action='store_true', help='Download sample files')
-    args = parser.parse_args()
+    """Download and setup whisper model."""
+    # Load environment variables
+    load_dotenv()
 
-    if setup_whisper(args.model):
-        print("\nSetup completed successfully!")
+    # Get model from environment
+    model = os.getenv('WHISPER_MODEL')
+    if not model:
+        print("Error: WHISPER_MODEL environment variable is required")
+        exit(1)
+
+    # Setup whisper with model in models directory
+    models_dir = Path('models')
+    print(f"Checking for {model} model in {models_dir}...")
+    if setup_whisper(model, models_dir):
+        print("Setup completed successfully!")
     else:
-        print("\nSetup failed!")
+        print("Setup failed!")
+        exit(1)
 
 if __name__ == '__main__':
     main()

@@ -4,6 +4,7 @@
 from pathlib import Path
 import pytest
 from src.vad import load_vad_model, process_audio, VADError
+from src.config import OUTPUT_DIR
 import json
 
 def test_vad_model_loading():
@@ -20,8 +21,8 @@ def test_vad_detection():
     output_path, segments = process_audio(input_file)
 
     # Verify output files
-    assert output_path.exists(), "Processed audio file not created"
-    mapping_file = output_path.parent / f"{input_file.stem}_mapping.json"
+    assert output_path.exists(), "Output directory not created"
+    mapping_file = output_path / f"{input_file.stem}_mapping.json"
     assert mapping_file.exists(), "Mapping file not created"
 
     # Verify mapping content

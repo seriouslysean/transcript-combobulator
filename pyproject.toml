@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 license = "MIT"
 keywords = []
 authors = [
-    { name = "Kennedy Smith", email = "kennedys1@users.noreply.github.com" }
+    { name = "Sean Kennedy", email = "sean@codeserious.com" }
 ]
 dependencies = [
     "mypy>=1.0.0",
@@ -29,9 +29,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kennedys1/transcript-precombobulator"
-Repository = "https://github.com/kennedys1/transcript-precombobulator.git"
-Issues = "https://github.com/kennedys1/transcript-precombobulator/issues"
+Homepage = "https://github.com/seriouslysean/transcript-precombobulator"
+Repository = "https://github.com/seriouslysean/transcript-precombobulator.git"
+Issues = "https://github.com/seriouslysean/transcript-precombobulator/issues"
 
 [build-system]
 requires = ["hatchling"]

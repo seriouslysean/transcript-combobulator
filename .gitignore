@@ -14,5 +14,7 @@ __pycache__/
 # Project-specific
 tmp/**/*
 !tmp/*/.gitkeep
-!tmp/samples
-!tmp/samples/jfk.wav
+
+models/*
+!models/.gitkeep
+
