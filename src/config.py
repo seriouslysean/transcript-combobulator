@@ -36,9 +36,30 @@ def require_env(key: str) -> str:
 
 # Base Directories
 TMP_DIR = Path('tmp')
+INPUT_DIR = TMP_DIR / 'input'
 OUTPUT_DIR = TMP_DIR / 'output'
 TRANSCRIPTIONS_DIR = TMP_DIR / 'transcriptions'
 WHISPER_MODELS_DIR = Path('models')
+
+def get_output_path_for_input(input_path: Path) -> Path:
+    """Generate output path that preserves input directory structure.
+    
+    Args:
+        input_path: Path to input audio file
+        
+    Returns:
+        Output directory path that mirrors input structure
+    """
+    try:
+        # Get relative path from input base directory
+        rel_path = input_path.relative_to(INPUT_DIR)
+        # Create output path preserving directory structure
+        output_base = OUTPUT_DIR / rel_path.parent / input_path.stem
+    except ValueError:
+        # If input is not under INPUT_DIR, use simple structure
+        output_base = OUTPUT_DIR / input_path.stem
+    
+    return output_base
 
 # Audio Processing Settings
 SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)

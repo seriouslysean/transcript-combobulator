@@ -1,4 +1,4 @@
-.PHONY: setup run run-single clean clean-all test setup-whisper install lint create-sample-files test-segment regenerate-vtt process-vad transcribe-segments create-test-files
+.PHONY: setup run run-single clean clean-all test setup-whisper install lint create-sample-files test-segment regenerate-vtt process-vad transcribe-segments create-test-files combine-transcripts
 
 ROOT_DIR := $(shell pwd)
 
@@ -40,6 +40,7 @@ run-single:
 	echo "Processing $$(basename $(file))..."
 	$(MAKE) process-vad file=$(file)
 	$(MAKE) transcribe-segments file=$(file)
+	$(MAKE) combine-transcripts
 
 # Process audio with VAD to generate segments
 process-vad:
@@ -127,3 +128,13 @@ create-test-files:
 		exit 1; \
 	fi
 	$(VENV_CMD) python tools/create_sample_files.py --prefix test_ --copies 1 --padded-copies 3
+
+# Combine all VTT transcripts in output directory using environment configuration
+combine-transcripts:
+	echo "Combining all transcripts using environment configuration..."
+	if [ -n "$(session)" ]; then \
+		$(VENV_CMD) python -c "from pathlib import Path; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(Path('$(ROOT_DIR)/tmp/output'), '$(session)')"; \
+	else \
+		$(VENV_CMD) python -c "from pathlib import Path; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(Path('$(ROOT_DIR)/tmp/output'))"; \
+	fi
+

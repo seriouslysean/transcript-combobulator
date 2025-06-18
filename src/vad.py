@@ -13,7 +13,7 @@ from src.config import (
     VAD_THRESHOLD,
     VAD_MIN_SPEECH_DURATION,
     VAD_MIN_SILENCE_DURATION,
-    OUTPUT_DIR
+    get_output_path_for_input
 )
 
 class VADError(Exception):
@@ -54,8 +54,8 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
         raise VADError(f"Input file must be a WAV file: {input_path}")
 
     try:
-        # Create output directory for this audio file
-        output_dir = OUTPUT_DIR / input_path.stem
+        # Create output directory for this audio file, preserving input structure
+        output_dir = get_output_path_for_input(input_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Load VAD model
