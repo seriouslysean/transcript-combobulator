@@ -6,7 +6,7 @@ The application loads environment variables from a `.env` file by default. To us
 
 ```sh
 export ENV_FILE=.env.example
-make combine-transcripts
+make combine-transcripts session=example
 ```
 
 Or, for a one-off command:
@@ -31,13 +31,7 @@ The example output folder is located at `tmp/output/example/` and is structured 
 To combine transcripts for the example data:
 
 ```sh
-ENV_FILE=.env.example make combine-transcripts
-```
-
-To combine transcripts for real data:
-
-```sh
-make combine-transcripts
+ENV_FILE=.env.example make combine-transcripts session=example
 ```
 
 ---

@@ -7,40 +7,34 @@ This document shows how to use the integrated transcript combination functionali
 The transcript combination feature is automatically integrated into the transcription workflow. After running `make run` or `make run-single`, you can combine all generated transcripts with:
 
 ```bash
-make combine-transcripts
+make combine-transcripts session=example
 ```
 
-This uses your environment configuration from `.env` to automatically map transcript directories to character information.
+This uses your environment configuration from `.env.example` to automatically map transcript directories to character information.
 
 ## Environment Configuration
 
-Configure your character mappings in `.env`:
+Configure your character mappings in `.env.example`:
 
 ```bash
 # Campaign settings
-CAMPAIGN_NAME="Rime of the Frostmaiden - Icewind Dale"
+CAMPAIGN_NAME="Example Campaign"
 DEDUPE_STRATEGY=consecutive
 INCLUDE_TIMESTAMPS=false
 SKIP_FILTERS="[AUDIO OUT],[BLANK_AUDIO]"
 
 # Character mappings
-TRANSCRIPT_1_DIR="1-dezfrost"
-TRANSCRIPT_1_PLAYER="Dez"
+TRANSCRIPT_1_DIR="player1-barbarian"
+TRANSCRIPT_1_PLAYER="Player 1"
 TRANSCRIPT_1_ROLE="Player"
-TRANSCRIPT_1_CHARACTER="Frodrick"
+TRANSCRIPT_1_CHARACTER="Barbarian"
 TRANSCRIPT_1_DESCRIPTION="Goliath Barbarian"
 
-TRANSCRIPT_2_DIR="2-burger_bear"
-TRANSCRIPT_2_PLAYER="Ozzy Backlund"
-TRANSCRIPT_2_ROLE="Player"
-TRANSCRIPT_2_CHARACTER="William"
-TRANSCRIPT_2_DESCRIPTION="Human Druid"
-
-TRANSCRIPT_3_DIR="3-nilbits"
-TRANSCRIPT_3_PLAYER="Sean"
-TRANSCRIPT_3_ROLE="DM"
-TRANSCRIPT_3_CHARACTER="DM"
-TRANSCRIPT_3_DESCRIPTION="Dungeon Master"
+TRANSCRIPT_2_DIR="player0-dm"
+TRANSCRIPT_2_PLAYER="DM"
+TRANSCRIPT_2_ROLE="DM"
+TRANSCRIPT_2_CHARACTER="DM"
+TRANSCRIPT_2_DESCRIPTION="Dungeon Master"
 
 # Add more as needed...
 ```
@@ -48,13 +42,14 @@ TRANSCRIPT_3_DESCRIPTION="Dungeon Master"
 ## Complete Workflow
 
 1. **Process audio files:**
-   ```bash
-   # Copy your audio files to tmp/input/
-   cp /path/to/session-audio/*.wav tmp/input/
-   
+
+```bash
+   # Copy your audio files to tmp/input/example/
+   cp /path/to/sample-audio/*.wav tmp/input/example/
+
    # Run the complete transcription pipeline
    make run
-   ```
+```
 
 2. **This automatically:**
    - Segments audio using Voice Activity Detection
@@ -63,15 +58,15 @@ TRANSCRIPT_3_DESCRIPTION="Dungeon Master"
    - Combines all transcripts into a single chronological file
 
 3. **Output files:**
-   - Individual transcripts: `tmp/output/[speaker]/[speaker].vtt`
-   - Combined transcript: `tmp/output/[campaign-name]_transcript.txt`
+   - Individual transcripts: `tmp/output/example/[speaker]/[speaker].vtt`
+   - Combined transcript: `tmp/output/example/example-combined-1.txt`, `example-combined-2.txt`
 
 ## Manual Combination
 
 You can also run just the combination step:
 
 ```bash
-make combine-transcripts
+ENV_FILE=.env.example make combine-transcripts session=example
 ```
 
 ## Example Output
@@ -80,18 +75,15 @@ The combined transcript includes a summary and chronologically ordered dialogue:
 
 ```
 Summary:
-Dez - Frodrick - Goliath Barbarian
-Ozzy Backlund - William - Human Druid
-Sean - DM - Dungeon Master
-Justin - Clemeth Fandango - Halfling Rogue
-Trevor - Argentum - Dragonborn Fighter
+Player 1 - Barbarian - Goliath Barbarian
+DM - DM - Dungeon Master
 
 TRANSCRIPT:
-DM: The narrow alley feels like a tomb. Cephick's headless corpse lies in a spreading pool of frost...
-Frodrick: I feel fine, just so you guys know. Feel real good.
-William: I mean, I basically, we almost died.
-DM: Give me a wisdom saving throw.
-Frodrick: A wisdom saving throw would be a 14.
+DM: The wind howls through the ruined village. You can barely see through the snow.
+Barbarian: That's a 16 on my save.
+DM: Blue lights flicker in the distance. The cold is biting, even for Icewind Dale.
+Barbarian: I barely feel the cold. Used to it.
+...
 ```
 
 ## Configuration Options
@@ -104,7 +96,7 @@ Frodrick: A wisdom saving throw would be a 14.
 ### Content Filtering
 Use `SKIP_FILTERS` to remove unwanted content:
 - `"[AUDIO OUT],[BLANK_AUDIO]"` - Remove audio issues
-- `"/\\[.*\\]/"` - Remove all bracketed content (regex)
+- `"/\[.*\]/"` - Remove all bracketed content (regex)
 
 ### Timestamps
 Set `INCLUDE_TIMESTAMPS=true` to include timing information in the output.

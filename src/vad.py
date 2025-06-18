@@ -20,11 +20,11 @@ class VADError(Exception):
     """Base exception for VAD-related errors."""
     pass
 
-def load_vad_model() -> Tuple[torch.nn.Module, Any]:
+def load_vad_model() -> Tuple[Any, Any]:
     """Load the Silero VAD model and utilities.
 
     Returns:
-        Tuple[torch.nn.Module, Any]: The VAD model and utilities.
+        Tuple[Any, Any]: The VAD model and utilities.
 
     Raises:
         VADError: If model loading fails.
