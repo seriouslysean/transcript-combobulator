@@ -12,15 +12,13 @@ __pycache__/
 .venv/
 
 # Project-specific
-# Ignore everything in tmp except .gitkeep and output/examples
+# Ignore everything in tmp except .gitkeep and output/example
 /tmp/*
 !/tmp/.gitkeep
 !/tmp/output/
-!/tmp/output/examples/
-!/tmp/output/examples/**
 /tmp/output/*/
-!/tmp/output/examples/
-!/tmp/output/examples/**
+!/tmp/output/example/
+!/tmp/output/example/**
 models/*
 !models/.gitkeep
 

@@ -98,8 +98,8 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
             end = min(wav.shape[1], int(ts['end'] * SAMPLE_RATE) + padding_samples)
             segment = wav[:, start:end]
 
-            # Save individual segment
-            segment_path = output_dir / f"segment_{i:03d}.wav"
+            # Use the input file stem (e.g., player name) in the segment filename
+            segment_path = output_dir / f"{input_path.stem}_segment_{i:03d}.wav"
             sf.write(segment_path.absolute(), segment.T.numpy(), SAMPLE_RATE)
 
             processed_segments.append({

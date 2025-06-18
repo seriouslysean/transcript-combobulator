@@ -6,7 +6,9 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+# If ENV_FILE is set in the environment, use it as the env file, otherwise default to .env
+_env_file = os.environ.get('ENV_FILE', '.env')
+load_dotenv(dotenv_path=_env_file, override=True)
 
 def get_bool_env(key: str, default: bool = False) -> bool:
     """Get boolean environment variable."""
@@ -43,10 +45,10 @@ WHISPER_MODELS_DIR = Path('models')
 
 def get_output_path_for_input(input_path: Path) -> Path:
     """Generate output path that preserves input directory structure.
-    
+
     Args:
         input_path: Path to input audio file
-        
+
     Returns:
         Output directory path that mirrors input structure
     """
@@ -58,7 +60,7 @@ def get_output_path_for_input(input_path: Path) -> Path:
     except ValueError:
         # If input is not under INPUT_DIR, use simple structure
         output_base = OUTPUT_DIR / input_path.stem
-    
+
     return output_base
 
 # Audio Processing Settings
