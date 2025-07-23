@@ -8,6 +8,10 @@ from datetime import timedelta
 import json
 import os
 import torch
+import sys
+
+from src.logging_config import get_logger
+logger = get_logger(__name__)
 
 from src.config import (
     WHISPER_PROMPT,
@@ -99,7 +103,7 @@ def transcribe_segment(
             language=WHISPER_LANGUAGE,
             temperature=WHISPER_TEMPERATURE,
             initial_prompt=WHISPER_PROMPT,
-            word_timestamps=WHISPER_WORD_TIMESTAMPS,
+            word_timestamps=False,
             condition_on_previous_text=WHISPER_CONDITION_ON_PREVIOUS,
             no_speech_threshold=WHISPER_NO_SPEECH_THRESHOLD,
             logprob_threshold=WHISPER_LOGPROB_THRESHOLD,
@@ -126,6 +130,17 @@ def transcribe_segment(
                 "confidence": confidence
             })
 
+        # Write VTT file if output path is provided
+        if output_path and segments:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("WEBVTT\n\n")
+                for segment in segments:
+                    if segment["text"].strip():  # Only write non-empty segments
+                        start_time = format_timestamp(segment["start"])
+                        end_time = format_timestamp(segment["end"])
+                        f.write(f"{start_time} --> {end_time}\n{segment['text'].strip()}\n\n")
+
         return segments
 
     except Exception as e:
@@ -139,41 +154,64 @@ def transcribe_audio_segments(
 
     Args:
         segments: List of tuples containing (segment_path, start_time)
-        output_path: Optional path to save the VTT file
+        output_path: Optional path to save the combined VTT file
 
     Returns:
         List of transcribed segments with timestamps and text
     """
     total_segments = len(segments)
-    print(f"Processing {total_segments} segments...")
-
+    logger.info(f"Loading Whisper model...")
+    
     # Load model once for all segments
     model = load_whisper_model()
+    
+    logger.info(f"VAD found {total_segments} segments")
 
+    # Create individual VTT files for each segment, then combine
+    individual_vtts = []
     all_segments = []
+    
     for i, (segment_path, start_time) in enumerate(segments, 1):
-        print(f"Transcribing segment {i}/{total_segments}: {segment_path.name}")
+        logger.info(f"Processing segment {i:03d}/{total_segments}...")
         try:
-            segments = transcribe_segment(segment_path, output_path, start_time, model)
-            all_segments.extend(segments)
+            # Create individual VTT file for this segment
+            segment_vtt_path = segment_path.with_suffix('.vtt')
+            
+            # Transcribe segment and save to individual VTT
+            segments_result = transcribe_segment(segment_path, segment_vtt_path, start_time, model)
+            individual_vtts.append(segment_vtt_path)
+            all_segments.extend(segments_result)
+            
         except Exception as e:
-            print(f"Warning: Failed to transcribe segment {segment_path}: {e}")
+            logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
             continue
 
-    # Sort segments by start time
-    all_segments.sort(key=lambda x: x["start"])
-
-    # Write VTT file if output path is provided
-    if output_path:
+    # Combine all individual VTT files into final output
+    if output_path and individual_vtts:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write("WEBVTT\n\n")
-            for segment in all_segments:
-                start_time = format_timestamp(segment["start"])
-                end_time = format_timestamp(segment["end"])
-                text = segment["text"].strip()
-                f.write(f"{start_time} --> {end_time}\n{text}\n\n")
+        with open(output_path, "w", encoding="utf-8") as combined_file:
+            combined_file.write("WEBVTT\n\n")
+            
+            for vtt_path in individual_vtts:
+                if vtt_path.exists():
+                    with open(vtt_path, "r", encoding="utf-8") as individual_file:
+                        content = individual_file.read()
+                        # Skip the WEBVTT header and add content
+                        if content.startswith("WEBVTT"):
+                            content = content[6:].lstrip()
+                        combined_file.write(content)
+                        if not content.endswith("\n\n"):
+                            combined_file.write("\n")
+        
+        logger.info(f"User transcript saved: {output_path.name}")
+        
+        # Clean up individual VTT files
+        for vtt_path in individual_vtts:
+            if vtt_path.exists():
+                vtt_path.unlink()
 
+    # Sort segments by start time for return value
+    all_segments.sort(key=lambda x: x["start"])
     return all_segments
 
 def filter_by_confidence(segments: List[Dict[str, Any]], confidence_threshold: float = 50.0) -> List[Dict[str, Any]]:
@@ -222,7 +260,7 @@ def transcribe_audio(audio_path: Path, output_path: Path, prompt: str = "") -> L
             language=WHISPER_LANGUAGE,
             temperature=WHISPER_TEMPERATURE,
             initial_prompt=prompt or WHISPER_PROMPT,
-            word_timestamps=True,
+            word_timestamps=False,
             condition_on_previous_text=True,
             no_speech_threshold=WHISPER_NO_SPEECH_THRESHOLD,
             logprob_threshold=WHISPER_LOGPROB_THRESHOLD,
@@ -236,6 +274,10 @@ def transcribe_audio(audio_path: Path, output_path: Path, prompt: str = "") -> L
             text = segment["text"].strip()
             avg_logprob = segment.get('avg_logprob', 0)
             confidence = min(100, max(0, (1 + avg_logprob) * 100))
+
+            # Log the transcribed text
+            if text:
+                logger.info(f"  [{format_timestamp(segment['start'])} -> {format_timestamp(segment['end'])}] {text}")
 
             segments.append({
                 "start": segment["start"],
@@ -376,20 +418,6 @@ def load_whisper_model(model_name: str = None) -> whisper.Whisper:
 
     return model
 
-def transcribe_audio(audio_path: str | Path, model_name: str = None) -> str:
-    """Transcribe audio file using whisper.
-
-    Args:
-        audio_path: Path to audio file
-        model_name: Optional model name to use. If None, uses WHISPER_MODEL env var
-                   or falls back to large-v2
-
-    Returns:
-        str: Transcribed text
-    """
-    model = load_whisper_model(model_name)
-    result = model.transcribe(str(audio_path))
-    return result["text"]
 
 def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: str = None) -> List[Dict[str, Any]]:
     """Transcribe audio segments using Whisper.
@@ -417,7 +445,7 @@ def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: str = 
                 language=WHISPER_LANGUAGE,
                 temperature=WHISPER_TEMPERATURE,
                 initial_prompt=WHISPER_PROMPT if WHISPER_PROMPT else None,
-                word_timestamps=True,
+                word_timestamps=False,
                 condition_on_previous_text=True,
                 no_speech_threshold=0.6,
                 logprob_threshold=-1.0,

@@ -1,29 +1,29 @@
 Summary:
-Player 2 - Druid - Human Druid
-Player 3 - Rogue - Halfling Rogue
-Player 1 - Barbarian - Goliath Barbarian
 DM - DM - Dungeon Master
+Player 2 - Druid - Human Druid
+Player 1 - Barbarian - Goliath Barbarian
+Player 3 - Rogue - Halfling Rogue
 
 FILE 2 of 2
 
 TRANSCRIPT:
 Barbarian: I glare at the wolves. Not backing down.
-DM: The ground cracks under your feet. Ice is spreading fast.
-Druid: If the ice breaks, I can try Entangle to slow things down.
-Rogue: That's a hit. Rolling damage.
-Barbarian: Raging. Let's go.
+Rogue: Shortsword out. Aiming for the big one.
 DM: Winter wolves circle the party, growling low.
-Druid: Healing myself with Cure Wounds, still in bear form.
-Rogue: If I see any traps, I'll try to disarm them.
-Barbarian: I swing at the closest wolf. That's a 19 to hit.
+Druid: If the ice breaks, I can try Entangle to slow things down.
+Barbarian: Raging. Let's go.
+Rogue: That's a hit. Rolling damage.
 DM: The figure raises the staff. The temperature drops even more.
-Druid: Nature feels... off here. Like something's wrong.
-Rogue: Staying in the shadows, moving around the edge.
-Barbarian: Do I get advantage? They're flanking, right?
+Druid: Healing myself with Cure Wounds, still in bear form.
+Barbarian: I swing at the closest wolf. That's a 19 to hit.
+Rogue: If I see any traps, I'll try to disarm them.
 DM: Roll initiative.
-Druid: Ready to react if anything else shows up.
-Rogue: If something comes at me, Uncanny Dodge.
-Barbarian: I move to cover the druid. No one gets past me.
+Druid: Nature feels... off here. Like something's wrong.
+Barbarian: Do I get advantage? They're flanking, right?
+Rogue: Staying in the shadows, moving around the edge.
 DM: You hear a distant howl, much deeper than the wolves nearby.
-Barbarian: If the ice cracks, I'm grabbing whoever's closest.
+Druid: Ready to react if anything else shows up.
+Barbarian: I move to cover the druid. No one gets past me.
+Rogue: If something comes at me, Uncanny Dodge.
 DM: The ice under your boots starts to crack. What do you do?
+Barbarian: If the ice cracks, I'm grabbing whoever's closest.

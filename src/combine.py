@@ -9,6 +9,9 @@ from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
+from src.logging_config import get_logger
+logger = get_logger(__name__)
+
 from src.config import OUTPUT_DIR
 import importlib
 import src.config as config_mod
@@ -215,11 +218,11 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
 
     all_entries = []
 
-    print(f"\nCombining {len(transcript_configs)} transcript files...")
+    logger.info(f"Combining {len(transcript_configs)} transcript files...")
 
     # Parse all transcript files
     for config in transcript_configs:
-        print(f"Processing {config.transcript_path.name} for {config.character_name}...")
+        logger.info(f"Processing {config.transcript_path.name} for {config.character_name}...")
 
         entries = parse_vtt_file(
             config.transcript_path,
@@ -228,13 +231,13 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
             skip_filters
         )
 
-        print(f"  - Found {len(entries)} entries")
+        logger.info(f"  - Found {len(entries)} entries")
         all_entries.extend(entries)
 
     # Sort by start time
     all_entries.sort(key=lambda x: x.start_time)
 
-    print(f"Total combined entries: {len(all_entries)}")
+    logger.info(f"Total combined entries: {len(all_entries)}")
 
     # Create summary
     summary_lines = ["Summary:"]
@@ -249,20 +252,29 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
             )
     summary = '\n'.join(summary_lines)
 
-    # Split into chunks
-    chunk_size = len(all_entries) // chunks
+    # Split into chunks only if there are enough entries to make it worthwhile
+    # Don't split if there are fewer entries than chunks, or if each chunk would be too small
+    min_entries_per_chunk = 5  # Minimum entries per chunk to make splitting worthwhile
+    
+    if len(all_entries) < chunks or len(all_entries) < min_entries_per_chunk:
+        # Create single file if not enough content to split meaningfully
+        actual_chunks = 1
+    else:
+        actual_chunks = chunks
+    
+    chunk_size = len(all_entries) // actual_chunks
     output_files = []
 
-    for chunk_idx in range(chunks):
+    for chunk_idx in range(actual_chunks):
         start_idx = chunk_idx * chunk_size
-        end_idx = start_idx + chunk_size if chunk_idx < chunks - 1 else len(all_entries)
+        end_idx = start_idx + chunk_size if chunk_idx < actual_chunks - 1 else len(all_entries)
         chunk_entries = all_entries[start_idx:end_idx]
 
         # Generate output content
         content_lines = [summary, ""]
 
-        if chunks > 1:
-            content_lines.append(f"FILE {chunk_idx + 1} of {chunks}")
+        if actual_chunks > 1:
+            content_lines.append(f"FILE {chunk_idx + 1} of {actual_chunks}")
             content_lines.append("")
 
         content_lines.append("TRANSCRIPT:")
@@ -275,7 +287,7 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
             content_lines.append(line)
 
         # Determine output file path
-        if chunks > 1:
+        if actual_chunks > 1:
             stem = output_path.stem
             suffix = output_path.suffix
             chunk_path = output_path.parent / f"{stem}-{chunk_idx + 1}{suffix}"
@@ -287,7 +299,7 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
             with open(chunk_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(content_lines))
             output_files.append(chunk_path)
-            print(f"Generated: {chunk_path}")
+            logger.info(f"Generated: {chunk_path}")
         except Exception as e:
             raise CombineError(f"Failed to write output file {chunk_path}: {e}")
 
@@ -321,13 +333,13 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
         raise CombineError(f"No VTT files found in {search_dir}")
 
     # Load mapping configuration from environment using indexed variables
-    directory_mapping = {}
+    username_mapping = {}
 
-    # Find all transcript configurations by looking for TRANSCRIPT_N_DIR patterns
+    # Find all transcript configurations by looking for TRANSCRIPT_N_USERNAME patterns
     i = 1
     while True:
-        directory = os.getenv(f'TRANSCRIPT_{i}_DIR', '').strip().strip('"')
-        if not directory:
+        username = os.getenv(f'TRANSCRIPT_{i}_USERNAME', '').strip().strip('"')
+        if not username:
             break
 
         player_name = os.getenv(f'TRANSCRIPT_{i}_PLAYER', '').strip().strip('"')
@@ -336,28 +348,41 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
         character_description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip().strip('"')
 
         if all([player_name, role, character_name, character_description]):
-            directory_mapping[directory] = {
+            username_mapping[username] = {
                 'player_name': player_name,
                 'role': role,
                 'character_name': character_name,
                 'character_description': character_description
             }
         else:
-            print(f"Warning: Incomplete configuration for TRANSCRIPT_{i}_* variables")
+            logger.warning(f"Incomplete configuration for TRANSCRIPT_{i}_* variables")
 
         i += 1
 
-    if not directory_mapping:
-        raise CombineError("No transcript mappings found. Define environment variables like TRANSCRIPT_1_DIR, TRANSCRIPT_1_PLAYER, etc.")
+    if not username_mapping:
+        raise CombineError("No transcript mappings found. Define environment variables like TRANSCRIPT_1_USERNAME, TRANSCRIPT_1_PLAYER, etc.")
 
-    # Create transcript configurations using mapping
+    # Create transcript configurations using username-based mapping
     transcript_configs = []
     unmapped_dirs = []
 
     for vtt_file in vtt_files:
         parent_dir = vtt_file.parent.name
-        if parent_dir in directory_mapping:
-            mapping = directory_mapping[parent_dir]
+        username = None
+        
+        # Try to extract username from directory name patterns
+        # Pattern 1: {number}-{username}_16khz (e.g., "3-nilbits_16khz")
+        match = re.match(r'\d+-(.+)_16khz', parent_dir)
+        if match:
+            username = match.group(1)
+        else:
+            # Pattern 2: Direct username (e.g., "jfk_1")
+            # Check if the directory name itself is a username
+            if parent_dir in username_mapping:
+                username = parent_dir
+        
+        if username and username in username_mapping:
+            mapping = username_mapping[username]
             config = TranscriptConfig(
                 player_name=mapping['player_name'],
                 role=mapping['role'],
@@ -370,7 +395,7 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
             unmapped_dirs.append(parent_dir)
 
     if unmapped_dirs:
-        raise CombineError(f"No mapping found for directories: {unmapped_dirs}. Please update TRANSCRIPT_* environment variables.")
+        raise CombineError(f"No mapping found for directories: {unmapped_dirs}. Please update TRANSCRIPT_*_USERNAME environment variables.")
 
     if not transcript_configs:
         raise CombineError("No transcript configurations created. Check TRANSCRIPT_* environment variables.")

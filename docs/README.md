@@ -1,176 +1,113 @@
 # Transcript Precombobulator
 
-## Environment Configuration
+Audio transcription tool for multi-speaker recordings with separate audio files per speaker.
 
-The application loads environment variables from a `.env` file by default. To use a different environment file (for example, for testing with example data), set the `ENV_FILE` environment variable to the path of the desired env file:
+## What It Does
 
-```sh
-export ENV_FILE=.env.example
-make combine-transcripts session=example
-```
+Processes separate audio files and creates organized transcripts:
+- **Individual transcripts** - One VTT file per audio file/speaker
+- **Combined session transcripts** - Chronological conversation flow across all speakers
+- **Character mapping** - You configure which audio files map to which characters
 
-Or, for a one-off command:
-
-```sh
-ENV_FILE=.env.example make combine-transcripts session=example
-```
-
-This allows you to flexibly switch between real and example output/test data. The `.env.example` file is provided as a reference for the example output in `tmp/output/example/`.
-
-## Example Output
-
-The example output folder is located at `tmp/output/example/` and is structured for testing the transcript combination logic. The `.env.example` file is configured to match this structure.
-
-## Restoring Environment Files
-
-- `.env` should contain your real/production configuration.
-- `.env.example` should contain the example/generic configuration for testing.
-
-## Running Transcript Combination
-
-To combine transcripts for the example data:
-
-```sh
-ENV_FILE=.env.example make combine-transcripts session=example
-```
-
----
-
-# Features
-
-- **Voice Activity Detection (VAD)** - Segments audio by detecting speech vs silence
-- **Whisper Transcription** - High-quality speech-to-text with confidence scoring
-- **Integrated Transcript Combination** - Combines multiple speaker transcripts into chronological session logs
-- **Environment-based Configuration** - Easy setup for D&D campaigns and multi-speaker sessions
-- **Multiple Output Formats** - VTT files for individual speakers, combined session transcripts
+**Requires**: Separate audio files per speaker (tested with Craig Discord bot output)
 
 ## Setup
 
 ```sh
-brew install pyenv
-git clone --recurse-submodules git@github.com:seriouslysean/transcript-precombobulator.git
+# Clone and setup
+git clone https://github.com/seriouslysean/transcript-precombobulator.git
 cd transcript-precombobulator
 make setup
 ```
 
+Requires Python 3.10+ and pyenv.
+
 ## Quick Start
 
-1. **Copy your audio files** to `tmp/input/` (optionally in subdirectories):
+1. **Configure character mappings**:
    ```sh
-   # Example: organize by session name
-   mkdir -p tmp/input/example
-   cp /path/to/sample-audio/*.wav tmp/input/example/
-   ```
-
-2. **Configure your campaign** in `.env.example`:
-   ```sh
-   # Copy example configuration
    cp .env.example .env
-   # Edit .env with your character mappings if needed
+   # Edit .env to map your audio files to characters
    ```
 
-3. **Run the complete pipeline**:
+2. **Add audio files** (one per speaker):
    ```sh
-   make run    # Process all files and combine transcripts
-   # OR process specific files
-   make run-single file=tmp/input/example/player1.wav
+   mkdir -p tmp/input/my-session
+   cp /path/to/craig-output/*.flac tmp/input/my-session/
    ```
 
-4. **Find your results**:
-   - Individual transcripts: `tmp/output/example/[speaker]/[speaker].vtt`
-   - Combined session transcript: `tmp/output/example/example-combined-1.txt`, `example-combined-2.txt`
+3. **Run transcription**:
+   ```sh
+   make run folder=tmp/input/my-session
+   ```
+
+4. **Find results**:
+   - Individual transcripts: `tmp/output/my-session/{speaker}/{speaker}.vtt`
+   - Combined transcripts: `tmp/output/my-session/my-session-combined-*.txt`
+
+## Configuration
+
+Character mapping in `.env`:
+```sh
+# Map audio files to characters
+TRANSCRIPT_1_USERNAME=dm              # From filename 1-dm.flac
+TRANSCRIPT_1_PLAYER="DM"              # Display name  
+TRANSCRIPT_1_CHARACTER="DM"           # Character name
+TRANSCRIPT_1_DESCRIPTION="Dungeon Master"
+
+TRANSCRIPT_2_USERNAME=barbarian       # From filename 2-barbarian.flac
+TRANSCRIPT_2_PLAYER="Player 1"
+TRANSCRIPT_2_CHARACTER="Barbarian"
+TRANSCRIPT_2_DESCRIPTION="Goliath Barbarian"
+```
+
+Test with examples:
+```sh
+ENV_FILE=.env.example make combine-transcripts session=example
+```
+
+## Supported Audio Formats
+
+- **FLAC** (Craig Discord bot default)
+- **WAV, MP3, M4A, OGG, AAC, OPUS** (auto-converted to 16kHz WAV)
 
 ## Commands
 
 ```sh
-make setup                          # Install dependencies and download Whisper model
-make run                            # Process all WAV files in tmp/input/ and combine
-make run-single file=X              # Process single file and combine
-make combine-transcripts            # Combine existing transcripts only
-make combine-transcripts session=example  # Combine transcripts for example session
-make test                          # Run test suite
-make clean                         # Clean temporary files
+# Setup
+make setup                              # Install dependencies and download Whisper model
+
+# Processing  
+make run                                # Process all files in tmp/input/
+make run folder=tmp/input/session-name  # Process specific session
+make run-single file=path/to/file.flac  # Process single file
+
+# Combination (if needed separately)
+make combine-transcripts session=session-name
+
+# Utilities
+make clean                              # Clean temporary files
+make test                               # Run test suite
 ```
 
-## Environment Configuration
+## Example Output
 
-Copy `.env.example` to `.env` and configure for your campaign:
+Combined transcript format:
+```
+Summary:
+DM - DM - Dungeon Master
+Player 1 - Barbarian - Goliath Barbarian
+Player 2 - Druid - Human Druid
 
-```sh
-# Campaign settings
-CAMPAIGN_NAME="Example Campaign"
-DEDUPE_STRATEGY=consecutive
-INCLUDE_TIMESTAMPS=false
-SKIP_FILTERS="[AUDIO OUT],[BLANK_AUDIO]"
-
-# Character mappings (add as many as needed)
-TRANSCRIPT_1_DIR="player1-barbarian"
-TRANSCRIPT_1_PLAYER="Player 1"
-TRANSCRIPT_1_ROLE="Player"
-TRANSCRIPT_1_CHARACTER="Barbarian"
-TRANSCRIPT_1_DESCRIPTION="Goliath Barbarian"
-
-TRANSCRIPT_2_DIR="player0-dm"
-TRANSCRIPT_2_PLAYER="DM"
-TRANSCRIPT_2_ROLE="DM"
-TRANSCRIPT_2_CHARACTER="DM"
-TRANSCRIPT_2_DESCRIPTION="Dungeon Master"
+TRANSCRIPT:
+DM: The wind howls through the ruined village.
+Barbarian: That's a 16 on my save.
+Druid: I cast Detect Magic, just in case.
+...
 ```
 
-## Directory Structure
+## Troubleshooting
 
-The system preserves your input directory organization:
+**"No mapping found for directories"**: Update `TRANSCRIPT_*_USERNAME` in your .env file to match your audio filenames.
 
-```
-tmp/
-├── input/
-│   └── example/            # Example session directory
-│       ├── player1.wav     # Audio files
-│       ├── player2.wav
-│       └── dm.wav
-└── output/
-    └── example/            # Matching output structure
-        ├── player1-barbarian/
-        │   └── player1-barbarian.vtt
-        ├── player0-dm/
-        │   └── player0-dm.vtt
-        ├── example-combined-1.txt
-        └── example-combined-2.txt
-```
-
-## Examples
-
-Process audio files organized by session name:
-
-```sh
-# Organize audio files
-mkdir -p tmp/input/example
-cp /path/to/sample/*.wav tmp/input/example/
-
-# Process entire session
-make run
-
-# Or process specific files
-make run-single file=tmp/input/example/player1.wav
-
-# Combine transcripts for example session
-ENV_FILE=.env.example make combine-transcripts session=example
-```
-
-## Integration with AI Tools
-
-The combined transcript is optimized for Large Language Models:
-
-```sh
-# Use with your favorite AI tool
-cat tmp/output/example/example-combined-1.txt | llm "Summarize this D&D session"
-```
-
-## Migration from transcript-recombobulator
-
-This project replaces the separate transcript-recombobulator with integrated functionality:
-
-- ✅ **Environment variables** instead of command-line arguments
-- ✅ **Automatic integration** with transcription workflow
-- ✅ **Session organization** with directory structure preservation
-- ✅ **All original features** (deduplication, filtering, chunking)
+**Need different settings for different campaigns?**: Use `ENV_FILE=.env.campaign2 make run`

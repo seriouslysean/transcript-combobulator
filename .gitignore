@@ -16,7 +16,8 @@ __pycache__/
 /tmp/*
 !/tmp/.gitkeep
 !/tmp/output/
-/tmp/output/*/
+/tmp/output/**
+!/tmp/output/.gitkeep
 !/tmp/output/example/
 !/tmp/output/example/**
 models/*

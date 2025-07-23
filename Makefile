@@ -1,4 +1,4 @@
-.PHONY: setup run run-single clean clean-all test setup-whisper install lint create-sample-files test-segment regenerate-vtt process-vad transcribe-segments create-test-files combine-transcripts
+.PHONY: setup run run-single clean clean-all test setup-whisper install lint create-sample-files test-segment regenerate-vtt process-vad transcribe-segments create-test-files combine-transcripts convert-audio
 
 ROOT_DIR := $(shell pwd)
 
@@ -20,14 +20,24 @@ setup:
 	$(VENV_CMD) pip install -e .
 	$(MAKE) setup-whisper
 
-# Run the transcription on all WAV files in tmp/input
+# Run the transcription on all audio files in a folder
 run:
-	count=$$(ls -1 $(ROOT_DIR)/tmp/input/*.wav 2>/dev/null | wc -l); \
-	if [ $$count -eq 0 ]; then \
-		echo "No WAV files found in tmp/input/"; \
+	if [ -n "$(folder)" ]; then \
+		target_dir="$(folder)"; \
+	else \
+		target_dir="$(ROOT_DIR)/tmp/input"; \
+	fi; \
+	if [ ! -d "$$target_dir" ]; then \
+		echo "Directory not found: $$target_dir"; \
 		exit 1; \
-	fi
-	for file in $(ROOT_DIR)/tmp/input/*.wav; do \
+	fi; \
+	files=$$(find "$$target_dir" -name "*.wav" -o -name "*.flac" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.ogg" -o -name "*.aac" -o -name "*.opus" 2>/dev/null | grep -v "_converted\.wav"); \
+	if [ -z "$$files" ]; then \
+		echo "No audio files found in $$target_dir"; \
+		exit 1; \
+	fi; \
+	echo "Processing $$(echo "$$files" | wc -l) audio files in $$target_dir"; \
+	for file in $$files; do \
 		$(MAKE) run-single file=$$file; \
 	done
 
@@ -38,8 +48,7 @@ run-single:
 		exit 1; \
 	fi
 	echo "Processing $$(basename $(file))..."
-	$(MAKE) process-vad file=$(file)
-	$(MAKE) transcribe-segments file=$(file)
+	$(VENV_CMD) python tools/process_single_file.py $(file)
 	$(MAKE) combine-transcripts
 
 # Process audio with VAD to generate segments
@@ -59,6 +68,7 @@ transcribe-segments:
 	fi
 	echo "Transcribing segments for $$(basename $(file))..."
 	$(VENV_CMD) python -c "from pathlib import Path; from src.transcribe import transcribe_segments; transcribe_segments(Path('$(file)'))"
+
 
 # Clean up generated files
 clean:
@@ -128,6 +138,16 @@ create-test-files:
 		exit 1; \
 	fi
 	$(VENV_CMD) python tools/create_sample_files.py --prefix test_ --copies 1 --padded-copies 3
+
+# Convert audio files to 16kHz WAV format
+convert-audio:
+	if [ -z "$(input)" ]; then \
+		echo "Converting all audio files in tmp/input/ to 16kHz WAV format..."; \
+		$(VENV_CMD) python -c "from pathlib import Path; from src.audio_utils import validate_audio_file, needs_conversion, convert_to_wav, get_audio_info_summary; import sys; input_dir = Path('$(ROOT_DIR)/tmp/input'); output_dir = Path('$(ROOT_DIR)/tmp/output'); audio_files = list(input_dir.rglob('*')); audio_files = [f for f in audio_files if f.is_file() and f.suffix.lower() in {'.wav', '.flac', '.mp3', '.m4a', '.ogg', '.aac', '.opus'}]; print(f'Found {len(audio_files)} audio files'); [print(f'Processing: {get_audio_info_summary(f)}') for f in audio_files]; [convert_to_wav(f, output_dir / f.relative_to(input_dir).parent / f'{f.stem}_16khz.wav') if needs_conversion(f) else print(f'Skipping {f.name} (already 16kHz WAV)') for f in audio_files]; print('Conversion complete!')"; \
+	else \
+		echo "Converting $(input) to 16kHz WAV format..."; \
+		$(VENV_CMD) python -c "from pathlib import Path; from src.audio_utils import validate_audio_file, needs_conversion, convert_to_wav, get_audio_info_summary; input_file = Path('$(input)').resolve(); print(f'Input: {get_audio_info_summary(input_file)}'); input_root = Path('$(ROOT_DIR)/tmp/input').resolve(); output_root = Path('$(ROOT_DIR)/tmp/output').resolve(); rel_path = input_file.relative_to(input_root) if input_file.is_relative_to(input_root) else Path(input_file.name); output_file = output_root / rel_path.parent / f'{input_file.stem}_16khz.wav'; convert_to_wav(input_file, output_file) if needs_conversion(input_file) else print('No conversion needed'); print(f'Output: {output_file}')"; \
+	fi
 
 # Combine all VTT transcripts in output directory using environment configuration
 combine-transcripts:

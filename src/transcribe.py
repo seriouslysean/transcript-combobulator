@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Dict, Any, List
 import os
 import datetime
+import re
+
+from src.logging_config import get_logger
+logger = get_logger(__name__)
 
 from src.process_audio import process_audio
 from src.whisper import transcribe_audio_segments, WhisperError
@@ -36,8 +40,10 @@ def transcribe_segments(audio_path: Path) -> Dict:
         TranscriptionError: If transcription fails
     """
     try:
-        # Get the mapping file path
-        mapping_path = OUTPUT_DIR / audio_path.stem / f"{audio_path.stem}_mapping.json"
+        # Get the mapping file path using the same logic as VAD
+        from src.config import get_output_path_for_input
+        output_dir = get_output_path_for_input(audio_path)
+        mapping_path = output_dir / f"{audio_path.stem}_mapping.json"
         if not mapping_path.exists():
             raise TranscriptionError(f"Mapping file not found for {audio_path.name}")
 
@@ -49,6 +55,7 @@ def transcribe_segments(audio_path: Path) -> Dict:
         if 'segments' not in mapping_data:
             raise TranscriptionError(f"Invalid mapping file format for {audio_path.name}")
 
+        logger.info(f"Processing user: {audio_path.name}")
         # Use the core transcribe_audio function with the pre-processed segments
         result = transcribe_audio(audio_path, pre_processed_mapping=mapping_data['segments'])
 
@@ -81,21 +88,22 @@ def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None)
         TranscriptionError: If transcription fails.
     """
     if not audio_path.exists():
-        print(f"Error: Audio file not found: {audio_path}")
+        logger.error(f"Audio file not found: {audio_path}")
         raise TranscriptionError(f"Audio file not found: {audio_path}")
 
     if not audio_path.suffix.lower() == '.wav':
-        print(f"Error: Audio file must be a WAV file: {audio_path}")
-        raise TranscriptionError(f"Audio file must be a WAV file: {audio_path}")
+        logger.error(f"Expected WAV file but got: {audio_path.suffix}")
+        raise TranscriptionError(f"Expected WAV file but got: {audio_path.suffix}")
 
     try:
-        # Create output directory for this audio file
-        output_dir = OUTPUT_DIR / audio_path.stem
+        # Create output directory for this audio file using the same logic as VAD
+        from src.config import get_output_path_for_input
+        output_dir = get_output_path_for_input(audio_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Get segments either from VAD or pre-processed mapping
         if pre_processed_mapping is None:
-            print("Processing audio with VAD...")
+            logger.info("Processing audio with VAD...")
             _, mapping = process_audio(audio_path)
             mapping_file = output_dir / f"{audio_path.stem}_mapping.json"
 
@@ -109,31 +117,38 @@ def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None)
             with open(mapping_file, 'w') as f:
                 json.dump(mapping_data, f, indent=2)
         else:
-            print("Using pre-processed segments...")
+            logger.info("Using pre-processed segments...")
             mapping = pre_processed_mapping
             mapping_file = output_dir / f"{audio_path.stem}_mapping.json"
 
-        # Create output path for VTT (if still needed)
-        output_vtt = output_dir / f"{audio_path.stem}.vtt"
+        # Create output path for user-specific combined VTT
+        # Extract username from path like "3-nilbits_16khz" -> "nilbits"
+        username_match = re.match(r'\d+-(.+)_16khz', audio_path.stem)
+        if username_match:
+            username = username_match.group(1)
+            output_vtt = output_dir / f"{username}_combined.vtt"
+        else:
+            # Fallback to original name if pattern doesn't match
+            output_vtt = output_dir / f"{audio_path.stem}.vtt"
 
         # Prepare segments for transcription
         segments_to_transcribe = []
         for segment in mapping:
             segment_path = Path(segment['segment_file'])
             if not segment_path.exists():
-                print(f"Warning: Segment file not found: {segment_path}")
+                logger.warning(f"Segment file not found: {segment_path}")
                 continue
             segments_to_transcribe.append((segment_path, segment['start_seconds']))
 
         if not segments_to_transcribe:
             raise TranscriptionError(f"No valid segments found for {audio_path.name}")
 
-        print(f"Found {len(segments_to_transcribe)} segments to transcribe")
-        print("Transcribing segments...")
+        logger.info(f"Found {len(segments_to_transcribe)} segments to transcribe")
+        logger.info("Transcribing segments...")
         segments = transcribe_audio_segments(segments_to_transcribe, output_vtt)
 
         # Save combined transcription results as a single JSON file
-        print("Saving transcription results...")
+        logger.info("Saving transcription results...")
         output_json = output_dir / f"{audio_path.stem}_transcription.json"
         # Note: The mapping details are omitted from this combined JSON.
         result = {
@@ -145,12 +160,12 @@ def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None)
         with open(output_json, 'w') as f:
             json.dump(result, f, indent=2)
 
-        print("Transcription complete")
+        logger.info("Transcription complete")
         return result
 
     except WhisperError as e:
-        print(f"Error: Failed to transcribe audio: {e}")
+        logger.error(f"Failed to transcribe audio: {e}")
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
     except Exception as e:
-        print(f"Error: Failed to transcribe audio: {e}")
+        logger.error(f"Failed to transcribe audio: {e}")
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
