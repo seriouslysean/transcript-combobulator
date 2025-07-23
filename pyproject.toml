@@ -1,6 +1,6 @@
 [project]
-name = "transcript-precombobulator"
-version = "0.2.1"
+name = "transcript-combobulator"
+version = "0.3.0"
 description = "Pre-processes audio files for better Whisper transcription"
 readme = "docs/README.md"
 requires-python = ">=3.10"
@@ -29,9 +29,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/seriouslysean/transcript-precombobulator"
-Repository = "https://github.com/seriouslysean/transcript-precombobulator.git"
-Issues = "https://github.com/seriouslysean/transcript-precombobulator/issues"
+Homepage = "https://github.com/seriouslysean/transcript-combobulator"
+Repository = "https://github.com/seriouslysean/transcript-combobulator.git"
+Issues = "https://github.com/seriouslysean/transcript-combobulator/issues"
 
 [build-system]
 requires = ["hatchling"]
