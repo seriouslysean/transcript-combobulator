@@ -1,4 +1,4 @@
-# Transcript Precombobulator
+# Transcript Combobulator
 
 Audio transcription tool for multi-speaker recordings with separate audio files per speaker.
 
