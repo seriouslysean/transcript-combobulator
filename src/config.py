@@ -37,11 +37,13 @@ def require_env(key: str) -> str:
     return value
 
 # Base Directories
-TMP_DIR = Path('tmp')
+# Paths
+ROOT_DIR = Path(os.getcwd()).resolve()
+TMP_DIR = ROOT_DIR / 'tmp'
 INPUT_DIR = TMP_DIR / 'input'
 OUTPUT_DIR = TMP_DIR / 'output'
 TRANSCRIPTIONS_DIR = TMP_DIR / 'transcriptions'
-WHISPER_MODELS_DIR = Path('models')
+WHISPER_MODELS_DIR = ROOT_DIR / 'models'
 
 def get_output_path_for_input(input_path: Path) -> Path:
     """Generate output path that preserves input directory structure.
