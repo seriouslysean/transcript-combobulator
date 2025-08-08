@@ -13,9 +13,11 @@ def main(input_path):
     setup_logging()
     print(f"Step 1: Converting {input_file.name} if needed...")
     if needs_conversion(input_file):
-        rel_path = input_file.relative_to(input_root) if input_file.is_relative_to(input_root) else Path(input_file.name)
-        output_file = output_root / rel_path.parent / f"{input_file.stem}_16khz.wav"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
+        # Use the output directory structure from src/config.py
+        from src.config import get_output_path_for_input
+        output_dir = get_output_path_for_input(input_file)
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir.with_suffix('.wav')
         convert_to_wav(input_file, output_file)
     else:
         output_file = input_file

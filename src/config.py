@@ -58,10 +58,10 @@ def get_output_path_for_input(input_path: Path) -> Path:
         # Get relative path from input base directory
         rel_path = input_path.relative_to(INPUT_DIR)
         # Create output path preserving directory structure
-        output_base = OUTPUT_DIR / rel_path.parent / input_path.stem
+        output_base = OUTPUT_DIR / rel_path.parent / f"{input_path.stem}_16khz"
     except ValueError:
         # If input is not under INPUT_DIR, use simple structure
-        output_base = OUTPUT_DIR / input_path.stem
+        output_base = OUTPUT_DIR / f"{input_path.stem}_16khz"
 
     return output_base
 
