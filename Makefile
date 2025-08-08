@@ -1,4 +1,4 @@
-.PHONY: setup run run-single clean clean-all test setup-whisper install lint create-sample-files test-segment regenerate-vtt process-vad transcribe-segments create-test-files combine-transcripts convert-audio
+.PHONY: setup run run-single clean clean-all test setup-whisper install lint create-sample-files test-segment regenerate-vtt process-vad transcribe-segments create-test-files combine-transcripts convert-audio bump-patch bump-minor bump-major
 
 ROOT_DIR := $(shell pwd)
 
@@ -48,7 +48,7 @@ run-single:
 		exit 1; \
 	fi
 	echo "Processing $$(basename $(file))..."
-	$(VENV_CMD) python tools/process_single_file.py $(file)
+	$(VENV_CMD) PYTHONPATH=$(ROOT_DIR) python tools/process_single_file.py $(file)
 	$(MAKE) combine-transcripts
 
 # Process audio with VAD to generate segments
