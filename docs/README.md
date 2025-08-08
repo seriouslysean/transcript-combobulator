@@ -1,4 +1,4 @@
-# Transcript Precombobulator
+# Transcript Combobulator
 
 Audio transcription tool for multi-speaker recordings with separate audio files per speaker.
 
@@ -15,8 +15,8 @@ Processes separate audio files and creates organized transcripts:
 
 ```sh
 # Clone and setup
-git clone https://github.com/seriouslysean/transcript-precombobulator.git
-cd transcript-precombobulator
+git clone https://github.com/seriouslysean/transcript-combobulator.git
+cd transcript-combobulator
 make setup
 ```
 

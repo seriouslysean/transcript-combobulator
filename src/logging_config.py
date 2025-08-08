@@ -1,4 +1,4 @@
-"""Logging configuration for the transcript-precombobulator."""
+"""Logging configuration for the transcript-combobulator."""
 
 import logging
 import os
