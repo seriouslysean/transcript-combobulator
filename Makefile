@@ -20,28 +20,51 @@ setup:
 	$(VENV_CMD) pip install -e .
 	$(MAKE) setup-whisper
 
-# Run the transcription on all audio files in a folder
+# Run the transcription on a single file or all audio files in a folder
 run:
-	if [ -n "$(folder)" ]; then \
+	if [ -n "$(file)" ]; then \
+		if [ ! -f "$(file)" ]; then \
+			echo "File not found: $(file)"; \
+			exit 1; \
+		fi; \
+		echo "Processing single file: $$(basename $(file))..."; \
+		$(MAKE) run-single file=$(file); \
+		$(MAKE) combine-transcripts; \
+	elif [ -n "$(folder)" ]; then \
 		target_dir="$(folder)"; \
+		if [ ! -d "$$target_dir" ]; then \
+			echo "Directory not found: $$target_dir"; \
+			exit 1; \
+		fi; \
+		files=$$(find "$$target_dir" -name "*.wav" -o -name "*.flac" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.ogg" -o -name "*.aac" -o -name "*.opus" 2>/dev/null | grep -v "_converted\.wav"); \
+		if [ -z "$$files" ]; then \
+			echo "No audio files found in $$target_dir"; \
+			exit 1; \
+		fi; \
+		echo "Processing $$(echo "$$files" | wc -l) audio files in $$target_dir"; \
+		for file in $$files; do \
+			$(MAKE) run-single file=$$file; \
+		done; \
+		$(MAKE) combine-transcripts; \
 	else \
 		target_dir="$(ROOT_DIR)/tmp/input"; \
-	fi; \
-	if [ ! -d "$$target_dir" ]; then \
-		echo "Directory not found: $$target_dir"; \
-		exit 1; \
-	fi; \
-	files=$$(find "$$target_dir" -name "*.wav" -o -name "*.flac" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.ogg" -o -name "*.aac" -o -name "*.opus" 2>/dev/null | grep -v "_converted\.wav"); \
-	if [ -z "$$files" ]; then \
-		echo "No audio files found in $$target_dir"; \
-		exit 1; \
-	fi; \
-	echo "Processing $$(echo "$$files" | wc -l) audio files in $$target_dir"; \
-	for file in $$files; do \
-		$(MAKE) run-single file=$$file; \
-	done
+		if [ ! -d "$$target_dir" ]; then \
+			echo "Directory not found: $$target_dir"; \
+			exit 1; \
+		fi; \
+		files=$$(find "$$target_dir" -name "*.wav" -o -name "*.flac" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.ogg" -o -name "*.aac" -o -name "*.opus" 2>/dev/null | grep -v "_converted\.wav"); \
+		if [ -z "$$files" ]; then \
+			echo "No audio files found in $$target_dir"; \
+			exit 1; \
+		fi; \
+		echo "Processing $$(echo "$$files" | wc -l) audio files in $$target_dir"; \
+		for file in $$files; do \
+			$(MAKE) run-single file=$$file; \
+		done; \
+		$(MAKE) combine-transcripts; \
+	fi
 
-# Run transcription on a single file
+# Run transcription on a single file (convert -> VAD -> transcribe, but no combine)
 run-single:
 	if [ -z "$(file)" ]; then \
 		echo "No file specified. Usage: make run-single file=path/to/file.wav"; \
@@ -49,7 +72,6 @@ run-single:
 	fi
 	echo "Processing $$(basename $(file))..."
 	$(VENV_CMD) PYTHONPATH=$(ROOT_DIR) python tools/process_single_file.py $(file)
-	$(MAKE) combine-transcripts
 
 # Process audio with VAD to generate segments
 process-vad:

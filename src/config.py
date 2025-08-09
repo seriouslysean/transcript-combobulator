@@ -55,15 +55,13 @@ def get_output_path_for_input(input_path: Path) -> Path:
         Output directory path that mirrors input structure
     """
     try:
-        # Get relative path from input base directory
         rel_path = input_path.relative_to(INPUT_DIR)
-        # Create output path preserving directory structure
-        output_base = OUTPUT_DIR / rel_path.parent / f"{input_path.stem}_16khz"
+        # rel_path: 2025-07-27/5-nilbits.flac -> parent: 2025-07-27, stem: 5-nilbits
+        output_dir = OUTPUT_DIR / rel_path.parent / input_path.stem
     except ValueError:
-        # If input is not under INPUT_DIR, use simple structure
-        output_base = OUTPUT_DIR / f"{input_path.stem}_16khz"
-
-    return output_base
+        # If input is not under INPUT_DIR, use just the stem
+        output_dir = OUTPUT_DIR / input_path.stem
+    return output_dir
 
 # Audio Processing Settings
 SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)

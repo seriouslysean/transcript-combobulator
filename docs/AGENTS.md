@@ -1,6 +1,6 @@
-# Claude Development Guidelines
+# AI Agent Development Guidelines
 
-This document contains concrete rules and learnings for Claude-based development with this codebase.
+This document contains concrete rules and learnings for AI agent-based development with this codebase.
 
 ## Core Principles
 
@@ -103,9 +103,10 @@ else:
 ## Testing Patterns
 
 ### Use Sample Files
-- **Create samples**: `make create-sample-files`
-- **Test with small files**: Use JFK samples for development
-- **Environment override**: `ENV_FILE=.env.sample make command`
+- **Setup samples**: Add audio files to `samples/` directory, then `make create-sample-files`
+- **Test with JFK samples**: Uses `tmp/input/jfk-sample/` session structure
+- **JFK sample environment**: `ENV_FILE=.env.jfk-sample make command`
+- **Environment override**: Always use environment files for different datasets
 
 ### Debugging Commands
 ```sh
@@ -114,8 +115,9 @@ make process-vad file=path/to/file.wav
 make transcribe-segments file=path/to/file.wav
 make combine-transcripts session=session-name
 
-# Test with samples
-ENV_FILE=.env.sample make run-single file=tmp/input/jfk_1.wav
+# Test with JFK samples
+ENV_FILE=.env.jfk-sample make run folder=tmp/input/jfk-sample
+ENV_FILE=.env.jfk-sample make run-single file=tmp/input/jfk-sample/jfk_padded.wav
 ```
 
 ## Code Quality Rules
@@ -173,6 +175,7 @@ ENV_FILE=.env.sample make run-single file=tmp/input/jfk_1.wav
 - **Session-based output**: Each session gets its own output directory
 - **User-specific folders**: Individual users get subdirectories
 
+
 ## Performance Considerations
 
 ### Optimization Strategies
@@ -189,7 +192,7 @@ ENV_FILE=.env.sample make run-single file=tmp/input/jfk_1.wav
 ## Integration Guidelines
 
 ### AI Tool Integration
-- **Optimized format**: Combined transcripts work well with LLMs
+- **Optimized format**: Combined transcripts work well with language models
 - **Clear speaker identification**: Character names in output
 - **Chronological order**: Preserve conversation flow
 - **Reasonable chunk sizes**: Balance readability and context

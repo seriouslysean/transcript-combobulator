@@ -27,8 +27,10 @@ def process_audio(input_path: Path) -> tuple[Path, List[Dict[str, Any]]]:
     try:
         output_dir, processed_segments = process_vad(input_path)
 
-        # Save timestamp mapping - preserve test_ prefix if present
+        # Get the stem name for the mapping file - use the full stem of the input path
+        # which will include the _16khz suffix if present
         stem = input_path.stem
+
         mapping = {
             'original_file': str(input_path),
             'sample_rate': SAMPLE_RATE,

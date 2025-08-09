@@ -16,6 +16,7 @@ from src.config import (
     VAD_THRESHOLD,
     VAD_MIN_SPEECH_DURATION,
     VAD_MIN_SILENCE_DURATION,
+    OUTPUT_DIR,
     get_output_path_for_input
 )
 from src.audio_utils import validate_audio_file, needs_conversion, convert_to_wav, AudioValidationError
@@ -54,24 +55,27 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
     if not input_path.exists():
         raise VADError(f"Input file not found: {input_path}")
 
+    logger.info(f"VAD processing input path: {input_path}")
+
     try:
         # Validate audio file (should already be converted WAV)
         audio_info = validate_audio_file(input_path)
         logger.info(f"Processing audio: {audio_info['sample_rate']}Hz, {audio_info['channels']} channel(s), {audio_info['duration']:.2f}s")
-        
+
         # Expect WAV file at this point
         if input_path.suffix.lower() != '.wav':
             raise VADError(f"Expected WAV file but got: {input_path.suffix}")
-        
+
         working_path = input_path
 
     except AudioValidationError as e:
         raise VADError(f"Audio validation failed: {e}") from e
 
     try:
-        # Create output directory for this audio file, preserving input structure
-        output_dir = get_output_path_for_input(input_path)
+        # Always use the directory containing the input WAV file as the output directory
+        output_dir = input_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"VAD output directory: {output_dir}")
 
         # Load VAD model
         model, _ = load_vad_model()
@@ -106,7 +110,7 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
         # Extract speech segments and save them
         processed_segments = []
         padding_samples = int(0.5 * SAMPLE_RATE)  # 500ms padding on each side
-        
+
         logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")
 
         for i, ts in enumerate(speech_timestamps):

@@ -78,14 +78,36 @@ def main():
     parser.add_argument('--prefix', default="", help='Prefix for output files (e.g. "test_")')
     parser.add_argument('--copies', type=int, default=5, help='Number of individual files to create')
     parser.add_argument('--padded-copies', type=int, default=3, help='Number of speech segments to include in the padded version (will be appended with silence between)')
+    parser.add_argument('--session', default="jfk-sample", help='Session directory name (default: jfk-sample)')
     args = parser.parse_args()
 
     root_dir = Path(__file__).parent.parent
     samples_dir = root_dir / 'samples'
-    input_dir = root_dir / 'tmp' / 'input'
-
+    
+    # Check if samples directory exists
+    if not samples_dir.exists():
+        print(f"Error: Samples directory not found at {samples_dir}")
+        print("Please create the samples/ directory and add your audio files.")
+        print("Example: samples/jfk.wav")
+        return
+    
+    # Check for WAV files
+    wav_files = list(samples_dir.glob('*.wav'))
+    if not wav_files:
+        print(f"Error: No WAV files found in {samples_dir}")
+        print("Please add sample audio files (*.wav) to the samples/ directory.")
+        return
+    
+    # Create files in session directory structure
+    if args.prefix.startswith("test_"):
+        input_dir = root_dir / 'tmp' / 'input'  # Test files go in root input
+    else:
+        input_dir = root_dir / 'tmp' / 'input' / args.session  # Sample files go in session folder
+    
+    print(f"Creating sample files in {input_dir}")
+    
     # Process each WAV file in samples directory
-    for sample_file in samples_dir.glob('*.wav'):
+    for sample_file in wav_files:
         # Create individual numbered files
         create_copies(
             input_path=sample_file,

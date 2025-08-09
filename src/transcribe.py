@@ -25,13 +25,14 @@ class TranscriptionError(Exception):
     """Base exception for transcription errors."""
     pass
 
-def transcribe_segments(audio_path: Path) -> Dict:
+def transcribe_segments(audio_path: Path, original_input_path: Path = None) -> Dict:
     """Transcribe existing segments of an audio file that has already been processed with VAD.
     This is a specialized wrapper that handles pre-processed segments, utilizing the core
     transcribe_audio functionality.
 
     Args:
-        audio_path: Path to the original audio file
+        audio_path: Path to the converted/processed audio file
+        original_input_path: Optional path to the original input file for proper directory structure
 
     Returns:
         Dict containing transcription results and metadata
@@ -40,11 +41,24 @@ def transcribe_segments(audio_path: Path) -> Dict:
         TranscriptionError: If transcription fails
     """
     try:
-        # Get the mapping file path using the same logic as VAD
-        from src.config import get_output_path_for_input
-        output_dir = get_output_path_for_input(audio_path)
+        # We should look for the mapping file in the output directory
+        # The output_file is the WAV file that's been processed by VAD
+        # The mapping file should be in the same directory
+        if original_input_path:
+            # Use original input path for proper directory structure
+            from src.config import get_output_path_for_input
+            output_dir = get_output_path_for_input(original_input_path)
+        else:
+            # Fallback to using the converted file's parent directory
+            output_dir = audio_path.parent
+
+        # First try with the exact stem name
         mapping_path = output_dir / f"{audio_path.stem}_mapping.json"
+        logger.info(f"Looking for mapping file at: {mapping_path}")
+
         if not mapping_path.exists():
+            # Check if the mapping file was saved in the output directory
+            logger.error(f"Mapping file not found at {mapping_path}")
             raise TranscriptionError(f"Mapping file not found for {audio_path.name}")
 
         # Load the mapping file
@@ -57,11 +71,11 @@ def transcribe_segments(audio_path: Path) -> Dict:
 
         logger.info(f"Processing user: {audio_path.name}")
         # Use the core transcribe_audio function with the pre-processed segments
-        result = transcribe_audio(audio_path, pre_processed_mapping=mapping_data['segments'])
+        result = transcribe_audio(audio_path, pre_processed_mapping=mapping_data['segments'], original_input_path=original_input_path)
 
         return {
-            'vtt_file': str(OUTPUT_DIR / audio_path.stem / f"{audio_path.stem}.vtt"),
-            'json_file': str(OUTPUT_DIR / audio_path.stem / f"{audio_path.stem}_transcription.json"),
+            'vtt_file': str(output_dir / f"{audio_path.stem}.vtt"),
+            'json_file': str(output_dir / f"{audio_path.stem}_transcription.json"),
             'mapping_file': str(mapping_path),
             'segments': result['segments']
         }
@@ -69,7 +83,7 @@ def transcribe_segments(audio_path: Path) -> Dict:
     except Exception as e:
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
 
-def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None) -> Dict[str, Any]:
+def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None, original_input_path: Path = None) -> Dict[str, Any]:
     """Transcribe audio file using Whisper.
 
     This function handles the complete pipeline:
@@ -98,7 +112,9 @@ def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None)
     try:
         # Create output directory for this audio file using the same logic as VAD
         from src.config import get_output_path_for_input
-        output_dir = get_output_path_for_input(audio_path)
+        # Use original input path if provided for proper directory structure
+        path_for_output = original_input_path if original_input_path else audio_path
+        output_dir = get_output_path_for_input(path_for_output)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Get segments either from VAD or pre-processed mapping

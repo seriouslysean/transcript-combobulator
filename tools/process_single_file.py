@@ -13,19 +13,31 @@ def main(input_path):
     setup_logging()
     print(f"Step 1: Converting {input_file.name} if needed...")
     if needs_conversion(input_file):
-        # Use the output directory structure from src/config.py
-        from src.config import get_output_path_for_input
+        from src.config import get_output_path_for_input, INPUT_DIR, OUTPUT_DIR
+        print(f"Input file: {input_file}")
+        print(f"Input DIR: {INPUT_DIR}")
+        print(f"Input relative: {input_file.relative_to(INPUT_DIR) if input_file.is_relative_to(INPUT_DIR) else 'Not relative'}")
         output_dir = get_output_path_for_input(input_file)
-        output_dir.parent.mkdir(parents=True, exist_ok=True)
-        output_file = output_dir.with_suffix('.wav')
+        print(f"Output dir: {output_dir}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # Place the converted WAV file inside the output directory with the same basename as the input (no _16khz)
+        output_file = output_dir / f"{input_file.stem}.wav"
+        print(f"Output file: {output_file}")
         convert_to_wav(input_file, output_file)
     else:
-        output_file = input_file
-        print("No conversion needed")
+        # If no conversion is needed, copy the file to the output directory with .wav extension if not already
+        from src.config import get_output_path_for_input
+        output_dir = get_output_path_for_input(input_file)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / f"{input_file.stem}.wav"
+        if not output_file.exists():
+            import shutil
+            shutil.copy(input_file, output_file)
+        print("No conversion needed, copied to output directory")
     print(f"Step 2: Processing VAD on {output_file.name}...")
-    process_audio(output_file)
+    output_dir, segments = process_audio(output_file)
     print(f"Step 3: Transcribing segments...")
-    transcribe_segments(output_file)
+    transcribe_segments(output_file, input_file)
     print("Step 4: All processing complete for this file")
 
 if __name__ == "__main__":

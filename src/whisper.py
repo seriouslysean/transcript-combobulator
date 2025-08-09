@@ -172,7 +172,7 @@ def transcribe_audio_segments(
     all_segments = []
     
     for i, (segment_path, start_time) in enumerate(segments, 1):
-        logger.info(f"Processing segment {i:03d}/{total_segments}...")
+        logger.info(f"Processing segment {i}/{total_segments}...")
         try:
             # Create individual VTT file for this segment
             segment_vtt_path = segment_path.with_suffix('.vtt')
