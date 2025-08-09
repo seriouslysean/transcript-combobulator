@@ -45,7 +45,8 @@ run:
 		for file in $$files; do \
 			$(MAKE) run-single file=$$file; \
 		done; \
-		$(MAKE) combine-transcripts; \
+		session_name=$$(basename "$$target_dir"); \
+		$(MAKE) combine-transcripts session=$$session_name; \
 	else \
 		target_dir="$(ROOT_DIR)/tmp/input"; \
 		if [ ! -d "$$target_dir" ]; then \
