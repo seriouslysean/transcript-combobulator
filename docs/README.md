@@ -51,7 +51,7 @@ Character mapping in `.env`:
 ```sh
 # Map audio files to characters
 TRANSCRIPT_1_USERNAME=dm              # From filename 1-dm.flac
-TRANSCRIPT_1_PLAYER="DM"              # Display name  
+TRANSCRIPT_1_PLAYER="DM"              # Display name
 TRANSCRIPT_1_CHARACTER="DM"           # Character name
 TRANSCRIPT_1_DESCRIPTION="Dungeon Master"
 
@@ -77,7 +77,7 @@ ENV_FILE=.env.example make combine-transcripts session=example
 # Setup
 make setup                              # Install dependencies and download Whisper model
 
-# Processing  
+# Processing
 make run                                # Process all files in tmp/input/
 make run folder=tmp/input/session-name  # Process specific session
 make run-single file=path/to/file.flac  # Process single file

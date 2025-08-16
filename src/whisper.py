@@ -48,8 +48,8 @@ def get_whisper_config() -> Dict[str, str]:
     """
     # Get device from environment
     device = os.getenv('WHISPER_DEVICE', 'cpu')
-    if device not in ['cpu', 'cuda']:
-        raise ValueError(f"Invalid device: {device}. Must be 'cpu' or 'cuda'")
+    if device not in ['cpu', 'cuda', 'mps']:
+        raise ValueError(f"Invalid device: {device}. Must be 'cpu', 'cuda', or 'mps'")
 
     return {'device': device}
 
@@ -114,21 +114,20 @@ def transcribe_segment(
         # Process segments
         segments = []
         for segment in result["segments"]:
-            # Add offset to timestamps
-            start = segment["start"] + offset
-            end = segment["end"] + offset
+            if isinstance(segment, dict):
+                start = float(segment.get("start", 0.0)) + offset
+                end = float(segment.get("end", 0.0)) + offset
 
-            # Get text and calculate confidence from log probability
-            text = segment["text"].strip()
-            avg_logprob = segment.get('avg_logprob', 0)
-            confidence = min(100, max(0, (1 + avg_logprob) * 100))
+                text = str(segment.get("text", "")).strip()
+                avg_logprob = float(segment.get('avg_logprob', 0))
+                confidence = min(100, max(0, (1 + avg_logprob) * 100))
 
-            segments.append({
-                "start": start,
-                "end": end,
-                "text": text,
-                "confidence": confidence
-            })
+                segments.append({
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                    "confidence": confidence
+                })
 
         # Write VTT file if output path is provided
         if output_path and segments:
@@ -161,27 +160,27 @@ def transcribe_audio_segments(
     """
     total_segments = len(segments)
     logger.info(f"Loading Whisper model...")
-    
+
     # Load model once for all segments
     model = load_whisper_model()
-    
+
     logger.info(f"VAD found {total_segments} segments")
 
     # Create individual VTT files for each segment, then combine
     individual_vtts = []
     all_segments = []
-    
+
     for i, (segment_path, start_time) in enumerate(segments, 1):
         logger.info(f"Processing segment {i}/{total_segments}...")
         try:
             # Create individual VTT file for this segment
             segment_vtt_path = segment_path.with_suffix('.vtt')
-            
+
             # Transcribe segment and save to individual VTT
             segments_result = transcribe_segment(segment_path, segment_vtt_path, start_time, model)
             individual_vtts.append(segment_vtt_path)
             all_segments.extend(segments_result)
-            
+
         except Exception as e:
             logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
             continue
@@ -189,26 +188,26 @@ def transcribe_audio_segments(
     # Combine all individual VTT files into final output
     if output_path and individual_vtts:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
         with open(output_path, "w", encoding="utf-8") as combined_file:
             combined_file.write("WEBVTT\n\n")
-            
-            for vtt_path in individual_vtts:
-                if vtt_path.exists():
-                    with open(vtt_path, "r", encoding="utf-8") as individual_file:
-                        content = individual_file.read()
-                        # Skip the WEBVTT header and add content
-                        if content.startswith("WEBVTT"):
-                            content = content[6:].lstrip()
-                        combined_file.write(content)
-                        if not content.endswith("\n\n"):
-                            combined_file.write("\n")
-        
+
+            # Deduplicate transcript lines across all segments before writing
+            seen_lines = set()
+            deduped_segments = []
+            for segment in all_segments:
+                line = segment["text"].strip()
+                if line and line not in seen_lines:
+                    deduped_segments.append(segment)
+                    seen_lines.add(line)
+
+            for segment in deduped_segments:
+                start_time = format_timestamp(segment["start"])
+                end_time = format_timestamp(segment["end"])
+                combined_file.write(f"{start_time} --> {end_time}\n{segment['text'].strip()}\n\n")
+
         logger.info(f"User transcript saved: {output_path.name}")
-        
-        # Clean up individual VTT files
-        for vtt_path in individual_vtts:
-            if vtt_path.exists():
-                vtt_path.unlink()
+
 
     # Sort segments by start time for return value
     all_segments.sort(key=lambda x: x["start"])
@@ -271,20 +270,21 @@ def transcribe_audio(audio_path: Path, output_path: Path, prompt: str = "") -> L
         # Process segments
         segments = []
         for segment in result["segments"]:
-            text = segment["text"].strip()
-            avg_logprob = segment.get('avg_logprob', 0)
-            confidence = min(100, max(0, (1 + avg_logprob) * 100))
+            if isinstance(segment, dict):
+                text = str(segment.get("text", "")).strip()
+                avg_logprob = float(segment.get('avg_logprob', 0))
+                confidence = min(100, max(0, (1 + avg_logprob) * 100))
 
-            # Log the transcribed text
-            if text:
-                logger.info(f"  [{format_timestamp(segment['start'])} -> {format_timestamp(segment['end'])}] {text}")
+                # Log the transcribed text
+                if text:
+                    logger.info(f"  [{format_timestamp(float(segment.get('start', 0.0)))} -> {format_timestamp(float(segment.get('end', 0.0)))}] {text}")
 
-            segments.append({
-                "start": segment["start"],
-                "end": segment["end"],
-                "text": text,
-                "confidence": confidence
-            })
+                segments.append({
+                    "start": float(segment.get("start", 0.0)),
+                    "end": float(segment.get("end", 0.0)),
+                    "text": text,
+                    "confidence": confidence
+                })
 
         # Write VTT file
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -382,7 +382,7 @@ def regenerate_vtt_for_audio(
 
     return segments
 
-def load_whisper_model(model_name: str = None) -> whisper.Whisper:
+def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
     """Load whisper model with proper configuration.
 
     Args:
@@ -419,7 +419,7 @@ def load_whisper_model(model_name: str = None) -> whisper.Whisper:
     return model
 
 
-def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: str = None) -> List[Dict[str, Any]]:
+def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: Optional[str] = None) -> List[Dict[str, Any]]:
     """Transcribe audio segments using Whisper.
 
     Args:
@@ -456,14 +456,14 @@ def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: str = 
             # Calculate confidence score from logprobs
             if 'segments' in result and result['segments']:
                 # Average probability across all segments
-                avg_logprob = sum(s.get('avg_logprob', 0) for s in result['segments']) / len(result['segments'])
+                avg_logprob = sum(float(s.get('avg_logprob', 0)) if isinstance(s, dict) else 0 for s in result['segments']) / len(result['segments'])
                 # Convert log probability to confidence percentage (0-100)
                 confidence = min(100, max(0, (1 + avg_logprob) * 100))
             else:
                 confidence = 0
 
             # Add transcription and confidence to segment data
-            segment['text'] = result['text'].strip()
+            segment['text'] = str(result.get('text', '')).strip()
             segment['confidence'] = confidence
             results.append(segment)
 

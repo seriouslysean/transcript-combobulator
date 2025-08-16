@@ -57,7 +57,11 @@ def normalize_content(text: str) -> str:
     Returns:
         Normalized content.
     """
-    return re.sub(r'\s+', ' ', text.strip())
+    # Aggressive normalization: lowercase, strip punctuation, collapse whitespace
+    import string
+    text = text.strip().lower()
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    return re.sub(r'\s+', ' ', text)
 
 
 def should_skip_content(content: str, skip_filters: List[str]) -> bool:
@@ -234,75 +238,68 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
         logger.info(f"  - Found {len(entries)} entries")
         all_entries.extend(entries)
 
+
     # Sort by start time
     all_entries.sort(key=lambda x: x.start_time)
 
     logger.info(f"Total combined entries: {len(all_entries)}")
 
-    # Create summary
+    # Deduplicate transcript lines globally (across all entries, only once)
+    deduped_entries = []
+    seen_contents = set()
+    for entry in all_entries:
+        norm_content = normalize_content(entry.content)
+        key = (entry.character, norm_content)
+        if key not in seen_contents:
+            deduped_entries.append(entry)
+            seen_contents.add(key)
+        else:
+            logger.debug(f"DUPLICATE SKIP: {entry.character}: '{norm_content}'")
+
+    # Create summary (deduplicated) - only once
     summary_lines = ["Summary:"]
+    seen = set()
     for config in transcript_configs:
         if config.role == "DM":
-            summary_lines.append(
-                f"{config.player_name} - {config.role} - {config.character_description}"
-            )
+            line = f"{config.player_name} - {config.role} - {config.character_description}"
         else:
-            summary_lines.append(
-                f"{config.player_name} - {config.character_name} - {config.character_description}"
-            )
+            line = f"{config.player_name} - {config.character_name} - {config.character_description}"
+        if line not in seen:
+            summary_lines.append(line)
+            seen.add(line)
     summary = '\n'.join(summary_lines)
 
     # Split into chunks only if there are enough entries to make it worthwhile
-    # Don't split if there are fewer entries than chunks, or if each chunk would be too small
     min_entries_per_chunk = 5  # Minimum entries per chunk to make splitting worthwhile
-    
-    if len(all_entries) < chunks or len(all_entries) < min_entries_per_chunk:
-        # Create single file if not enough content to split meaningfully
+
+    if len(deduped_entries) < chunks or len(deduped_entries) < min_entries_per_chunk:
         actual_chunks = 1
     else:
         actual_chunks = chunks
-    
-    chunk_size = len(all_entries) // actual_chunks
+
+    chunk_size = len(deduped_entries) // actual_chunks
     output_files = []
 
     for chunk_idx in range(actual_chunks):
         start_idx = chunk_idx * chunk_size
-        end_idx = start_idx + chunk_size if chunk_idx < actual_chunks - 1 else len(all_entries)
-        chunk_entries = all_entries[start_idx:end_idx]
+        end_idx = start_idx + chunk_size if chunk_idx < actual_chunks - 1 else len(deduped_entries)
+        chunk_entries = deduped_entries[start_idx:end_idx]
 
-        # Generate output content
-        content_lines = [summary, ""]
-
-        if actual_chunks > 1:
-            content_lines.append(f"FILE {chunk_idx + 1} of {actual_chunks}")
-            content_lines.append("")
-
-        content_lines.append("TRANSCRIPT:")
-
-        for entry in chunk_entries:
-            if include_timestamps:
-                line = f"[{entry.timestamp}] {entry.character}: {entry.content}"
-            else:
-                line = f"{entry.character}: {entry.content}"
-            content_lines.append(line)
-
-        # Determine output file path
-        if actual_chunks > 1:
-            stem = output_path.stem
-            suffix = output_path.suffix
-            chunk_path = output_path.parent / f"{stem}-{chunk_idx + 1}{suffix}"
-        else:
-            chunk_path = output_path
-
-        # Write output file
+        chunk_path = output_path if actual_chunks == 1 else output_path.with_name(f"{output_path.stem}-{chunk_idx+1}{output_path.suffix}")
         try:
             with open(chunk_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(content_lines))
+                # Write summary first
+                f.write(summary + '\n\n')
+                # Write deduped transcript entries
+                for entry in chunk_entries:
+                    if include_timestamps:
+                        f.write(f"{entry.character}: {entry.content} [{entry.timestamp}]\n")
+                    else:
+                        f.write(f"{entry.character}: {entry.content}\n")
             output_files.append(chunk_path)
             logger.info(f"Generated: {chunk_path}")
         except Exception as e:
             raise CombineError(f"Failed to write output file {chunk_path}: {e}")
-
     return output_files
 
 
@@ -367,21 +364,21 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
     unmapped_dirs = []
 
     for vtt_file in vtt_files:
+
         parent_dir = vtt_file.parent.name
         username = None
-        
-        # Try to extract username from directory name patterns
-        # Pattern 1: {number}-{username}_16khz (e.g., "3-nilbits_16khz")
-        match = re.match(r'\d+-(.+)_16khz', parent_dir)
+
+        # Get extraction regex from environment or use default (Craig format)
+        extraction_regex = os.getenv('USERNAME_EXTRACTION_REGEX', r'^\d+-(.+)')
+        match = re.match(extraction_regex, parent_dir)
         if match:
             username = match.group(1)
         else:
-            # Pattern 2: Direct username (e.g., "jfk_1")
-            # Check if the directory name itself is a username
-            if parent_dir in username_mapping:
-                username = parent_dir
-        
-        if username and username in username_mapping:
+            # Fallback: use the directory name as-is
+            username = parent_dir.split('_')[0]
+
+
+        if username in username_mapping:
             mapping = username_mapping[username]
             config = TranscriptConfig(
                 player_name=mapping['player_name'],

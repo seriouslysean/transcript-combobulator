@@ -138,7 +138,7 @@ def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None,
             mapping_file = output_dir / f"{audio_path.stem}_mapping.json"
 
         # Create output path for user-specific combined VTT
-        # Extract username from path like "3-nilbits_16khz" -> "nilbits"
+    # Extract username from path like "3-username_16khz" -> "username"
         username_match = re.match(r'\d+-(.+)_16khz', audio_path.stem)
         if username_match:
             username = username_match.group(1)

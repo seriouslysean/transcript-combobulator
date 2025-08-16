@@ -56,7 +56,7 @@ def get_output_path_for_input(input_path: Path) -> Path:
     """
     try:
         rel_path = input_path.relative_to(INPUT_DIR)
-        # rel_path: 2025-07-27/5-nilbits.flac -> parent: 2025-07-27, stem: 5-nilbits
+    # rel_path: 2025-07-27/5-username.flac -> parent: 2025-07-27, stem: 5-username
         output_dir = OUTPUT_DIR / rel_path.parent / input_path.stem
     except ValueError:
         # If input is not under INPUT_DIR, use just the stem
