@@ -366,19 +366,16 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
     for vtt_file in vtt_files:
 
         parent_dir = vtt_file.parent.name
-        username = None
 
-        # Get extraction regex from environment or use default (Craig format)
-        extraction_regex = os.getenv('USERNAME_EXTRACTION_REGEX', r'^\d+-(.+)')
-        match = re.match(extraction_regex, parent_dir)
-        if match:
-            username = match.group(1)
+        # Find which username(s) appear in the directory name (simple substring match)
+        matches = [uname for uname in username_mapping.keys() if uname in parent_dir]
+
+        if len(matches) == 0:
+            unmapped_dirs.append(parent_dir)
+        elif len(matches) > 1:
+            raise CombineError(f"Ambiguous username match for directory '{parent_dir}': found {matches}. Please make usernames more specific in TRANSCRIPT_*_USERNAME environment variables.")
         else:
-            # Fallback: use the directory name as-is
-            username = parent_dir.split('_')[0]
-
-
-        if username in username_mapping:
+            username = matches[0]
             mapping = username_mapping[username]
             config = TranscriptConfig(
                 player_name=mapping['player_name'],
@@ -388,8 +385,6 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
                 transcript_path=vtt_file
             )
             transcript_configs.append(config)
-        else:
-            unmapped_dirs.append(parent_dir)
 
     if unmapped_dirs:
         raise CombineError(f"No mapping found for directories: {unmapped_dirs}. Please update TRANSCRIPT_*_USERNAME environment variables.")

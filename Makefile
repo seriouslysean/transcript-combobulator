@@ -29,7 +29,11 @@ run:
 		fi; \
 		echo "Processing single file: $$(basename $(file))..."; \
 		$(MAKE) run-single file=$(file); \
-		$(MAKE) combine-transcripts; \
+		if [ -n "$$ENV_FILE" ]; then \
+			$(MAKE) combine-transcripts ENV_FILE=$$ENV_FILE; \
+		else \
+			$(MAKE) combine-transcripts; \
+		fi; \
 	elif [ -n "$(folder)" ]; then \
 		target_dir="$(folder)"; \
 		if [ ! -d "$$target_dir" ]; then \
@@ -46,7 +50,11 @@ run:
 			$(MAKE) run-single file=$$file; \
 		done; \
 		session_name=$$(basename "$$target_dir"); \
-		$(MAKE) combine-transcripts session=$$session_name; \
+		if [ -n "$$ENV_FILE" ]; then \
+			$(MAKE) combine-transcripts session=$$session_name ENV_FILE=$$ENV_FILE; \
+		else \
+			$(MAKE) combine-transcripts session=$$session_name; \
+		fi; \
 	else \
 		target_dir="$(ROOT_DIR)/tmp/input"; \
 		if [ ! -d "$$target_dir" ]; then \
@@ -62,7 +70,11 @@ run:
 		for file in $$files; do \
 			$(MAKE) run-single file=$$file; \
 		done; \
-		$(MAKE) combine-transcripts; \
+		if [ -n "$$ENV_FILE" ]; then \
+			$(MAKE) combine-transcripts ENV_FILE=$$ENV_FILE; \
+		else \
+			$(MAKE) combine-transcripts; \
+		fi; \
 	fi
 
 # Run transcription on a single file (convert -> VAD -> transcribe, but no combine)
