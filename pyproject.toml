@@ -1,6 +1,6 @@
 [project]
 name = "transcript-combobulator"
-version = "0.3.1"
+version = "0.4.0"
 description = "Pre-processes audio files for better Whisper transcription"
 readme = "docs/README.md"
 requires-python = ">=3.10"
@@ -10,15 +10,15 @@ authors = [
     { name = "Sean Kennedy", email = "sean@codeserious.com" }
 ]
 dependencies = [
-    "mypy>=1.0.0",
-    "openai-whisper",
-    "pytest>=7.0.0",
-    "python-dotenv>=1.0.0",
-    "soundfile>=0.12.1",
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
-    "webvtt-py>=0.4.6",
-    "silero-vad>=0.4.0",
+    "openai-whisper==20250625",
+    "python-dotenv==1.2.1",
+    "soundfile==0.13.1",
+    "torch==2.10.0",
+    "torchaudio==2.10.0",
+    "webvtt-py==0.5.1",
+    "silero-vad==6.2.0",
+    "torchcodec>=0.10.0",
+    "rich>=13.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -26,6 +26,12 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy==1.19.1",
+    "pytest==9.0.2",
 ]
 
 [project.urls]
@@ -62,7 +68,7 @@ warn_unreachable = true
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py310']
 
 [tool.isort]
 profile = "black"

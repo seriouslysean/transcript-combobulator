@@ -56,6 +56,11 @@ tmp/
 # Use USERNAME not DIR
 TRANSCRIPT_1_USERNAME="nilbits"    # ✅ Correct
 TRANSCRIPT_1_DIR="3-nilbits"       # ❌ Fragile
+
+# Speaker mapping fields (new names, old names still work as fallback)
+TRANSCRIPT_1_NAME="Sean"           # Display name (was PLAYER)
+TRANSCRIPT_1_LABEL="DM"            # Speaker label (was CHARACTER)
+TRANSCRIPT_1_DESCRIPTION="Dungeon Master"
 ```
 
 ## Processing Pipeline
@@ -101,6 +106,14 @@ else:
 ```
 
 ## Testing Patterns
+
+### Key Gotchas
+- **Whisper segment count is nondeterministic** — never hardcode exact segment counts in assertions; use range checks instead
+- **Word overlap via set intersection penalizes repeated words** — use `SequenceMatcher` for similarity comparison
+- **torchaudio 2.10+ requires `torchcodec`** — will break all audio loading without it
+- **`multiprocessing.set_start_method("spawn")`** — required for torch on macOS, must be called before any multiprocessing
+- **VTT output path** — `transcribe_audio()` writes to `OUTPUT_DIR/<stem>/`, NOT `TRANSCRIPTIONS_DIR`
+- **Test files** — created by `conftest.py` session fixture from `tools/create_test_files.py`; requires `samples/jfk.wav`
 
 ### Use Sample Files
 - **Setup samples**: Add audio files to `samples/` directory, then `make create-sample-files`
@@ -193,7 +206,7 @@ ENV_FILE=.env.jfk-sample make run-single file=tmp/input/jfk-sample/jfk_padded.wa
 
 ### AI Tool Integration
 - **Optimized format**: Combined transcripts work well with language models
-- **Clear speaker identification**: Character names in output
+- **Clear speaker identification**: Speaker labels in output
 - **Chronological order**: Preserve conversation flow
 - **Reasonable chunk sizes**: Balance readability and context
 

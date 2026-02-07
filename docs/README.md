@@ -7,7 +7,7 @@ Audio transcription tool for multi-speaker recordings with separate audio files 
 Processes separate audio files and creates organized transcripts:
 - **Individual transcripts** - One VTT file per audio file/speaker
 - **Combined session transcripts** - Chronological conversation flow across all speakers
-- **Character mapping** - You configure which audio files map to which characters
+- **Speaker mapping** - You configure which audio files map to which speakers
 
 **Requires**: Separate audio files per speaker (tested with Craig Discord bot output)
 
@@ -24,10 +24,10 @@ Requires Python 3.10+ and pyenv.
 
 ## Quick Start
 
-1. **Configure character mappings**:
+1. **Configure speaker mappings**:
    ```sh
    cp .env.example .env
-   # Edit .env to map your audio files to characters
+   # Edit .env to map your audio files to speakers
    ```
 
 2. **Add audio files** (one per speaker):
@@ -47,17 +47,17 @@ Requires Python 3.10+ and pyenv.
 
 ## Configuration
 
-Character mapping in `.env`:
+Speaker mapping in `.env`:
 ```sh
-# Map audio files to characters
+# Map audio files to speakers
 TRANSCRIPT_1_USERNAME=dm              # From filename 1-dm.flac
-TRANSCRIPT_1_PLAYER="DM"              # Display name
-TRANSCRIPT_1_CHARACTER="DM"           # Character name
+TRANSCRIPT_1_NAME="DM"               # Display name
+TRANSCRIPT_1_LABEL="DM"              # Speaker label in transcript
 TRANSCRIPT_1_DESCRIPTION="Dungeon Master"
 
 TRANSCRIPT_2_USERNAME=barbarian       # From filename 2-barbarian.flac
-TRANSCRIPT_2_PLAYER="Player 1"
-TRANSCRIPT_2_CHARACTER="Barbarian"
+TRANSCRIPT_2_NAME="Player 1"
+TRANSCRIPT_2_LABEL="Barbarian"
 TRANSCRIPT_2_DESCRIPTION="Goliath Barbarian"
 ```
 
@@ -110,4 +110,4 @@ Druid: I cast Detect Magic, just in case.
 
 **"No mapping found for directories"**: Update `TRANSCRIPT_*_USERNAME` in your .env file to match your audio filenames.
 
-**Need different settings for different campaigns?**: Use `ENV_FILE=.env.campaign2 make run`
+**Need different settings for different sessions?**: Use `ENV_FILE=.env.session2 make run`

@@ -18,16 +18,16 @@ def get_whisper_config() -> dict:
     load_dotenv()
 
     device = os.getenv('WHISPER_DEVICE', 'cpu')
-    compute_type = os.getenv('WHISPER_COMPUTE_TYPE', 'float32')
+    fp16 = os.getenv('WHISPER_FP16', 'false').lower() in ('true', '1', 'yes', 'on')
 
-    # Validate compute type based on device
-    if device == 'cpu' and compute_type == 'float16':
+    # Validate FP16 based on device
+    if device == 'cpu' and fp16:
         print("Warning: FP16 not supported on CPU, forcing FP32")
-        compute_type = 'float32'
+        fp16 = False
 
     return {
         'device': device,
-        'compute_type': compute_type
+        'fp16': fp16
     }
 
 def setup_whisper(model_name: str, models_dir: Path) -> bool:

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Load environment variables
 # If ENV_FILE is set in the environment, use it as the env file, otherwise default to .env
-_env_file = os.environ.get('ENV_FILE', '.env')
+_env_file = os.environ.get('ENV_FILE') or '.env'
 load_dotenv(dotenv_path=_env_file, override=True)
 
 def get_bool_env(key: str, default: bool = False) -> bool:
@@ -63,30 +63,35 @@ def get_output_path_for_input(input_path: Path) -> Path:
         output_dir = OUTPUT_DIR / input_path.stem
     return output_dir
 
-# Audio Processing Settings
+# ── Parallel Processing Settings ──
+PARALLEL_JOBS = get_int_env('PARALLEL_JOBS', 2)
+TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect
+
+# ── Audio Processing Settings ──
 SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)
-TRANSCRIPTION_MODE = require_env('TRANSCRIPTION_MODE')
+TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 
-# VAD Settings
-VAD_THRESHOLD = float(require_env('VAD_THRESHOLD'))
-VAD_MIN_SPEECH_DURATION = float(require_env('VAD_MIN_SPEECH_DURATION'))
-VAD_MIN_SILENCE_DURATION = float(require_env('VAD_MIN_SILENCE_DURATION'))
-PADDING_SECONDS = float(require_env('PADDING_SECONDS'))
+# ── VAD defaults ──
+VAD_THRESHOLD = get_float_env('VAD_THRESHOLD', 0.5)
+VAD_MIN_SPEECH_DURATION = get_float_env('VAD_MIN_SPEECH_DURATION', 0.5)
+VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 1.0)
+PADDING_SECONDS = get_float_env('PADDING_SECONDS', 0.3)
 
-# Whisper Model Configuration
-WHISPER_MODEL = require_env('WHISPER_MODEL')
-WHISPER_DEVICE = require_env('WHISPER_DEVICE')
-WHISPER_COMPUTE_TYPE = require_env('WHISPER_COMPUTE_TYPE')
+# ── Whisper defaults (optimized for single-speaker channels) ──
+# These can be overridden via .env but have sensible project-wide defaults
+WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'large-v3-turbo')
+WHISPER_DEVICE = os.getenv('WHISPER_DEVICE', 'cpu')
+WHISPER_FP16 = get_bool_env('WHISPER_FP16', False)
 
 # Whisper Transcription Settings
-WHISPER_LANGUAGE = require_env('WHISPER_LANGUAGE')
+WHISPER_LANGUAGE = os.getenv('WHISPER_LANGUAGE', 'en')
 WHISPER_TEMPERATURE = get_float_env('WHISPER_TEMPERATURE', 0.0)
-WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 5)
+WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 1)
+WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', False)
+WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', False)
 WHISPER_NO_SPEECH_THRESHOLD = get_float_env('WHISPER_NO_SPEECH_THRESHOLD', 0.6)
 WHISPER_LOGPROB_THRESHOLD = get_float_env('WHISPER_LOGPROB_THRESHOLD', -1.0)
-WHISPER_COMPRESSION_RATIO_THRESHOLD = get_float_env('WHISPER_COMPRESSION_RATIO_THRESHOLD', 1.2)
-WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', True)
-WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', True)
+WHISPER_COMPRESSION_RATIO_THRESHOLD = get_float_env('WHISPER_COMPRESSION_RATIO_THRESHOLD', 2.4)
 
 # Context Settings
 WHISPER_PROMPT = os.getenv('WHISPER_PROMPT', '')
@@ -98,15 +103,16 @@ WHISPER_CONFIDENCE_THRESHOLD = get_float_env('WHISPER_CONFIDENCE_THRESHOLD', 50.
 SAVE_JSON = get_bool_env('SAVE_JSON', True)
 
 def get_whisper_options() -> Dict[str, Any]:
-    """Get all whisper options as a dictionary."""
+    """Get all whisper options as a dictionary for model.transcribe()."""
     return {
         'language': WHISPER_LANGUAGE,
         'temperature': WHISPER_TEMPERATURE,
-        'beam_size': WHISPER_BEAM_SIZE,
+        'beam_size': WHISPER_BEAM_SIZE if WHISPER_BEAM_SIZE > 1 else None,
         'condition_on_previous_text': WHISPER_CONDITION_ON_PREVIOUS,
         'no_speech_threshold': WHISPER_NO_SPEECH_THRESHOLD,
         'logprob_threshold': WHISPER_LOGPROB_THRESHOLD,
         'compression_ratio_threshold': WHISPER_COMPRESSION_RATIO_THRESHOLD,
         'word_timestamps': WHISPER_WORD_TIMESTAMPS,
         'initial_prompt': WHISPER_PROMPT if WHISPER_PROMPT else None,
+        'fp16': WHISPER_FP16,
     }

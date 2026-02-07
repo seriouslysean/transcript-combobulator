@@ -4,7 +4,7 @@
 from pathlib import Path
 import pytest
 from src.transcribe import transcribe_audio
-from src.config import TRANSCRIPTIONS_DIR, OUTPUT_DIR
+from src.config import OUTPUT_DIR
 import json
 
 def test_basic_transcription():
@@ -19,12 +19,13 @@ def test_basic_transcription():
     assert 'segments' in result, "No segments in transcription result"
     assert len(result['segments']) > 0, "No segments were transcribed"
 
-    # Verify output files
-    vtt_file = TRANSCRIPTIONS_DIR / f"{input_file.stem}.vtt"
-    json_file = OUTPUT_DIR / f"{input_file.stem}_transcription.json"
+    # Verify output files — transcribe_audio writes to OUTPUT_DIR/<stem>/
+    output_subdir = OUTPUT_DIR / input_file.stem
+    vtt_file = output_subdir / f"{input_file.stem}.vtt"
+    json_file = output_subdir / f"{input_file.stem}_transcription.json"
 
-    assert vtt_file.exists(), "VTT file not created"
-    assert json_file.exists(), "JSON file not created"
+    assert vtt_file.exists(), f"VTT file not created at {vtt_file}"
+    assert json_file.exists(), f"JSON file not created at {json_file}"
 
     # Verify VTT content
     with open(vtt_file) as f:

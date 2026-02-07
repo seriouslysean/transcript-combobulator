@@ -1,6 +1,6 @@
 # Examples
 
-Working examples are included in `tmp/output/example/` to demonstrate output format and character mapping.
+Working examples are included in `tmp/output/example/` to demonstrate output format and speaker mapping.
 
 ## View Example Output
 
@@ -8,20 +8,20 @@ Working examples are included in `tmp/output/example/` to demonstrate output for
 ENV_FILE=.env.example make combine-transcripts session=example
 ```
 
-This processes the example VTT files using the character mappings in `.env.example`.
+This processes the example VTT files using the speaker mappings in `.env.example`.
 
-## Example Character Mapping
+## Example Speaker Mapping
 
 From `.env.example`:
 ```bash
 TRANSCRIPT_1_USERNAME=dm
-TRANSCRIPT_1_PLAYER="DM"
-TRANSCRIPT_1_CHARACTER="DM"
+TRANSCRIPT_1_NAME="DM"
+TRANSCRIPT_1_LABEL="DM"
 TRANSCRIPT_1_DESCRIPTION="Dungeon Master"
 
 TRANSCRIPT_2_USERNAME=barbarian
-TRANSCRIPT_2_PLAYER="Player 1"
-TRANSCRIPT_2_CHARACTER="Barbarian"
+TRANSCRIPT_2_NAME="Player 1"
+TRANSCRIPT_2_LABEL="Barbarian"
 TRANSCRIPT_2_DESCRIPTION="Goliath Barbarian"
 ```
 

@@ -16,6 +16,7 @@ from src.config import (
     VAD_THRESHOLD,
     VAD_MIN_SPEECH_DURATION,
     VAD_MIN_SILENCE_DURATION,
+    PADDING_SECONDS,
     OUTPUT_DIR,
     get_output_path_for_input
 )
@@ -25,18 +26,17 @@ class VADError(Exception):
     """Base exception for VAD-related errors."""
     pass
 
-def load_vad_model() -> Tuple[Any, Any]:
-    """Load the Silero VAD model and utilities.
+def load_vad_model() -> Any:
+    """Load the Silero VAD model.
 
     Returns:
-        Tuple[Any, Any]: The VAD model and utilities.
+        The VAD model.
 
     Raises:
         VADError: If model loading fails.
     """
     try:
-        model = load_silero_vad()
-        return model, None  # We don't need utils since we imported them directly
+        return load_silero_vad()
     except Exception as e:
         raise VADError(f"Failed to load VAD model: {e}") from e
 
@@ -78,11 +78,12 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
         logger.info(f"VAD output directory: {output_dir}")
 
         # Load VAD model
-        model, _ = load_vad_model()
+        model = load_vad_model()
 
         # Load audio (using the working path which may be converted)
         wav, sr = torchaudio.load(working_path)
         if sr != SAMPLE_RATE:
+            logger.warning(f"Audio sample rate {sr}Hz differs from expected {SAMPLE_RATE}Hz — resampling (this may indicate a pipeline issue)")
             resampler = torchaudio.transforms.Resample(sr, SAMPLE_RATE)
             wav = resampler(wav)
 
@@ -109,7 +110,7 @@ def process_audio(input_path: Path) -> Tuple[Path, List[Dict[str, Any]]]:
 
         # Extract speech segments and save them
         processed_segments = []
-        padding_samples = int(0.5 * SAMPLE_RATE)  # 500ms padding on each side
+        padding_samples = int(PADDING_SECONDS * SAMPLE_RATE)
 
         logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")
 

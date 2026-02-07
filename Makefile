@@ -40,41 +40,15 @@ run:
 			echo "Directory not found: $$target_dir"; \
 			exit 1; \
 		fi; \
-		files=$$(find "$$target_dir" -name "*.wav" -o -name "*.flac" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.ogg" -o -name "*.aac" -o -name "*.opus" 2>/dev/null | grep -v "_converted\.wav"); \
-		if [ -z "$$files" ]; then \
-			echo "No audio files found in $$target_dir"; \
-			exit 1; \
-		fi; \
-		echo "Processing $$(echo "$$files" | wc -l) audio files in $$target_dir"; \
-		for file in $$files; do \
-			$(MAKE) run-single file=$$file; \
-		done; \
 		session_name=$$(basename "$$target_dir"); \
-		if [ -n "$$ENV_FILE" ]; then \
-			$(MAKE) combine-transcripts session=$$session_name ENV_FILE=$$ENV_FILE; \
-		else \
-			$(MAKE) combine-transcripts session=$$session_name; \
-		fi; \
+		$(VENV_CMD) ENV_FILE=$(ENV_FILE) PYTHONPATH=$(ROOT_DIR) python tools/process_batch.py "$$target_dir" --session "$$session_name"; \
 	else \
 		target_dir="$(ROOT_DIR)/tmp/input"; \
 		if [ ! -d "$$target_dir" ]; then \
 			echo "Directory not found: $$target_dir"; \
 			exit 1; \
 		fi; \
-		files=$$(find "$$target_dir" -name "*.wav" -o -name "*.flac" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.ogg" -o -name "*.aac" -o -name "*.opus" 2>/dev/null | grep -v "_converted\.wav"); \
-		if [ -z "$$files" ]; then \
-			echo "No audio files found in $$target_dir"; \
-			exit 1; \
-		fi; \
-		echo "Processing $$(echo "$$files" | wc -l) audio files in $$target_dir"; \
-		for file in $$files; do \
-			$(MAKE) run-single file=$$file; \
-		done; \
-		if [ -n "$$ENV_FILE" ]; then \
-			$(MAKE) combine-transcripts ENV_FILE=$$ENV_FILE; \
-		else \
-			$(MAKE) combine-transcripts; \
-		fi; \
+		$(VENV_CMD) ENV_FILE=$(ENV_FILE) PYTHONPATH=$(ROOT_DIR) python tools/process_batch.py "$$target_dir"; \
 	fi
 
 # Run transcription on a single file (convert -> VAD -> transcribe, but no combine)
@@ -84,7 +58,7 @@ run-single:
 		exit 1; \
 	fi
 	echo "Processing $$(basename $(file))..."
-	$(VENV_CMD) PYTHONPATH=$(ROOT_DIR) python tools/process_single_file.py $(file)
+	$(VENV_CMD) ENV_FILE=$(ENV_FILE) PYTHONPATH=$(ROOT_DIR) python tools/process_single_file.py $(file)
 
 # Process audio with VAD to generate segments
 process-vad:
@@ -188,8 +162,8 @@ convert-audio:
 combine-transcripts:
 	echo "Combining all transcripts using environment configuration..."
 	if [ -n "$(session)" ]; then \
-		$(VENV_CMD) python -c "from pathlib import Path; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(Path('$(ROOT_DIR)/tmp/output'), '$(session)')"; \
+		$(VENV_CMD) ENV_FILE=$(ENV_FILE) python -c "from pathlib import Path; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(Path('$(ROOT_DIR)/tmp/output'), '$(session)')"; \
 	else \
-		$(VENV_CMD) python -c "from pathlib import Path; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(Path('$(ROOT_DIR)/tmp/output'))"; \
+		$(VENV_CMD) ENV_FILE=$(ENV_FILE) python -c "from pathlib import Path; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(Path('$(ROOT_DIR)/tmp/output'))"; \
 	fi
 

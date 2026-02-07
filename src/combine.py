@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import string
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
@@ -13,11 +14,7 @@ from src.logging_config import get_logger
 logger = get_logger(__name__)
 
 from src.config import OUTPUT_DIR
-import importlib
-import src.config as config_mod
 
-# Always reload config to ensure latest .env is loaded
-importlib.reload(config_mod)
 # Force reload of .env with override, allowing ENV_FILE to specify a custom env file
 _env_file = os.environ.get('ENV_FILE', '.env')
 load_dotenv(dotenv_path=_env_file, override=True)
@@ -34,17 +31,16 @@ class TranscriptEntry:
     timestamp: str
     start_time: float
     end_time: float
-    character: str
+    speaker: str
     content: str
 
 
 @dataclass
 class TranscriptConfig:
     """Configuration for a transcript file."""
-    player_name: str
-    role: str
-    character_name: str
-    character_description: str
+    name: str
+    label: str
+    description: str
     transcript_path: Path
 
 
@@ -58,7 +54,6 @@ def normalize_content(text: str) -> str:
         Normalized content.
     """
     # Aggressive normalization: lowercase, strip punctuation, collapse whitespace
-    import string
     text = text.strip().lower()
     text = text.translate(str.maketrans('', '', string.punctuation))
     return re.sub(r'\s+', ' ', text)
@@ -106,13 +101,13 @@ def parse_timestamp_to_seconds(timestamp: str) -> float:
     return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000
 
 
-def parse_vtt_file(file_path: Path, character_name: str, dedupe: str = "false",
+def parse_vtt_file(file_path: Path, speaker_label: str, dedupe: str = "false",
                   skip_filters: Optional[List[str]] = None) -> List[TranscriptEntry]:
     """Parse VTT file content and return timestamped entries.
 
     Args:
         file_path: Path to the VTT file.
-        character_name: Name of the character/speaker.
+        speaker_label: Label for the speaker.
         dedupe: Deduplication strategy ("false", "consecutive", "unique").
         skip_filters: List of strings or regex patterns to filter out content.
 
@@ -182,7 +177,7 @@ def parse_vtt_file(file_path: Path, character_name: str, dedupe: str = "false",
                         timestamp=timestamp,
                         start_time=start_seconds,
                         end_time=end_seconds,
-                        character=character_name,
+                        speaker=speaker_label,
                         content=normalized_content
                     )
                     entries.append(entry)
@@ -226,11 +221,11 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
 
     # Parse all transcript files
     for config in transcript_configs:
-        logger.info(f"Processing {config.transcript_path.name} for {config.character_name}...")
+        logger.info(f"Processing {config.transcript_path.name} for {config.label}...")
 
         entries = parse_vtt_file(
             config.transcript_path,
-            config.character_name,
+            config.label,
             dedupe,
             skip_filters
         )
@@ -249,21 +244,18 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
     seen_contents = set()
     for entry in all_entries:
         norm_content = normalize_content(entry.content)
-        key = (entry.character, norm_content)
+        key = (entry.speaker, norm_content)
         if key not in seen_contents:
             deduped_entries.append(entry)
             seen_contents.add(key)
         else:
-            logger.debug(f"DUPLICATE SKIP: {entry.character}: '{norm_content}'")
+            logger.debug(f"DUPLICATE SKIP: {entry.speaker}: '{norm_content}'")
 
     # Create summary (deduplicated) - only once
     summary_lines = ["Summary:"]
     seen = set()
     for config in transcript_configs:
-        if config.role == "DM":
-            line = f"{config.player_name} - {config.role} - {config.character_description}"
-        else:
-            line = f"{config.player_name} - {config.character_name} - {config.character_description}"
+        line = f"{config.name} - {config.label} - {config.description}"
         if line not in seen:
             summary_lines.append(line)
             seen.add(line)
@@ -293,9 +285,9 @@ def combine_transcripts(transcript_configs: List[TranscriptConfig],
                 # Write deduped transcript entries
                 for entry in chunk_entries:
                     if include_timestamps:
-                        f.write(f"{entry.character}: {entry.content} [{entry.timestamp}]\n")
+                        f.write(f"{entry.speaker}: {entry.content} [{entry.timestamp}]\n")
                     else:
-                        f.write(f"{entry.character}: {entry.content}\n")
+                        f.write(f"{entry.speaker}: {entry.content}\n")
             output_files.append(chunk_path)
             logger.info(f"Generated: {chunk_path}")
         except Exception as e:
@@ -339,17 +331,16 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
         if not username:
             break
 
-        player_name = os.getenv(f'TRANSCRIPT_{i}_PLAYER', '').strip().strip('"')
-        role = os.getenv(f'TRANSCRIPT_{i}_ROLE', '').strip().strip('"')
-        character_name = os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '').strip().strip('"')
-        character_description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip().strip('"')
+        # New env var names with backward-compat fallback to old names
+        name = (os.getenv(f'TRANSCRIPT_{i}_NAME', '') or os.getenv(f'TRANSCRIPT_{i}_PLAYER', '')).strip().strip('"')
+        label = (os.getenv(f'TRANSCRIPT_{i}_LABEL', '') or os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '')).strip().strip('"')
+        description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip().strip('"')
 
-        if all([player_name, role, character_name, character_description]):
+        if all([name, label, description]):
             username_mapping[username] = {
-                'player_name': player_name,
-                'role': role,
-                'character_name': character_name,
-                'character_description': character_description
+                'name': name,
+                'label': label,
+                'description': description,
             }
         else:
             logger.warning(f"Incomplete configuration for TRANSCRIPT_{i}_* variables")
@@ -357,7 +348,7 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
         i += 1
 
     if not username_mapping:
-        raise CombineError("No transcript mappings found. Define environment variables like TRANSCRIPT_1_USERNAME, TRANSCRIPT_1_PLAYER, etc.")
+        raise CombineError("No transcript mappings found. Define environment variables like TRANSCRIPT_1_USERNAME, TRANSCRIPT_1_NAME, etc.")
 
     # Create transcript configurations using username-based mapping
     transcript_configs = []
@@ -378,11 +369,10 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
             username = matches[0]
             mapping = username_mapping[username]
             config = TranscriptConfig(
-                player_name=mapping['player_name'],
-                role=mapping['role'],
-                character_name=mapping['character_name'],
-                character_description=mapping['character_description'],
-                transcript_path=vtt_file
+                name=mapping['name'],
+                label=mapping['label'],
+                description=mapping['description'],
+                transcript_path=vtt_file,
             )
             transcript_configs.append(config)
 
@@ -393,7 +383,6 @@ def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] =
         raise CombineError("No transcript configurations created. Check TRANSCRIPT_* environment variables.")
 
     # Get other settings from environment
-    campaign_name = os.getenv('CAMPAIGN_NAME', 'D&D Campaign').strip('"')
     dedupe = os.getenv('DEDUPE_STRATEGY', 'consecutive').strip('"')
     include_timestamps = os.getenv('INCLUDE_TIMESTAMPS', 'false').strip('"').lower() == 'true'
     skip_filters_str = os.getenv('SKIP_FILTERS', '[AUDIO OUT],[BLANK_AUDIO]').strip('"')
@@ -450,15 +439,14 @@ def combine_transcripts_for_directory(input_dir: Path,
     # Create transcript configurations
     transcript_configs = []
     for vtt_file in vtt_files:
-        # Extract character name from directory or filename
-        character_name = vtt_file.parent.name
+        # Extract speaker label from directory or filename
+        speaker_label = vtt_file.parent.name
 
         config = TranscriptConfig(
-            player_name=character_name,
-            role="Player",
-            character_name=character_name,
-            character_description="",
-            transcript_path=vtt_file
+            name=speaker_label,
+            label=speaker_label,
+            description="",
+            transcript_path=vtt_file,
         )
         transcript_configs.append(config)
 

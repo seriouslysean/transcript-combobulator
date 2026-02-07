@@ -15,26 +15,19 @@ logger = get_logger(__name__)
 
 from src.config import (
     WHISPER_PROMPT,
-    WHISPER_TEMPERATURE,
-    WHISPER_LANGUAGE,
     OUTPUT_DIR,
     TRANSCRIPTIONS_DIR,
     WHISPER_MODEL,
     WHISPER_DEVICE,
-    WHISPER_COMPUTE_TYPE,
     WHISPER_MODELS_DIR,
-    WHISPER_BEAM_SIZE,
-    WHISPER_NO_SPEECH_THRESHOLD,
-    WHISPER_LOGPROB_THRESHOLD,
-    WHISPER_COMPRESSION_RATIO_THRESHOLD,
-    WHISPER_WORD_TIMESTAMPS,
-    WHISPER_CONDITION_ON_PREVIOUS,
     WHISPER_CONFIDENCE_THRESHOLD,
-    VAD_THRESHOLD,
-    VAD_MIN_SPEECH_DURATION,
-    VAD_MIN_SILENCE_DURATION,
-    PADDING_SECONDS,
+    get_whisper_options,
 )
+
+import warnings
+
+# Suppress FutureWarning from torch.load regarding weights_only=False
+warnings.filterwarnings("ignore", category=FutureWarning, module="whisper")
 
 class WhisperError(Exception):
     """Base exception for whisper-related errors."""
@@ -98,18 +91,8 @@ def transcribe_segment(
             )
 
         # Transcribe the audio
-        result = model.transcribe(
-            str(audio_path),
-            language=WHISPER_LANGUAGE,
-            temperature=WHISPER_TEMPERATURE,
-            initial_prompt=WHISPER_PROMPT,
-            word_timestamps=False,
-            condition_on_previous_text=WHISPER_CONDITION_ON_PREVIOUS,
-            no_speech_threshold=WHISPER_NO_SPEECH_THRESHOLD,
-            logprob_threshold=WHISPER_LOGPROB_THRESHOLD,
-            compression_ratio_threshold=WHISPER_COMPRESSION_RATIO_THRESHOLD,
-            fp16=False  # Force FP32
-        )
+        opts = get_whisper_options()
+        result = model.transcribe(str(audio_path), **opts)
 
         # Process segments
         segments = []
@@ -147,13 +130,15 @@ def transcribe_segment(
 
 def transcribe_audio_segments(
     segments: List[tuple[Path, float]],
-    output_path: Optional[Path] = None
+    output_path: Optional[Path] = None,
+    progress_callback: Optional[Any] = None
 ) -> List[Dict[str, Any]]:
     """Transcribe multiple audio segments in sequence.
 
     Args:
         segments: List of tuples containing (segment_path, start_time)
         output_path: Optional path to save the combined VTT file
+        progress_callback: Optional callable(current, total) called after each segment
 
     Returns:
         List of transcribed segments with timestamps and text
@@ -161,32 +146,31 @@ def transcribe_audio_segments(
     total_segments = len(segments)
     logger.info(f"Loading Whisper model...")
 
+    if progress_callback:
+        progress_callback("loading", 0, total_segments)
+
     # Load model once for all segments
     model = load_whisper_model()
 
     logger.info(f"VAD found {total_segments} segments")
 
-    # Create individual VTT files for each segment, then combine
-    individual_vtts = []
     all_segments = []
 
     for i, (segment_path, start_time) in enumerate(segments, 1):
         logger.info(f"Processing segment {i}/{total_segments}...")
+        if progress_callback:
+            progress_callback("transcribing", i, total_segments)
         try:
-            # Create individual VTT file for this segment
-            segment_vtt_path = segment_path.with_suffix('.vtt')
-
-            # Transcribe segment and save to individual VTT
-            segments_result = transcribe_segment(segment_path, segment_vtt_path, start_time, model)
-            individual_vtts.append(segment_vtt_path)
+            # Transcribe segment without writing individual VTT files
+            segments_result = transcribe_segment(segment_path, None, start_time, model)
             all_segments.extend(segments_result)
 
         except Exception as e:
             logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
             continue
 
-    # Combine all individual VTT files into final output
-    if output_path and individual_vtts:
+    # Write combined VTT file
+    if output_path and all_segments:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(output_path, "w", encoding="utf-8") as combined_file:
@@ -254,18 +238,10 @@ def transcribe_audio(audio_path: Path, output_path: Path, prompt: str = "") -> L
         )
 
         # Transcribe the audio
-        result = model.transcribe(
-            str(audio_path),
-            language=WHISPER_LANGUAGE,
-            temperature=WHISPER_TEMPERATURE,
-            initial_prompt=prompt or WHISPER_PROMPT,
-            word_timestamps=False,
-            condition_on_previous_text=True,
-            no_speech_threshold=WHISPER_NO_SPEECH_THRESHOLD,
-            logprob_threshold=WHISPER_LOGPROB_THRESHOLD,
-            compression_ratio_threshold=WHISPER_COMPRESSION_RATIO_THRESHOLD,
-            fp16=False  # Force FP32
-        )
+        opts = get_whisper_options()
+        if prompt:
+            opts['initial_prompt'] = prompt
+        result = model.transcribe(str(audio_path), **opts)
 
         # Process segments
         segments = []
@@ -387,7 +363,7 @@ def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
 
     Args:
         model_name: Optional model name to use. If None, uses WHISPER_MODEL env var
-                   or falls back to large-v2
+                   or falls back to large-v3-turbo
 
     Returns:
         whisper.Whisper: Loaded model
@@ -396,7 +372,7 @@ def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
         WhisperError: If model file doesn't exist
     """
     if not model_name:
-        model_name = os.getenv('WHISPER_MODEL', 'large-v2')
+        model_name = os.getenv('WHISPER_MODEL', 'large-v3-turbo')
 
     # Check if model file exists
     model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
@@ -437,21 +413,11 @@ def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: Option
         model = load_whisper_model(model_name)
 
         # Process each segment
+        opts = get_whisper_options()
         results = []
         for segment in audio_segments:
             # Transcribe the segment
-            result = model.transcribe(
-                str(segment['path']),
-                language=WHISPER_LANGUAGE,
-                temperature=WHISPER_TEMPERATURE,
-                initial_prompt=WHISPER_PROMPT if WHISPER_PROMPT else None,
-                word_timestamps=False,
-                condition_on_previous_text=True,
-                no_speech_threshold=0.6,
-                logprob_threshold=-1.0,
-                compression_ratio_threshold=1.2,
-                fp16=False  # Force FP32
-            )
+            result = model.transcribe(str(segment['path']), **opts)
 
             # Calculate confidence score from logprobs
             if 'segments' in result and result['segments']:

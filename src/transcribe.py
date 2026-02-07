@@ -25,7 +25,7 @@ class TranscriptionError(Exception):
     """Base exception for transcription errors."""
     pass
 
-def transcribe_segments(audio_path: Path, original_input_path: Path = None) -> Dict:
+def transcribe_segments(audio_path: Path, original_input_path: Path = None, progress_callback=None) -> Dict:
     """Transcribe existing segments of an audio file that has already been processed with VAD.
     This is a specialized wrapper that handles pre-processed segments, utilizing the core
     transcribe_audio functionality.
@@ -71,7 +71,7 @@ def transcribe_segments(audio_path: Path, original_input_path: Path = None) -> D
 
         logger.info(f"Processing user: {audio_path.name}")
         # Use the core transcribe_audio function with the pre-processed segments
-        result = transcribe_audio(audio_path, pre_processed_mapping=mapping_data['segments'], original_input_path=original_input_path)
+        result = transcribe_audio(audio_path, pre_processed_mapping=mapping_data['segments'], original_input_path=original_input_path, progress_callback=progress_callback)
 
         return {
             'vtt_file': str(output_dir / f"{audio_path.stem}.vtt"),
@@ -83,7 +83,7 @@ def transcribe_segments(audio_path: Path, original_input_path: Path = None) -> D
     except Exception as e:
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e
 
-def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None, original_input_path: Path = None) -> Dict[str, Any]:
+def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None, original_input_path: Path = None, progress_callback=None) -> Dict[str, Any]:
     """Transcribe audio file using Whisper.
 
     This function handles the complete pipeline:
@@ -161,7 +161,7 @@ def transcribe_audio(audio_path: Path, pre_processed_mapping: List[Dict] = None,
 
         logger.info(f"Found {len(segments_to_transcribe)} segments to transcribe")
         logger.info("Transcribing segments...")
-        segments = transcribe_audio_segments(segments_to_transcribe, output_vtt)
+        segments = transcribe_audio_segments(segments_to_transcribe, output_vtt, progress_callback=progress_callback)
 
         # Save combined transcription results as a single JSON file
         logger.info("Saving transcription results...")

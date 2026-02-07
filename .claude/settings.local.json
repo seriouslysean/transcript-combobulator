@@ -3,7 +3,17 @@
     "allow": [
       "Bash(make:*)",
       "Bash(.venv/bin/python:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(git checkout:*)",
+      "Bash(. .venv/bin/activate)",
+      "Bash(pip index:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

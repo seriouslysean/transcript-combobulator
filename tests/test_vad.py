@@ -9,7 +9,7 @@ import json
 
 def test_vad_model_loading():
     """Test that the VAD model loads successfully."""
-    model, _ = load_vad_model()
+    model = load_vad_model()
     assert model is not None, "VAD model is None"
 
 def test_vad_detection():

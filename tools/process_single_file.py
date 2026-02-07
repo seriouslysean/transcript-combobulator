@@ -1,31 +1,39 @@
 
 import sys
+import logging
 from pathlib import Path
 from src.audio_utils import needs_conversion, convert_to_wav
 from src.process_audio import process_audio
 from src.transcribe import transcribe_segments
 from src.logging_config import setup_logging
 
-def main(input_path):
+logger = logging.getLogger(__name__)
+
+
+def main(input_path, status_dict=None, status_key=None):
     input_file = Path(input_path).resolve()
-    input_root = Path('tmp/input').resolve()
-    output_root = Path('tmp/output').resolve()
     setup_logging()
-    print(f"Step 1: Converting {input_file.name} if needed...")
+
+    def _update_status(status):
+        if status_dict is not None and status_key is not None:
+            status_dict[status_key] = status
+
+    def _progress_callback(phase, current, total):
+        """Called by transcribe_audio_segments with per-segment progress."""
+        if phase == "loading":
+            _update_status("loading model")
+        else:
+            _update_status(f"transcribing {current}/{total}")
+
+    _update_status("converting")
+    logger.info(f"Step 1: Converting {input_file.name} if needed...")
     if needs_conversion(input_file):
-        from src.config import get_output_path_for_input, INPUT_DIR, OUTPUT_DIR
-        print(f"Input file: {input_file}")
-        print(f"Input DIR: {INPUT_DIR}")
-        print(f"Input relative: {input_file.relative_to(INPUT_DIR) if input_file.is_relative_to(INPUT_DIR) else 'Not relative'}")
+        from src.config import get_output_path_for_input
         output_dir = get_output_path_for_input(input_file)
-        print(f"Output dir: {output_dir}")
         output_dir.mkdir(parents=True, exist_ok=True)
-        # Place the converted WAV file inside the output directory with the same basename as the input (no _16khz)
         output_file = output_dir / f"{input_file.stem}.wav"
-        print(f"Output file: {output_file}")
         convert_to_wav(input_file, output_file)
     else:
-        # If no conversion is needed, copy the file to the output directory with .wav extension if not already
         from src.config import get_output_path_for_input
         output_dir = get_output_path_for_input(input_file)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -33,12 +41,18 @@ def main(input_path):
         if not output_file.exists():
             import shutil
             shutil.copy(input_file, output_file)
-        print("No conversion needed, copied to output directory")
-    print(f"Step 2: Processing VAD on {output_file.name}...")
+        logger.info("No conversion needed, copied to output directory")
+
+    _update_status("splitting")
+    logger.info(f"Step 2: Processing VAD on {output_file.name}...")
     output_dir, segments = process_audio(output_file)
-    print(f"Step 3: Transcribing segments...")
-    transcribe_segments(output_file, input_file)
-    print("Step 4: All processing complete for this file")
+
+    _update_status("loading model")
+    logger.info("Step 3: Transcribing segments...")
+    transcribe_segments(output_file, input_file, progress_callback=_progress_callback)
+
+    _update_status("done")
+    logger.info("Step 4: All processing complete for this file")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
