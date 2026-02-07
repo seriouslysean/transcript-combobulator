@@ -160,6 +160,7 @@ def main() -> None:
                     os.kill(pid, signal.SIGKILL)
                 except OSError:
                     pass
+        manager.shutdown()
         sys.exit(130)
 
     old_handler = signal.signal(signal.SIGINT, _sigint_handler)
