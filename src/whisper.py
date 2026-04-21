@@ -1,439 +1,267 @@
 """Whisper integration for audio transcription."""
 
-import whisper
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-import re
-from datetime import timedelta
 import json
 import os
-import torch
-import sys
+import warnings
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Callable, Optional
 
-from src.logging_config import get_logger
-logger = get_logger(__name__)
+import whisper
 
 from src.config import (
-    WHISPER_PROMPT,
-    OUTPUT_DIR,
-    TRANSCRIPTIONS_DIR,
-    WHISPER_MODEL,
-    WHISPER_DEVICE,
-    WHISPER_MODELS_DIR,
     WHISPER_CONFIDENCE_THRESHOLD,
+    WHISPER_DEVICE,
+    WHISPER_MODEL,
+    WHISPER_MODELS_DIR,
+    WHISPER_PROMPT,
     get_whisper_options,
 )
+from src.logging_config import get_logger
 
-import warnings
+logger = get_logger(__name__)
 
 # Suppress FutureWarning from torch.load regarding weights_only=False
 warnings.filterwarnings("ignore", category=FutureWarning, module="whisper")
 
+# Whisper hallucinates repeated single tokens on long silences / laughs.
+# Any string that is the same short word repeated this many times is collapsed.
+_REPETITION_THRESHOLD = 6
+
+
 class WhisperError(Exception):
     """Base exception for whisper-related errors."""
-    pass
 
-def get_whisper_config() -> Dict[str, str]:
-    """Get whisper configuration from environment variables.
 
-    Returns:
-        Dict[str, str]: Configuration dictionary with device
-    """
-    # Get device from environment
-    device = os.getenv('WHISPER_DEVICE', 'cpu')
-    if device not in ['cpu', 'cuda', 'mps']:
-        raise ValueError(f"Invalid device: {device}. Must be 'cpu', 'cuda', or 'mps'")
+def get_whisper_device() -> str:
+    device = os.getenv('WHISPER_DEVICE', WHISPER_DEVICE)
+    if device not in ('cpu', 'cuda', 'mps'):
+        raise ValueError(f"Invalid WHISPER_DEVICE: {device}. Must be cpu, cuda, or mps.")
+    return device
 
-    return {'device': device}
 
 def format_timestamp(seconds: float) -> str:
     """Format seconds into VTT timestamp format (HH:MM:SS.mmm)."""
     td = timedelta(seconds=seconds)
     hours = td.seconds // 3600
     minutes = (td.seconds % 3600) // 60
-    seconds = td.seconds % 60
-    milliseconds = td.microseconds // 1000
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+    secs = td.seconds % 60
+    millis = td.microseconds // 1000
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
+
+
+def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> str:
+    """Collapse degenerate whisper output like 'laughs laughs laughs …'.
+
+    If the text is a single short word repeated >= threshold times (with only
+    whitespace/punctuation between), replace with a single occurrence.
+    Otherwise return the input unchanged.
+    """
+    if not text:
+        return text
+    tokens = text.split()
+    if len(tokens) < threshold:
+        return text
+    first = tokens[0].strip(".,!?;:").lower()
+    if not first or len(first) > 12:
+        return text
+    if all(t.strip(".,!?;:").lower() == first for t in tokens):
+        return tokens[0]
+    return text
+
+
+def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
+    """Load a whisper model from the local models dir.
+
+    Raises WhisperError if the model file is missing — run `make setup-whisper`.
+    """
+    model_name = model_name or os.getenv('WHISPER_MODEL', WHISPER_MODEL)
+    model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
+    if not model_path.exists():
+        raise WhisperError(
+            f"Model file not found: {model_path}. Run `make setup-whisper` first."
+        )
+    os.environ['WHISPER_MODELS_DIR'] = str(WHISPER_MODELS_DIR)
+    return whisper.load_model(
+        model_name,
+        device=get_whisper_device(),
+        download_root=str(WHISPER_MODELS_DIR),
+    )
+
+
+def _segments_from_result(
+    result: dict[str, Any], offset: float = 0.0
+) -> list[dict[str, Any]]:
+    """Extract [{start, end, text, confidence}] from a whisper result."""
+    out: list[dict[str, Any]] = []
+    for segment in result.get("segments", []):
+        if not isinstance(segment, dict):
+            continue
+        start = float(segment.get("start", 0.0)) + offset
+        end = float(segment.get("end", 0.0)) + offset
+        text = collapse_repetition(str(segment.get("text", "")).strip())
+        avg_logprob = float(segment.get('avg_logprob', 0))
+        confidence = min(100, max(0, (1 + avg_logprob) * 100))
+        out.append({"start": start, "end": end, "text": text, "confidence": confidence})
+    return out
+
+
+def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("WEBVTT\n\n")
+        for seg in segments:
+            text = seg["text"].strip()
+            if not text:
+                continue
+            f.write(
+                f"{format_timestamp(seg['start'])} --> {format_timestamp(seg['end'])}\n"
+                f"{text}\n\n"
+            )
+
 
 def transcribe_segment(
     audio_path: Path,
     output_path: Optional[Path] = None,
     offset: float = 0.0,
-    model: Optional[whisper.Whisper] = None
-) -> List[Dict[str, Any]]:
-    """Transcribe a single audio segment using Whisper.
-
-    Args:
-        audio_path: Path to the audio file to transcribe
-        output_path: Optional path to save the VTT file (only used for final output)
-        offset: Time offset in seconds to add to timestamps
-        model: Optional pre-loaded Whisper model to use
-
-    Returns:
-        List of segments with timestamps and text
-
-    Raises:
-        WhisperError: If transcription fails
-    """
+    model: Optional[whisper.Whisper] = None,
+) -> list[dict[str, Any]]:
+    """Transcribe a single audio file, optionally writing a VTT."""
     if not audio_path.exists():
         raise WhisperError(f"Audio file not found: {audio_path}")
 
     try:
-        # Get whisper configuration
-        config = get_whisper_config()
-
-        # Load model if not provided
-        if model is None:
-            model = whisper.load_model(
-                WHISPER_MODEL,
-                device=config['device'],
-                download_root=str(WHISPER_MODELS_DIR)
-            )
-
-        # Transcribe the audio
-        opts = get_whisper_options()
-        result = model.transcribe(str(audio_path), **opts)
-
-        # Process segments
-        segments = []
-        for segment in result["segments"]:
-            if isinstance(segment, dict):
-                start = float(segment.get("start", 0.0)) + offset
-                end = float(segment.get("end", 0.0)) + offset
-
-                text = str(segment.get("text", "")).strip()
-                avg_logprob = float(segment.get('avg_logprob', 0))
-                confidence = min(100, max(0, (1 + avg_logprob) * 100))
-
-                segments.append({
-                    "start": start,
-                    "end": end,
-                    "text": text,
-                    "confidence": confidence
-                })
-
-        # Write VTT file if output path is provided
+        model = model or load_whisper_model()
+        result = model.transcribe(str(audio_path), **get_whisper_options())
+        segments = _segments_from_result(result, offset=offset)
         if output_path and segments:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write("WEBVTT\n\n")
-                for segment in segments:
-                    if segment["text"].strip():  # Only write non-empty segments
-                        start_time = format_timestamp(segment["start"])
-                        end_time = format_timestamp(segment["end"])
-                        f.write(f"{start_time} --> {end_time}\n{segment['text'].strip()}\n\n")
-
+            _write_vtt(output_path, segments)
         return segments
-
     except Exception as e:
         raise WhisperError(f"Failed to transcribe segment: {e}") from e
 
+
 def transcribe_audio_segments(
-    segments: List[tuple[Path, float]],
+    segments: list[tuple[Path, float]],
     output_path: Optional[Path] = None,
-    progress_callback: Optional[Any] = None
-) -> List[Dict[str, Any]]:
-    """Transcribe multiple audio segments in sequence.
+    progress_callback: Optional[Callable[[str, int, int], None]] = None,
+) -> list[dict[str, Any]]:
+    """Transcribe a list of (segment_path, start_offset) tuples with a shared model.
 
-    Args:
-        segments: List of tuples containing (segment_path, start_time)
-        output_path: Optional path to save the combined VTT file
-        progress_callback: Optional callable(current, total) called after each segment
-
-    Returns:
-        List of transcribed segments with timestamps and text
+    Dedupes identical lines across segments in the output VTT.
     """
-    total_segments = len(segments)
-    logger.info(f"Loading Whisper model...")
-
+    total = len(segments)
+    logger.info("Loading Whisper model...")
     if progress_callback:
-        progress_callback("loading", 0, total_segments)
+        progress_callback("loading", 0, total)
 
-    # Load model once for all segments
     model = load_whisper_model()
+    logger.info(f"VAD found {total} segments")
 
-    logger.info(f"VAD found {total_segments} segments")
-
-    all_segments = []
-
+    all_segments: list[dict[str, Any]] = []
     for i, (segment_path, start_time) in enumerate(segments, 1):
-        logger.info(f"Processing segment {i}/{total_segments}...")
+        logger.info(f"Processing segment {i}/{total}...")
         if progress_callback:
-            progress_callback("transcribing", i, total_segments)
+            progress_callback("transcribing", i, total)
         try:
-            # Transcribe segment without writing individual VTT files
-            segments_result = transcribe_segment(segment_path, None, start_time, model)
-            all_segments.extend(segments_result)
-
+            all_segments.extend(transcribe_segment(segment_path, None, start_time, model))
         except Exception as e:
             logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
-            continue
 
-    # Write combined VTT file
     if output_path and all_segments:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(output_path, "w", encoding="utf-8") as combined_file:
-            combined_file.write("WEBVTT\n\n")
-
-            # Deduplicate transcript lines across all segments before writing
-            seen_lines = set()
-            deduped_segments = []
-            for segment in all_segments:
-                line = segment["text"].strip()
-                if line and line not in seen_lines:
-                    deduped_segments.append(segment)
-                    seen_lines.add(line)
-
-            for segment in deduped_segments:
-                start_time = format_timestamp(segment["start"])
-                end_time = format_timestamp(segment["end"])
-                combined_file.write(f"{start_time} --> {end_time}\n{segment['text'].strip()}\n\n")
-
+        seen: set[str] = set()
+        deduped: list[dict[str, Any]] = []
+        for seg in all_segments:
+            line = seg["text"].strip()
+            if line and line not in seen:
+                deduped.append(seg)
+                seen.add(line)
+        _write_vtt(output_path, deduped)
         logger.info(f"User transcript saved: {output_path.name}")
 
-
-    # Sort segments by start time for return value
-    all_segments.sort(key=lambda x: x["start"])
+    all_segments.sort(key=lambda s: s["start"])
     return all_segments
 
-def filter_by_confidence(segments: List[Dict[str, Any]], confidence_threshold: float = 50.0) -> List[Dict[str, Any]]:
-    """Filter segments by confidence score.
 
-    Args:
-        segments: List of segments with confidence scores
-        confidence_threshold: Minimum confidence score (0-100)
+def filter_by_confidence(
+    segments: list[dict[str, Any]],
+    confidence_threshold: float = WHISPER_CONFIDENCE_THRESHOLD,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for s in segments:
+        if float(s.get("confidence", 0.0)) >= confidence_threshold:
+            out.append(s)
+    return out
 
-    Returns:
-        List of segments that meet the confidence threshold
-    """
-    return [segment for segment in segments if segment.get("confidence", 0.0) >= confidence_threshold]
 
-def transcribe_audio(audio_path: Path, output_path: Path, prompt: str = "") -> List[Dict[str, Any]]:
-    """Transcribe audio file directly using Whisper without VAD.
+def transcribe_file_direct(
+    audio_path: Path,
+    output_path: Path,
+    prompt: str = "",
+) -> list[dict[str, Any]]:
+    """Transcribe a whole audio file in one pass (no VAD segmentation).
 
-    Args:
-        audio_path: Path to the audio file to transcribe
-        output_path: Path to save the VTT file
-        prompt: Optional prompt to guide transcription
-
-    Returns:
-        List of transcribed segments with timestamps and text
-
-    Raises:
-        WhisperError: If transcription fails
+    Used by ``regenerate_vtt_for_audio``. For the standard pipeline, use
+    ``src.transcribe.transcribe_audio`` which goes through VAD.
     """
     if not audio_path.exists():
         raise WhisperError(f"Audio file not found: {audio_path}")
 
     try:
-        # Get whisper configuration
-        config = get_whisper_config()
-
-        # Load model
-        model = whisper.load_model(
-            WHISPER_MODEL,
-            device=config['device'],
-            download_root=str(WHISPER_MODELS_DIR)
-        )
-
-        # Transcribe the audio
+        model = load_whisper_model()
         opts = get_whisper_options()
         if prompt:
             opts['initial_prompt'] = prompt
         result = model.transcribe(str(audio_path), **opts)
-
-        # Process segments
-        segments = []
-        for segment in result["segments"]:
-            if isinstance(segment, dict):
-                text = str(segment.get("text", "")).strip()
-                avg_logprob = float(segment.get('avg_logprob', 0))
-                confidence = min(100, max(0, (1 + avg_logprob) * 100))
-
-                # Log the transcribed text
-                if text:
-                    logger.info(f"  [{format_timestamp(float(segment.get('start', 0.0)))} -> {format_timestamp(float(segment.get('end', 0.0)))}] {text}")
-
-                segments.append({
-                    "start": float(segment.get("start", 0.0)),
-                    "end": float(segment.get("end", 0.0)),
-                    "text": text,
-                    "confidence": confidence
-                })
-
-        # Write VTT file
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write("WEBVTT\n\n")
-            for segment in segments:
-                start_time = format_timestamp(segment["start"])
-                end_time = format_timestamp(segment["end"])
-                text = segment["text"].strip()
-                f.write(f"{start_time} --> {end_time}\n{text}\n\n")
-
+        segments = _segments_from_result(result)
+        for seg in segments:
+            if seg["text"]:
+                logger.info(
+                    f"  [{format_timestamp(seg['start'])} -> {format_timestamp(seg['end'])}] {seg['text']}"
+                )
+        _write_vtt(output_path, segments)
         return segments
-
     except Exception as e:
         raise WhisperError(f"Failed to transcribe audio: {e}") from e
+
 
 def regenerate_vtt_with_confidence(
     json_path: Path,
     output_vtt: Path,
-    confidence_threshold: Optional[float] = None
-) -> List[Dict[str, Any]]:
-    """Regenerate VTT file from JSON with optional confidence filtering.
-
-    Args:
-        json_path: Path to the JSON file containing segments
-        output_vtt: Path to save the VTT file
-        confidence_threshold: Optional confidence threshold (0-100)
-
-    Returns:
-        List of segments that meet the confidence threshold
-
-    Raises:
-        WhisperError: If regeneration fails
-    """
+    confidence_threshold: Optional[float] = None,
+) -> list[dict[str, Any]]:
+    """Rewrite a VTT from a saved segments JSON, optionally filtering by confidence."""
     if not json_path.exists():
         raise WhisperError(f"JSON file not found: {json_path}")
 
     try:
-        # Load segments from JSON
         with open(json_path) as f:
-            segments = json.load(f)
-
-        # Filter by confidence if threshold is provided
+            segments: list[dict[str, Any]] = json.load(f)
         if confidence_threshold is not None:
             segments = filter_by_confidence(segments, confidence_threshold)
-
-        # Write VTT file
-        output_vtt.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_vtt, "w", encoding="utf-8") as f:
-            f.write("WEBVTT\n\n")
-            for segment in segments:
-                start_time = format_timestamp(segment["start"])
-                end_time = format_timestamp(segment["end"])
-                text = segment["text"].strip()
-                f.write(f"{start_time} --> {end_time}\n{text}\n\n")
-
+        _write_vtt(output_vtt, segments)
         return segments
-
     except Exception as e:
         raise WhisperError(f"Failed to regenerate VTT: {e}") from e
 
+
 def regenerate_vtt_for_audio(
     audio_path: Path,
-    confidence_threshold: Optional[float] = None
-) -> List[Dict[str, Any]]:
-    """Regenerate VTT file for an audio file with optional confidence filtering.
-
-    Args:
-        audio_path: Path to the audio file
-        confidence_threshold: Optional confidence threshold (0-100)
-
-    Returns:
-        List of segments that meet the confidence threshold
-
-    Raises:
-        WhisperError: If regeneration fails
-    """
+    confidence_threshold: Optional[float] = None,
+) -> list[dict[str, Any]]:
+    """Re-transcribe an audio file and rewrite its VTT, with optional confidence filter."""
     if not audio_path.exists():
         raise WhisperError(f"Audio file not found: {audio_path}")
 
-    # Define paths
     json_path = audio_path.with_suffix(".json")
     output_vtt = audio_path.with_suffix(".vtt")
 
-    # First transcribe the audio to get JSON
-    segments = transcribe_audio(audio_path, output_vtt)
+    segments = transcribe_file_direct(audio_path, output_vtt, prompt=WHISPER_PROMPT)
 
-    # Save segments to JSON
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(segments, f, indent=2)
 
-    # Regenerate VTT with confidence filtering if threshold is provided
     if confidence_threshold is not None:
         segments = regenerate_vtt_with_confidence(json_path, output_vtt, confidence_threshold)
 
     return segments
-
-def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
-    """Load whisper model with proper configuration.
-
-    Args:
-        model_name: Optional model name to use. If None, uses WHISPER_MODEL env var
-                   or falls back to large-v3-turbo
-
-    Returns:
-        whisper.Whisper: Loaded model
-
-    Raises:
-        WhisperError: If model file doesn't exist
-    """
-    if not model_name:
-        model_name = os.getenv('WHISPER_MODEL', 'large-v3-turbo')
-
-    # Check if model file exists
-    model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
-    if not model_path.exists():
-        raise WhisperError(f"Model file not found: {model_path}. Please run setup-whisper first.")
-
-    # Set WHISPER_MODELS_DIR environment variable
-    os.environ['WHISPER_MODELS_DIR'] = str(WHISPER_MODELS_DIR)
-
-    # Get configuration
-    config = get_whisper_config()
-
-    # Load model
-    model = whisper.load_model(
-        model_name,
-        device=config['device'],
-        download_root=str(WHISPER_MODELS_DIR)
-    )
-
-    return model
-
-
-def transcribe_segments(audio_segments: List[Dict[str, Any]], model_name: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Transcribe audio segments using Whisper.
-
-    Args:
-        audio_segments: List of audio segment dictionaries with paths and metadata
-        model_name: Optional model name to use
-
-    Returns:
-        List[Dict[str, Any]]: List of transcribed segments with text and metadata
-    """
-    if not audio_segments:
-        return []
-
-    try:
-        # Load model once for all segments
-        model = load_whisper_model(model_name)
-
-        # Process each segment
-        opts = get_whisper_options()
-        results = []
-        for segment in audio_segments:
-            # Transcribe the segment
-            result = model.transcribe(str(segment['path']), **opts)
-
-            # Calculate confidence score from logprobs
-            if 'segments' in result and result['segments']:
-                # Average probability across all segments
-                avg_logprob = sum(float(s.get('avg_logprob', 0)) if isinstance(s, dict) else 0 for s in result['segments']) / len(result['segments'])
-                # Convert log probability to confidence percentage (0-100)
-                confidence = min(100, max(0, (1 + avg_logprob) * 100))
-            else:
-                confidence = 0
-
-            # Add transcription and confidence to segment data
-            segment['text'] = str(result.get('text', '')).strip()
-            segment['confidence'] = confidence
-            results.append(segment)
-
-        return results
-
-    except Exception as e:
-        raise WhisperError(f"Error transcribing segments: {e}")

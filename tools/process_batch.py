@@ -9,6 +9,7 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from typing import MutableMapping
 
 from rich.live import Live
 from rich.table import Table
@@ -29,7 +30,12 @@ def find_audio_files(target_dir: Path) -> list[Path]:
     return files
 
 
-def _worker(file_path: str, status_dict: dict, status_key: str, torch_threads: int) -> tuple[str, str, str]:
+def _worker(
+    file_path: str,
+    status_dict: "MutableMapping[str, str]",
+    status_key: str,
+    torch_threads: int,
+) -> tuple[str, str, str]:
     """Worker function that runs in a subprocess.
 
     Returns:
@@ -72,7 +78,11 @@ def _worker(file_path: str, status_dict: dict, status_key: str, torch_threads: i
         logging.disable(logging.NOTSET)
 
 
-def _build_table(file_names: list[str], status_dict: dict, max_workers: int) -> Table:
+def _build_table(
+    file_names: list[str],
+    status_dict: "MutableMapping[str, str]",
+    max_workers: int,
+) -> Table:
     """Build a rich Table showing current progress."""
     table = Table(title=f"Transcription Progress ({max_workers} workers)")
     table.add_column("Speaker", style="cyan", min_width=24)
@@ -150,7 +160,7 @@ def main() -> None:
 
     # Install a SIGINT handler that forcefully kills child processes.
     # Without this, ProcessPoolExecutor and Manager ignore the first Ctrl+C.
-    executor_ref = None
+    executor_ref: ProcessPoolExecutor | None = None
 
     def _sigint_handler(signum, frame):
         print("\nCancelled.")

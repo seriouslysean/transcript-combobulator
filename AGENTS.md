@@ -1,217 +1,169 @@
-# AI Agent Development Guidelines
+# Agent Development Guidelines
 
-This document contains concrete rules and learnings for AI agent-based development with this codebase.
+Concrete rules for working on this codebase. If you're Claude Code or another
+coding agent, read this first.
 
-## Core Principles
+## Module Layout
 
-### DRY, SIMPLE, KISS
-- **Don't Repeat Yourself**: Always reuse existing Makefile targets and functions
-- **Keep It Simple**: Prefer simple solutions over complex ones
-- **Keep It Simple, Stupid**: Avoid over-engineering
-
-### Use Existing Tools
-- **Always use the Makefile**: Never duplicate logic that exists in Makefile targets
-- **Respect environment variables**: Use `.env` files and `ENV_FILE` overrides
-- **Understand ALL available tools**: Study the Makefile before implementing new functionality
-
-## File and Environment Management
-
-### Environment Configuration
-- **Main environment**: `.env` for production configuration
-- **Test environment**: `.env.sample` for sample/test data
-- **Environment override**: Use `ENV_FILE=.env.sample make command` pattern
-- **Never modify main .env**: Use override pattern for testing
-
-### File Naming Conventions
-- **Audio files**: `3-nilbits.flac` (number-username pattern)
-- **Converted files**: `3-nilbits_16khz.wav` (preserve original with suffix)
-- **User directories**: `3-nilbits_16khz/` (matches converted filename)
-- **User transcripts**: `nilbits_combined.vtt` (username extracted from pattern)
-- **Session transcripts**: `session-combined-1.txt`, `session-combined-2.txt`
-
-### Directory Structure
 ```
-tmp/
-├── input/
-│   └── session-name/           # Session folders
-│       ├── 3-nilbits.flac      # Original audio
-│       └── 1-dezfrost.flac     # Numbers may vary
-└── output/
-    └── session-name/           # Matching output structure
-        ├── 3-nilbits_16khz/    # User-specific folders
-        │   ├── nilbits_combined.vtt
-        │   └── segments/
-        └── session-combined-*.txt
+src/
+├── config.py           # ENV_FILE-aware settings; imported by everything
+├── audio_utils.py      # Validate + convert any audio to 16kHz mono WAV
+├── vad.py              # Silero VAD → segment WAVs + mapping JSON
+├── whisper.py          # Whisper model wrapping; VTT writing; repetition filter
+├── transcribe.py       # Pipeline entry: full-file transcribe via VAD + whisper
+├── combine.py          # Merge per-user VTTs → one session transcript
+└── logging_config.py   # setup_logging / get_logger
+
+tools/
+├── process_batch.py         # Parallel batch processor with rich progress UI
+├── process_single_file.py   # One-file pipeline (convert → VAD → transcribe)
+├── convert_audio.py         # CLI: one file or all of tmp/input/
+├── create_sample_files.py   # Build sample/test audio from samples/
+├── setup_whisper.py         # Download whisper model into models/
+└── test_whisper.py          # Smoke-test whisper on an audio file
 ```
 
-## Username-Based Mapping
+The standard pipeline: `tools/process_batch.py` →
+`tools/process_single_file.py` → `src.audio_utils.convert_to_wav` →
+`src.vad.process_audio` (writes segment WAVs + `<stem>_mapping.json`) →
+`src.transcribe.transcribe_segments` → `src.whisper.transcribe_audio_segments`
+→ `src.combine.combine_transcripts_from_env`.
 
-### Dynamic User Positions
-- **Problem**: Discord Craig bot assigns numbers based on join order
-- **Solution**: Map usernames, not directory numbers
-- **Pattern**: `3-nilbits_16khz` → extract `nilbits` → map to `TRANSCRIPT_*_USERNAME`
+## Invariants
 
-### Environment Variables
+- **One place for env loading.** `src/config.py` calls `load_dotenv` at import.
+  Do NOT add `load_dotenv` anywhere else.
+- **Audio is normalized once.** `src.audio_utils.convert_to_wav` normalizes to
+  `[-1, 1]`. Don't re-normalize downstream.
+- **Mapping JSON is written once.** `src.vad.process_audio` is the only writer.
+  `src.transcribe.transcribe_audio` trusts it and reads it back.
+- **Only one `transcribe_audio` public function.** It lives in
+  `src.transcribe`. `src.whisper.transcribe_file_direct` is the one-shot
+  (no-VAD) variant and is internal to the regenerate-VTT flow.
+- **Combine preserves original text.** `_normalize_for_dedup` is used ONLY for
+  dedup keys, never for the text written to the output file.
+- **Skip filters match raw text**, not normalized text. So `[BLANK_AUDIO]` in a
+  VTT line is filtered by the literal `[BLANK_AUDIO]` filter.
+
+## Makefile Usage
+
+Always use the Makefile:
+
+| Command | Purpose |
+|---------|---------|
+| `make setup` | Create venv, install deps, download whisper model |
+| `make run folder=path/` | Run the full parallel pipeline |
+| `make run-single file=path.wav` | Pipeline for one file (no combine) |
+| `make process-vad file=path.wav` | VAD step only |
+| `make transcribe-segments file=path.wav` | Transcription step only (needs mapping) |
+| `make combine-transcripts [session=...]` | Combine step only |
+| `make convert-audio [input=path]` | Convert to 16kHz mono WAV |
+| `make regenerate-vtt file=path [threshold=50]` | Re-run whisper with confidence filter |
+| `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
+| `make create-test-files` | Populate `tmp/input/test_jfk*.wav` for pytest |
+| `make test` | Run pytest |
+| `make lint` | Run mypy (advisory; annotation coverage not enforced) |
+
+## Environment Files
+
+- `.env` — production config (default).
+- `.env.example` — committed template.
+- `.env.jfk-sample` — committed, used by tests and `make create-sample-files`.
+- `.env.<campaign>` — per-session overrides (e.g. `.env.annihilation`). Invoke
+  with `ENV_FILE=.env.annihilation make run ...`.
+- Never modify `.env` directly; override with `ENV_FILE=...`.
+
+### Speaker Mapping
+
+Per-user env vars (indexed starting at 1):
+
 ```sh
-# Use USERNAME not DIR
-TRANSCRIPT_1_USERNAME="nilbits"    # ✅ Correct
-TRANSCRIPT_1_DIR="3-nilbits"       # ❌ Fragile
-
-# Speaker mapping fields (new names, old names still work as fallback)
-TRANSCRIPT_1_NAME="Sean"           # Display name (was PLAYER)
-TRANSCRIPT_1_LABEL="DM"            # Speaker label (was CHARACTER)
-TRANSCRIPT_1_DESCRIPTION="Dungeon Master"
+TRANSCRIPT_1_USERNAME="craig_discord_name"   # required, matched as substring in dir name
+TRANSCRIPT_1_NAME="Display Name"             # required (falls back to TRANSCRIPT_1_PLAYER)
+TRANSCRIPT_1_LABEL="Speaker Tag"             # required (falls back to TRANSCRIPT_1_CHARACTER)
+TRANSCRIPT_1_DESCRIPTION="Short bio"         # required
 ```
 
-## Processing Pipeline
+If any of `NAME`, `LABEL`, `DESCRIPTION` is empty the mapping is skipped with a
+warning. If the username is ambiguous across directories, the combine step
+fails loudly.
 
-### Complete Workflow
-1. **Audio Conversion**: FLAC/MP3 → 16kHz WAV
-2. **Voice Activity Detection**: Create segments
-3. **Individual Transcription**: Each segment → VTT
-4. **User Combination**: All segments → user VTT
-5. **Session Combination**: All users → chronological transcript
-6. **Smart Chunking**: Split large sessions intelligently
+## File Naming Conventions
 
-### Memory Management
-- **Process segments individually**: Never accumulate all segments in memory
-- **Write immediately**: Save VTT files after each segment
-- **Clean up**: Remove temporary files after combination
+- **Input audio**: `3-nilbits.flac` (number-username pattern from Discord Craig)
+- **Converted**: `3-nilbits_16khz.wav`
+- **Per-user output dir**: `3-nilbits_16khz/`
+- **Per-user combined VTT**: `nilbits_combined.vtt` (username extracted from stem)
+- **Session combined**: `<session>-combined.txt`, or chunked:
+  `<session>-combined-1.txt`, `<session>-combined-2.txt`
 
-## Transcription Optimizations
+## Performance Notes
 
-### Performance Fixes
-- **Disable word timestamps**: `WHISPER_WORD_TIMESTAMPS=false`
-- **Reason**: Word timestamp alignment causes hanging on some segments
-- **Impact**: Significant performance improvement, no functional loss
+- Whisper's `word_timestamps=True` hangs on some segments. Keep the default
+  `WHISPER_WORD_TIMESTAMPS=false`.
+- `beam_size=1` and `condition_on_previous_text=false` are intentional for
+  VAD-segment transcription (each segment is already a speech island).
+- Each parallel worker loads its own whisper model. Keep `PARALLEL_JOBS` small
+  on low-RAM machines (default 2). `TORCH_THREADS=0` auto-splits threads
+  across workers.
+- On macOS, `multiprocessing.set_start_method("spawn")` is mandatory for torch.
+  `tools/process_batch.py` handles this at import time.
 
-### Logging Best Practices
-- **Essential progress only**: Model loading, segment counts, progress indicators
-- **No verbose debug**: Avoid per-segment text output unless debugging
-- **Flush stdout**: Ensure real-time progress display
+## Known Whisper Failure Modes
 
-## Chunking Logic
+- **Repetition hallucination** on laughs/silence: whisper emits one word
+  hundreds of times (e.g. `"laughs laughs laughs…"`). `src.whisper.collapse_repetition`
+  collapses these to a single occurrence before they reach the VTT.
+- **Confidence drift** on quiet or ambiguous audio: `make regenerate-vtt
+  threshold=50` re-emits a filtered VTT from the saved segment JSON.
 
-### Smart Chunking Rules
-- **Minimum threshold**: Don't split if fewer than 5 entries per chunk
-- **Single file fallback**: Create one file if content is too short
-- **Respect CHUNKS setting**: But override when inappropriate
+## Testing
 
-### Implementation
-```python
-if len(all_entries) < chunks or len(all_entries) < min_entries_per_chunk:
-    actual_chunks = 1  # Override CHUNKS setting
-else:
-    actual_chunks = chunks
-```
+- `tests/conftest.py` session fixture creates `tmp/input/test_jfk*.wav` from
+  `samples/jfk.wav`. You must have a real `samples/jfk.wav` file present.
+- `tests/test_batch.py` is fast (mocks + dir fixtures). Safe to run on every
+  change.
+- `tests/test_combine.py` is fast (pure Python over synthetic VTTs).
+- `tests/test_vad.py`, `tests/test_transcription.py`, `tests/test_whisper.py`
+  do real whisper inference and are slow. Run only when changing the audio
+  pipeline.
+- Whisper segment count is nondeterministic — use range assertions, not exact
+  counts.
+- For similarity checks, use `difflib.SequenceMatcher`, not `set` intersection
+  (repeated words break set-based similarity).
 
-## Testing Patterns
+## Dependencies (gotchas)
 
-### Key Gotchas
-- **Whisper segment count is nondeterministic** — never hardcode exact segment counts in assertions; use range checks instead
-- **Word overlap via set intersection penalizes repeated words** — use `SequenceMatcher` for similarity comparison
-- **torchaudio 2.10+ requires `torchcodec`** — will break all audio loading without it
-- **`multiprocessing.set_start_method("spawn")`** — required for torch on macOS, must be called before any multiprocessing
-- **VTT output path** — `transcribe_audio()` writes to `OUTPUT_DIR/<stem>/`, NOT `TRANSCRIPTIONS_DIR`
-- **Test files** — created by `conftest.py` session fixture from `tools/create_test_files.py`; requires `samples/jfk.wav`
+- `torchaudio>=2.10` requires `torchcodec`. Both are pinned in `pyproject.toml`.
+- `silero-vad` is pulled in; VAD model is downloaded on first `load_silero_vad()`
+  call and cached.
 
-### Use Sample Files
-- **Setup samples**: Add audio files to `samples/` directory, then `make create-sample-files`
-- **Test with JFK samples**: Uses `tmp/input/jfk-sample/` session structure
-- **JFK sample environment**: `ENV_FILE=.env.jfk-sample make command`
-- **Environment override**: Always use environment files for different datasets
+## Error Handling Style
 
-### Debugging Commands
-```sh
-# Test individual steps
-make process-vad file=path/to/file.wav
-make transcribe-segments file=path/to/file.wav
-make combine-transcripts session=session-name
+- Custom exceptions: `AudioValidationError`, `VADError`, `WhisperError`,
+  `TranscriptionError`, `CombineError`. Wrap underlying errors via `raise ... from`.
+- Log warnings for skippable problems (missing segment file). Raise for
+  structural problems (no speech detected, missing mapping).
+- Individual segment failures do NOT fail the whole pipeline.
 
-# Test with JFK samples
-ENV_FILE=.env.jfk-sample make run folder=tmp/input/jfk-sample
-ENV_FILE=.env.jfk-sample make run-single file=tmp/input/jfk-sample/jfk_padded.wav
-```
+## Adding a New Feature
 
-## Code Quality Rules
-
-### Error Handling
-- **Graceful degradation**: Skip problematic segments, don't crash
-- **Clear error messages**: Help users understand what to fix
-- **Logging**: Use appropriate log levels (INFO for progress, WARNING for issues)
-
-### Documentation
-- **Update docs**: Keep README current with functionality
-- **Include examples**: Show concrete usage patterns
-- **Explain patterns**: Document why username mapping is needed
+1. Check this file for existing patterns first.
+2. Use a Makefile target. Add one if the operation should be reproducible.
+3. Put shared logic in `src/`, glue code in `tools/`.
+4. Load config only through `src.config`. Never call `load_dotenv` directly.
+5. Add a test in `tests/test_<module>.py` using synthetic fixtures where
+   possible. Only use the slow whisper tests when actually testing whisper
+   behavior.
+6. Run `make lint` and `make test` before declaring done.
 
 ## Common Pitfalls
 
-### Environment Issues
-- **❌ Modifying main .env**: Always use override pattern
-- **❌ Hardcoding values**: Use environment variables
-- **❌ Ignoring existing settings**: Check current configuration first
-
-### Memory Problems
-- **❌ Accumulating segments**: Process individually
-- **❌ Large model state**: Monitor memory usage
-- **❌ Not cleaning up**: Remove temporary files
-
-### File Handling
-- **❌ Assuming file structure**: Check what actually exists
-- **❌ Hardcoding paths**: Use configurable paths
-- **❌ Not handling edge cases**: Empty files, missing directories
-
-## Testing Methodology
-
-### Development Flow
-1. **Create sample files**: `make create-sample-files`
-2. **Test single file**: `make run-single file=tmp/input/jfk_1.wav`
-3. **Test combination**: `ENV_FILE=.env.sample make combine-transcripts session=jfk_1`
-4. **Test full workflow**: `make run folder=tmp/input/session`
-
-### Validation Points
-- **VAD segment count**: Should appear in logs
-- **User VTT creation**: Check individual combined files
-- **Session combination**: Verify chronological order
-- **Chunking logic**: Ensure appropriate splitting
-
-## Session-Specific Processing
-
-### Session Parameter Usage
-- **Target specific sessions**: `make combine-transcripts session=session-name`
-- **Avoid processing all files**: Use session parameter to filter
-- **Environment isolation**: Different .env files for different sessions
-
-### Directory Organization
-- **Preserve input structure**: Output mirrors input directory organization
-- **Session-based output**: Each session gets its own output directory
-- **User-specific folders**: Individual users get subdirectories
-
-
-## Performance Considerations
-
-### Optimization Strategies
-- **Batch processing**: Process multiple files in sequence
-- **Memory management**: Clear intermediate data
-- **Model reuse**: Load Whisper model once per session
-- **Efficient I/O**: Write files immediately, don't buffer
-
-### Monitoring
-- **Progress logging**: Show real-time progress
-- **Error tracking**: Log but don't crash on individual failures
-- **Performance metrics**: Track processing time per segment
-
-## Integration Guidelines
-
-### AI Tool Integration
-- **Optimized format**: Combined transcripts work well with language models
-- **Clear speaker identification**: Speaker labels in output
-- **Chronological order**: Preserve conversation flow
-- **Reasonable chunk sizes**: Balance readability and context
-
-### Workflow Integration
-- **Makefile-driven**: All operations through make targets
-- **Environment-based**: Configuration through .env files
-- **Session-organized**: Natural organization by recording session
-- **Resume-friendly**: Individual steps can be re-run independently
+- ❌ Editing `.env` (use `ENV_FILE=` instead)
+- ❌ Calling `load_dotenv` anywhere other than `src/config.py`
+- ❌ Hardcoding paths; use `src.config.OUTPUT_DIR` / `INPUT_DIR` / `get_output_path_for_input`
+- ❌ Hardcoding whisper kwargs; use `src.config.get_whisper_options()`
+- ❌ Normalizing audio twice (audio_utils does it)
+- ❌ Normalizing transcript text for display (normalize is dedup-only)
+- ❌ Re-reading a file in the same process just to verify it; trust the write

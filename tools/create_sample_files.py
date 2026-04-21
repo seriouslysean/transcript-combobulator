@@ -1,127 +1,122 @@
 #!/usr/bin/env python3
-"""Create sample files for development and testing."""
+"""Create sample/test audio files from inputs in samples/ for development and testing."""
 
+import argparse
 import shutil
+import sys
+from pathlib import Path
+
 import soundfile as sf
-import numpy as np
 import torch
 import torchaudio
-from pathlib import Path
-import argparse
 
-def create_copies(input_path: Path, output_dir: Path, num_copies: int = 5, prefix: str = "") -> None:
-    """Create multiple copies of an input file with numbered names.
 
-    Args:
-        input_path: Path to the input audio file
-        output_dir: Directory to save the copies
-        num_copies: Number of copies to create
-        prefix: Optional prefix for the output files (e.g. 'test_' for test files)
-    """
-    if not input_path.exists():
-        print(f"Error: Input file {input_path} not found")
-        return
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if num_copies == 1:
-        # For single copy, don't add a number
-        dest_file = output_dir / f"{prefix}{input_path.stem}{input_path.suffix}"
-        shutil.copy2(input_path, dest_file)
-        print(f"Created {dest_file}")
-    else:
-        # For multiple copies, add numbers
-        for i in range(num_copies):
-            dest_file = output_dir / f"{prefix}{input_path.stem}_{i+1}{input_path.suffix}"
-            shutil.copy2(input_path, dest_file)
-            print(f"Created {dest_file}")
-
-def create_padded_version(
+def create_copies(
     input_path: Path,
     output_dir: Path,
+    num_copies: int = 5,
     prefix: str = "",
-    silence_duration: float = 4.0,  # 4 seconds of silence between segments
-    num_copies: int = 3  # Always create 3 copies
 ) -> None:
-    """Create a padded version of the audio file with multiple copies and silence between.
+    """Duplicate input_path into output_dir, numbered ``{prefix}{stem}_N{suffix}``.
 
-    Args:
-        input_path: Path to the input audio file
-        output_dir: Directory to save the padded version
-        prefix: Optional prefix for the output file (e.g. 'test_' for test files)
-        silence_duration: Duration of silence in seconds between segments
-        num_copies: Number of copies of the speech to include (default 3)
+    ``num_copies=1`` produces a single unnumbered copy (``{prefix}{stem}{suffix}``).
     """
     if not input_path.exists():
         print(f"Error: Input file {input_path} not found")
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{prefix}{input_path.stem}_padded{input_path.suffix}"
+    stem, suffix = input_path.stem, input_path.suffix
 
-    # Load audio using torchaudio for consistent handling
-    wav, sr = torchaudio.load(input_path)
-    silence_samples = int(silence_duration * sr)
-    silence = torch.zeros((wav.shape[0], silence_samples))
+    if num_copies == 1:
+        dest = output_dir / f"{prefix}{stem}{suffix}"
+        shutil.copy2(input_path, dest)
+        print(f"Created {dest}")
+        return
 
-    # Create pattern: speech -> silence -> speech -> silence -> speech
+    for i in range(num_copies):
+        dest = output_dir / f"{prefix}{stem}_{i + 1}{suffix}"
+        shutil.copy2(input_path, dest)
+        print(f"Created {dest}")
+
+
+def create_padded_audio(
+    input_path: Path,
+    output_path: Path,
+    num_copies: int = 3,
+    silence_duration: float = 4.0,
+) -> None:
+    """Write a file that repeats input_path ``num_copies`` times with silence between."""
+    if not input_path.exists():
+        print(f"Error: Input file {input_path} not found")
+        return
+
+    wav, sr = torchaudio.load(str(input_path))
+    silence = torch.zeros((wav.shape[0], int(silence_duration * sr)))
+
     padded_wav = wav
     for _ in range(num_copies - 1):
         padded_wav = torch.cat([padded_wav, silence, wav], dim=1)
 
-    sf.write(output_path, padded_wav.T.numpy(), sr)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(output_path), padded_wav.T.numpy(), sr)
     print(f"Created padded version: {output_path}")
 
-def main():
-    """Create sample files from the JFK audio."""
-    parser = argparse.ArgumentParser(description="Create sample files")
-    parser.add_argument('--prefix', default="", help='Prefix for output files (e.g. "test_")')
-    parser.add_argument('--copies', type=int, default=5, help='Number of individual files to create')
-    parser.add_argument('--padded-copies', type=int, default=3, help='Number of speech segments to include in the padded version (will be appended with silence between)')
-    parser.add_argument('--session', default="jfk-sample", help='Session directory name (default: jfk-sample)')
-    args = parser.parse_args()
 
+def create_sample_files(
+    prefix: str = "",
+    copies: int = 5,
+    padded_copies: int = 3,
+    session: str = "jfk-sample",
+) -> None:
+    """Create numbered copies + a padded file for every WAV in samples/.
+
+    Test files (prefix starting with ``test_``) go to ``tmp/input/``.
+    Sample files go to ``tmp/input/{session}/``.
+    """
     root_dir = Path(__file__).parent.parent
     samples_dir = root_dir / 'samples'
-    
-    # Check if samples directory exists
+
     if not samples_dir.exists():
         print(f"Error: Samples directory not found at {samples_dir}")
         print("Please create the samples/ directory and add your audio files.")
-        print("Example: samples/jfk.wav")
         return
-    
-    # Check for WAV files
+
     wav_files = list(samples_dir.glob('*.wav'))
     if not wav_files:
         print(f"Error: No WAV files found in {samples_dir}")
-        print("Please add sample audio files (*.wav) to the samples/ directory.")
         return
-    
-    # Create files in session directory structure
-    if args.prefix.startswith("test_"):
-        input_dir = root_dir / 'tmp' / 'input'  # Test files go in root input
-    else:
-        input_dir = root_dir / 'tmp' / 'input' / args.session  # Sample files go in session folder
-    
+
+    input_dir = (
+        root_dir / 'tmp' / 'input'
+        if prefix.startswith("test_")
+        else root_dir / 'tmp' / 'input' / session
+    )
     print(f"Creating sample files in {input_dir}")
-    
-    # Process each WAV file in samples directory
+
     for sample_file in wav_files:
-        # Create individual numbered files
-        create_copies(
+        create_copies(sample_file, input_dir, num_copies=copies, prefix=prefix)
+        create_padded_audio(
             input_path=sample_file,
-            output_dir=input_dir,
-            num_copies=args.copies,
-            prefix=args.prefix
+            output_path=input_dir / f"{prefix}{sample_file.stem}_padded{sample_file.suffix}",
+            num_copies=padded_copies,
         )
-        # Create one file with appended segments and 4s silence between them
-        create_padded_version(
-            input_path=sample_file,
-            output_dir=input_dir,
-            prefix=args.prefix,
-            num_copies=args.padded_copies
-        )
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Create sample files")
+    parser.add_argument('--prefix', default="", help='Prefix for output files (e.g. "test_")')
+    parser.add_argument('--copies', type=int, default=5)
+    parser.add_argument('--padded-copies', type=int, default=3)
+    parser.add_argument('--session', default="jfk-sample")
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    create_sample_files(
+        prefix=args.prefix,
+        copies=args.copies,
+        padded_copies=args.padded_copies,
+        session=args.session,
+    )
+
 
 if __name__ == '__main__':
     main()

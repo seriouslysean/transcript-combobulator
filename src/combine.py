@@ -1,477 +1,303 @@
-"""Transcript combination utilities."""
+"""Transcript combination utilities.
 
-import json
+Reads per-user VTT files, tags each line with a speaker label, sorts by
+timestamp, deduplicates, and writes a combined session transcript.
+"""
+
 import os
 import re
 import string
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
-from dotenv import load_dotenv
-
-from src.logging_config import get_logger
-logger = get_logger(__name__)
+from pathlib import Path
+from typing import Optional
 
 from src.config import OUTPUT_DIR
+from src.logging_config import get_logger
 
-# Force reload of .env with override, allowing ENV_FILE to specify a custom env file
-_env_file = os.environ.get('ENV_FILE', '.env')
-load_dotenv(dotenv_path=_env_file, override=True)
+logger = get_logger(__name__)
+
+_PUNCT_TRANS = str.maketrans('', '', string.punctuation)
+_TIME_RE = re.compile(
+    r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})'
+)
 
 
 class CombineError(Exception):
     """Base exception for transcript combination errors."""
-    pass
 
 
 @dataclass
 class TranscriptEntry:
-    """Represents a single transcript entry."""
+    """A single timestamped line spoken by one speaker."""
     timestamp: str
     start_time: float
     end_time: float
     speaker: str
-    content: str
+    content: str  # original text, for display
+    dedup_key: str  # lowercased/punctuation-stripped, for comparison only
 
 
 @dataclass
 class TranscriptConfig:
-    """Configuration for a transcript file."""
+    """Mapping from a per-user VTT file to its display metadata."""
     name: str
     label: str
     description: str
     transcript_path: Path
 
 
-def normalize_content(text: str) -> str:
-    """Normalize content by trimming and removing excessive spaces and newlines.
-
-    Args:
-        text: The content text to normalize.
-
-    Returns:
-        Normalized content.
-    """
-    # Aggressive normalization: lowercase, strip punctuation, collapse whitespace
-    text = text.strip().lower()
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    return re.sub(r'\s+', ' ', text)
+def _normalize_for_dedup(text: str) -> str:
+    """Lowercase, strip punctuation, collapse whitespace. Used only for dedup comparison."""
+    return re.sub(r'\s+', ' ', text.strip().lower().translate(_PUNCT_TRANS))
 
 
-def should_skip_content(content: str, skip_filters: List[str]) -> bool:
-    """Check if the content matches any of the skip filters.
-
-    Args:
-        content: The content to check.
-        skip_filters: List of strings or regex patterns to filter out.
-
-    Returns:
-        True if the content matches any filter, false otherwise.
-    """
-    for filter_pattern in skip_filters:
-        if filter_pattern.startswith('/') and filter_pattern.endswith('/'):
-            # Regex pattern
-            pattern = filter_pattern[1:-1]
-            if re.search(pattern, content):
+def should_skip_content(content: str, skip_filters: list[str]) -> bool:
+    """True if content matches any literal or /regex/ filter."""
+    for pattern in skip_filters:
+        if pattern.startswith('/') and pattern.endswith('/'):
+            if re.search(pattern[1:-1], content):
                 return True
-        else:
-            # String match
-            if filter_pattern in content:
-                return True
+        elif pattern in content:
+            return True
     return False
 
 
 def parse_timestamp_to_seconds(timestamp: str) -> float:
-    """Convert VTT timestamp to seconds.
-
-    Args:
-        timestamp: Timestamp string in format HH:MM:SS.mmm
-
-    Returns:
-        Time in seconds as float.
-    """
-    parts = timestamp.split(':')
-    hours = int(parts[0])
-    minutes = int(parts[1])
-    seconds_parts = parts[2].split('.')
-    seconds = int(seconds_parts[0])
-    milliseconds = int(seconds_parts[1]) if len(seconds_parts) > 1 else 0
-
-    return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000
+    """HH:MM:SS.mmm -> seconds."""
+    h, m, sec_ms = timestamp.split(':')
+    s, _, ms = sec_ms.partition('.')
+    return int(h) * 3600 + int(m) * 60 + int(s) + (int(ms) / 1000 if ms else 0)
 
 
-def parse_vtt_file(file_path: Path, speaker_label: str, dedupe: str = "false",
-                  skip_filters: Optional[List[str]] = None) -> List[TranscriptEntry]:
-    """Parse VTT file content and return timestamped entries.
-
-    Args:
-        file_path: Path to the VTT file.
-        speaker_label: Label for the speaker.
-        dedupe: Deduplication strategy ("false", "consecutive", "unique").
-        skip_filters: List of strings or regex patterns to filter out content.
-
-    Returns:
-        List of parsed transcript entries.
-
-    Raises:
-        CombineError: If parsing fails.
-    """
-    if skip_filters is None:
-        skip_filters = []
+def parse_vtt_file(
+    file_path: Path,
+    speaker_label: str,
+    skip_filters: Optional[list[str]] = None,
+) -> list[TranscriptEntry]:
+    """Parse a VTT file into TranscriptEntry objects, preserving original text."""
+    skip_filters = skip_filters or []
 
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = file_path.read_text(encoding='utf-8')
     except FileNotFoundError:
         raise CombineError(f"Transcript file not found: {file_path}")
     except Exception as e:
-        raise CombineError(f"Failed to read transcript file {file_path}: {e}")
+        raise CombineError(f"Failed to read transcript file {file_path}: {e}") from e
 
-    # Parse VTT format
-    time_regex = re.compile(r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})')
-    entries = []
-    last_content = None
-    unique_contents = set()
-
+    entries: list[TranscriptEntry] = []
     lines = content.split('\n')
     i = 0
-
     while i < len(lines):
-        line = lines[i].strip()
-
-        # Look for timestamp line
-        match = time_regex.match(line)
-        if match:
-            start_time_str = match.group(1)
-            end_time_str = match.group(2)
-            timestamp = f"{start_time_str} --> {end_time_str}"
-
-            # Get content from next non-empty lines
+        match = _TIME_RE.match(lines[i].strip())
+        if not match:
             i += 1
-            content_lines = []
-            while i < len(lines) and lines[i].strip():
-                content_lines.append(lines[i].strip())
-                i += 1
+            continue
 
-            if content_lines:
-                text_content = ' '.join(content_lines)
-                normalized_content = normalize_content(text_content)
-
-                # Skip content if it matches any filters
-                if should_skip_content(normalized_content, skip_filters):
-                    continue
-
-                # Apply deduplication
-                skip_duplicate = False
-                if dedupe == "consecutive" and last_content == normalized_content:
-                    skip_duplicate = True
-                elif dedupe == "unique" and normalized_content in unique_contents:
-                    skip_duplicate = True
-
-                if not skip_duplicate and normalized_content:
-                    start_seconds = parse_timestamp_to_seconds(start_time_str)
-                    end_seconds = parse_timestamp_to_seconds(end_time_str)
-
-                    entry = TranscriptEntry(
-                        timestamp=timestamp,
-                        start_time=start_seconds,
-                        end_time=end_seconds,
-                        speaker=speaker_label,
-                        content=normalized_content
-                    )
-                    entries.append(entry)
-
-                    last_content = normalized_content
-                    unique_contents.add(normalized_content)
-        else:
+        start_str, end_str = match.group(1), match.group(2)
+        i += 1
+        content_lines: list[str] = []
+        while i < len(lines) and lines[i].strip():
+            content_lines.append(lines[i].strip())
             i += 1
+
+        if not content_lines:
+            continue
+
+        text = ' '.join(content_lines)
+        if should_skip_content(text, skip_filters):
+            continue
+        dedup_key = _normalize_for_dedup(text)
+        if not dedup_key:
+            continue
+
+        entries.append(
+            TranscriptEntry(
+                timestamp=f"{start_str} --> {end_str}",
+                start_time=parse_timestamp_to_seconds(start_str),
+                end_time=parse_timestamp_to_seconds(end_str),
+                speaker=speaker_label,
+                content=text,
+                dedup_key=dedup_key,
+            )
+        )
 
     return entries
 
 
-def combine_transcripts(transcript_configs: List[TranscriptConfig],
-                       output_path: Path,
-                       dedupe: str = "false",
-                       skip_filters: Optional[List[str]] = None,
-                       include_timestamps: bool = True,
-                       chunks: int = 1) -> List[Path]:
-    """Combine multiple transcript files into a single output file.
+def combine_transcripts(
+    transcript_configs: list[TranscriptConfig],
+    output_path: Path,
+    skip_filters: Optional[list[str]] = None,
+    include_timestamps: bool = True,
+    chunks: int = 1,
+) -> list[Path]:
+    """Combine per-user VTTs into one (or more) chunked session transcripts.
 
-    Args:
-        transcript_configs: List of transcript configurations.
-        output_path: Path for the output file.
-        dedupe: Deduplication strategy.
-        skip_filters: List of content filters.
-        include_timestamps: Whether to include timestamps in output.
-        chunks: Number of chunks to split the output into.
-
-    Returns:
-        List of paths to the generated output files.
-
-    Raises:
-        CombineError: If combination fails.
+    Dedup is always global across all speakers by (speaker, normalized_text).
     """
-    if skip_filters is None:
-        skip_filters = []
-
-    all_entries = []
+    skip_filters = skip_filters or []
 
     logger.info(f"Combining {len(transcript_configs)} transcript files...")
-
-    # Parse all transcript files
+    all_entries: list[TranscriptEntry] = []
     for config in transcript_configs:
         logger.info(f"Processing {config.transcript_path.name} for {config.label}...")
-
-        entries = parse_vtt_file(
-            config.transcript_path,
-            config.label,
-            dedupe,
-            skip_filters
-        )
-
+        entries = parse_vtt_file(config.transcript_path, config.label, skip_filters)
         logger.info(f"  - Found {len(entries)} entries")
         all_entries.extend(entries)
 
-
-    # Sort by start time
-    all_entries.sort(key=lambda x: x.start_time)
-
+    all_entries.sort(key=lambda e: e.start_time)
     logger.info(f"Total combined entries: {len(all_entries)}")
 
-    # Deduplicate transcript lines globally (across all entries, only once)
-    deduped_entries = []
-    seen_contents = set()
+    seen: set[tuple[str, str]] = set()
+    deduped: list[TranscriptEntry] = []
     for entry in all_entries:
-        norm_content = normalize_content(entry.content)
-        key = (entry.speaker, norm_content)
-        if key not in seen_contents:
-            deduped_entries.append(entry)
-            seen_contents.add(key)
-        else:
-            logger.debug(f"DUPLICATE SKIP: {entry.speaker}: '{norm_content}'")
+        key = (entry.speaker, entry.dedup_key)
+        if key in seen:
+            logger.debug(f"DUPLICATE SKIP: {entry.speaker}: '{entry.dedup_key}'")
+            continue
+        seen.add(key)
+        deduped.append(entry)
 
-    # Create summary (deduplicated) - only once
     summary_lines = ["Summary:"]
-    seen = set()
+    seen_summary: set[str] = set()
     for config in transcript_configs:
         line = f"{config.name} - {config.label} - {config.description}"
-        if line not in seen:
+        if line not in seen_summary:
             summary_lines.append(line)
-            seen.add(line)
+            seen_summary.add(line)
     summary = '\n'.join(summary_lines)
 
-    # Split into chunks only if there are enough entries to make it worthwhile
-    min_entries_per_chunk = 5  # Minimum entries per chunk to make splitting worthwhile
-
-    if len(deduped_entries) < chunks or len(deduped_entries) < min_entries_per_chunk:
-        actual_chunks = 1
-    else:
-        actual_chunks = chunks
-
-    chunk_size = len(deduped_entries) // actual_chunks
-    output_files = []
+    min_per_chunk = 5
+    actual_chunks = 1 if len(deduped) < max(chunks, min_per_chunk) else chunks
+    chunk_size = len(deduped) // actual_chunks
+    output_files: list[Path] = []
 
     for chunk_idx in range(actual_chunks):
-        start_idx = chunk_idx * chunk_size
-        end_idx = start_idx + chunk_size if chunk_idx < actual_chunks - 1 else len(deduped_entries)
-        chunk_entries = deduped_entries[start_idx:end_idx]
-
-        chunk_path = output_path if actual_chunks == 1 else output_path.with_name(f"{output_path.stem}-{chunk_idx+1}{output_path.suffix}")
+        start = chunk_idx * chunk_size
+        end = len(deduped) if chunk_idx == actual_chunks - 1 else start + chunk_size
+        chunk_entries = deduped[start:end]
+        chunk_path = (
+            output_path
+            if actual_chunks == 1
+            else output_path.with_name(
+                f"{output_path.stem}-{chunk_idx + 1}{output_path.suffix}"
+            )
+        )
         try:
             with open(chunk_path, 'w', encoding='utf-8') as f:
-                # Write summary first
                 f.write(summary + '\n\n')
-                # Write deduped transcript entries
                 for entry in chunk_entries:
                     if include_timestamps:
-                        f.write(f"{entry.speaker}: {entry.content} [{entry.timestamp}]\n")
+                        f.write(
+                            f"{entry.speaker}: {entry.content} [{entry.timestamp}]\n"
+                        )
                     else:
                         f.write(f"{entry.speaker}: {entry.content}\n")
             output_files.append(chunk_path)
             logger.info(f"Generated: {chunk_path}")
         except Exception as e:
-            raise CombineError(f"Failed to write output file {chunk_path}: {e}")
+            raise CombineError(f"Failed to write output file {chunk_path}: {e}") from e
+
     return output_files
 
 
-def combine_transcripts_from_env(base_dir: Path, session_subdir: Optional[str] = None) -> List[Path]:
-    """Combine transcripts using environment variable configuration.
-
-    Args:
-        base_dir: Base output directory to search for transcripts.
-        session_subdir: Optional subdirectory (e.g., "2025-06-16") to search within.
-
-    Returns:
-        List of paths to generated output files.
-
-    Raises:
-        CombineError: If combination fails or env vars are missing.
-    """
-    # Determine search directory
-    if session_subdir:
-        search_dir = base_dir / session_subdir
-        output_dir = search_dir
-    else:
-        search_dir = base_dir
-        output_dir = base_dir
-
-    # Recursively find all VTT files in subdirectories
-    vtt_files = list(search_dir.glob("**/*.vtt"))
-    if not vtt_files:
-        raise CombineError(f"No VTT files found in {search_dir}")
-
-    # Load mapping configuration from environment using indexed variables
-    username_mapping = {}
-
-    # Find all transcript configurations by looking for TRANSCRIPT_N_USERNAME patterns
+def _load_username_mapping() -> dict[str, dict[str, str]]:
+    """Build username -> {name, label, description} from TRANSCRIPT_N_* env vars."""
+    mapping: dict[str, dict[str, str]] = {}
     i = 1
     while True:
         username = os.getenv(f'TRANSCRIPT_{i}_USERNAME', '').strip().strip('"')
         if not username:
             break
 
-        # New env var names with backward-compat fallback to old names
-        name = (os.getenv(f'TRANSCRIPT_{i}_NAME', '') or os.getenv(f'TRANSCRIPT_{i}_PLAYER', '')).strip().strip('"')
-        label = (os.getenv(f'TRANSCRIPT_{i}_LABEL', '') or os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '')).strip().strip('"')
+        name = (
+            os.getenv(f'TRANSCRIPT_{i}_NAME', '')
+            or os.getenv(f'TRANSCRIPT_{i}_PLAYER', '')
+        ).strip().strip('"')
+        label = (
+            os.getenv(f'TRANSCRIPT_{i}_LABEL', '')
+            or os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '')
+        ).strip().strip('"')
         description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip().strip('"')
 
         if all([name, label, description]):
-            username_mapping[username] = {
-                'name': name,
-                'label': label,
-                'description': description,
-            }
+            mapping[username] = {'name': name, 'label': label, 'description': description}
         else:
             logger.warning(f"Incomplete configuration for TRANSCRIPT_{i}_* variables")
-
         i += 1
 
+    return mapping
+
+
+def combine_transcripts_from_env(
+    base_dir: Path,
+    session_subdir: Optional[str] = None,
+) -> list[Path]:
+    """Combine transcripts using TRANSCRIPT_N_* env vars for speaker mapping."""
+    search_dir = base_dir / session_subdir if session_subdir else base_dir
+    output_dir = search_dir
+
+    vtt_files = list(search_dir.glob("**/*.vtt"))
+    if not vtt_files:
+        raise CombineError(f"No VTT files found in {search_dir}")
+
+    username_mapping = _load_username_mapping()
     if not username_mapping:
-        raise CombineError("No transcript mappings found. Define environment variables like TRANSCRIPT_1_USERNAME, TRANSCRIPT_1_NAME, etc.")
+        raise CombineError(
+            "No transcript mappings found. Define TRANSCRIPT_N_USERNAME, "
+            "TRANSCRIPT_N_NAME, TRANSCRIPT_N_LABEL, TRANSCRIPT_N_DESCRIPTION."
+        )
 
-    # Create transcript configurations using username-based mapping
-    transcript_configs = []
-    unmapped_dirs = []
-
+    transcript_configs: list[TranscriptConfig] = []
+    unmapped_dirs: list[str] = []
     for vtt_file in vtt_files:
-
         parent_dir = vtt_file.parent.name
-
-        # Find which username(s) appear in the directory name (simple substring match)
-        matches = [uname for uname in username_mapping.keys() if uname in parent_dir]
-
-        if len(matches) == 0:
+        matches = [u for u in username_mapping if u in parent_dir]
+        if not matches:
             unmapped_dirs.append(parent_dir)
-        elif len(matches) > 1:
-            raise CombineError(f"Ambiguous username match for directory '{parent_dir}': found {matches}. Please make usernames more specific in TRANSCRIPT_*_USERNAME environment variables.")
-        else:
-            username = matches[0]
-            mapping = username_mapping[username]
-            config = TranscriptConfig(
-                name=mapping['name'],
-                label=mapping['label'],
-                description=mapping['description'],
+            continue
+        if len(matches) > 1:
+            raise CombineError(
+                f"Ambiguous username match for directory '{parent_dir}': {matches}. "
+                "Make TRANSCRIPT_*_USERNAME values more specific."
+            )
+        m = username_mapping[matches[0]]
+        transcript_configs.append(
+            TranscriptConfig(
+                name=m['name'],
+                label=m['label'],
+                description=m['description'],
                 transcript_path=vtt_file,
             )
-            transcript_configs.append(config)
+        )
 
     if unmapped_dirs:
-        raise CombineError(f"No mapping found for directories: {unmapped_dirs}. Please update TRANSCRIPT_*_USERNAME environment variables.")
-
+        raise CombineError(
+            f"No mapping found for directories: {unmapped_dirs}. "
+            "Update TRANSCRIPT_*_USERNAME environment variables."
+        )
     if not transcript_configs:
-        raise CombineError("No transcript configurations created. Check TRANSCRIPT_* environment variables.")
+        raise CombineError("No transcript configurations created.")
 
-    # Get other settings from environment
-    dedupe = os.getenv('DEDUPE_STRATEGY', 'consecutive').strip('"')
-    include_timestamps = os.getenv('INCLUDE_TIMESTAMPS', 'false').strip('"').lower() == 'true'
-    skip_filters_str = os.getenv('SKIP_FILTERS', '[AUDIO OUT],[BLANK_AUDIO]').strip('"')
+    include_timestamps = (
+        os.getenv('INCLUDE_TIMESTAMPS', 'false').strip('"').lower() == 'true'
+    )
+    skip_filters_str = os.getenv(
+        'SKIP_FILTERS', '[AUDIO OUT],[BLANK_AUDIO]'
+    ).strip('"')
     skip_filters = [f.strip() for f in skip_filters_str.split(',') if f.strip()]
     chunks = int(os.getenv('CHUNKS', '1').strip('"'))
 
-    # Generate output filename based on session directory name
-    if session_subdir:
-        output_filename = f"{session_subdir}-combined.txt"
-    else:
-        # Use current directory name as fallback
-        output_filename = f"{output_dir.name}-combined.txt"
+    output_filename = (
+        f"{session_subdir}-combined.txt" if session_subdir
+        else f"{output_dir.name}-combined.txt"
+    )
     output_path = output_dir / output_filename
 
     return combine_transcripts(
         transcript_configs=transcript_configs,
         output_path=output_path,
-        dedupe=dedupe,
         skip_filters=skip_filters,
         include_timestamps=include_timestamps,
-        chunks=chunks
+        chunks=chunks,
     )
-
-
-def combine_transcripts_for_directory(input_dir: Path,
-                                    output_path: Optional[Path] = None,
-                                    dedupe: str = "consecutive",
-                                    skip_filters: Optional[List[str]] = None,
-                                    include_timestamps: bool = False) -> List[Path]:
-    """Combine all VTT files in a directory into a single transcript.
-
-    Args:
-        input_dir: Directory containing VTT files and subdirectories.
-        output_path: Path for combined output. If None, uses default naming.
-        dedupe: Deduplication strategy.
-        skip_filters: List of content filters.
-        include_timestamps: Whether to include timestamps.
-
-    Returns:
-        List of paths to generated output files.
-
-    Raises:
-        CombineError: If combination fails.
-    """
-    if skip_filters is None:
-        skip_filters = ["[AUDIO OUT]", "[BLANK_AUDIO]"]
-
-    # Find all VTT files in subdirectories
-    vtt_files = list(input_dir.glob("*/*.vtt"))
-
-    if not vtt_files:
-        raise CombineError(f"No VTT files found in {input_dir}")
-
-    # Create transcript configurations
-    transcript_configs = []
-    for vtt_file in vtt_files:
-        # Extract speaker label from directory or filename
-        speaker_label = vtt_file.parent.name
-
-        config = TranscriptConfig(
-            name=speaker_label,
-            label=speaker_label,
-            description="",
-            transcript_path=vtt_file,
-        )
-        transcript_configs.append(config)
-
-    # Determine output path
-    if output_path is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = input_dir / f"combined_transcript_{timestamp}.txt"
-
-    return combine_transcripts(
-        transcript_configs,
-        output_path,
-        dedupe=dedupe,
-        skip_filters=skip_filters,
-        include_timestamps=include_timestamps
-    )
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Combine transcripts with optional env override.")
-    parser.add_argument('--env', type=str, help='Path to .env file to use (optional, now handled by ENV_FILE)')
-    args = parser.parse_args()
-    base_dir = Path('tmp/output/example')
-    try:
-        combine_transcripts_from_env(base_dir)
-        print(f"Successfully combined transcripts in {base_dir}")
-    except Exception as e:
-        print(f"Error: {e}")
