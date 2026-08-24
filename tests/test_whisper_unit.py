@@ -6,7 +6,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.whisper import WhisperError, load_whisper_model, transcribe_segment
+from src.whisper import (
+    WhisperError,
+    load_whisper_model,
+    transcribe_audio_segments,
+    transcribe_segment,
+)
 
 
 def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:
@@ -61,3 +66,30 @@ def test_transcribe_segment_rejects_wrong_sample_rate(tmp_path: Path) -> None:
         transcribe_segment(audio_path, model=model)
 
     model.transcribe.assert_not_called()
+
+
+def test_empty_transcription_replaces_stale_vtt(tmp_path: Path) -> None:
+    segment_path = tmp_path / 'segment.wav'
+    segment_path.touch()
+    output_path = tmp_path / 'speaker.vtt'
+    output_path.write_text('WEBVTT\n\nOLD TEXT\n', encoding='utf-8')
+
+    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
+        'src.whisper.transcribe_segment', return_value=[]
+    ):
+        segments = transcribe_audio_segments([(segment_path, 0.0)], output_path)
+
+    assert segments == []
+    assert output_path.read_text(encoding='utf-8') == 'WEBVTT\n\n'
+
+
+def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:
+    first = tmp_path / 'first.wav'
+    second = tmp_path / 'second.wav'
+    first.touch()
+    second.touch()
+
+    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
+        'src.whisper.transcribe_segment', side_effect=WhisperError('decode failed')
+    ), pytest.raises(WhisperError, match='All 2 audio segments failed'):
+        transcribe_audio_segments([(first, 0.0), (second, 1.0)], tmp_path / 'out.vtt')

@@ -178,6 +178,7 @@ def transcribe_audio_segments(
     logger.info(f"VAD found {total} segments")
 
     all_segments: list[dict[str, Any]] = []
+    failed_segments = 0
     for i, (segment_path, start_time) in enumerate(segments, 1):
         logger.info(f"Processing segment {i}/{total}...")
         if progress_callback:
@@ -185,9 +186,13 @@ def transcribe_audio_segments(
         try:
             all_segments.extend(transcribe_segment(segment_path, None, start_time, model))
         except Exception as e:
+            failed_segments += 1
             logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
 
-    if output_path and all_segments:
+    if total and failed_segments == total:
+        raise WhisperError(f"All {total} audio segments failed to transcribe")
+
+    if output_path:
         seen: set[str] = set()
         deduped: list[dict[str, Any]] = []
         for seg in all_segments:
