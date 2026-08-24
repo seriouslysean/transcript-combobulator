@@ -4,6 +4,7 @@ import json
 import os
 import warnings
 from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -70,10 +71,12 @@ def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> st
     return text
 
 
+@lru_cache(maxsize=None)
 def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
     """Load a whisper model from the local models dir.
 
-    Raises WhisperError if the model file is missing — run `make setup-whisper`.
+    The model is cached for the lifetime of the worker process. Raises
+    WhisperError if the model file is missing — run `make setup-whisper`.
     """
     model_name = model_name or os.getenv('WHISPER_MODEL', WHISPER_MODEL)
     model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"

@@ -62,7 +62,7 @@ Patterns supported:
 - **Word timestamps disabled** - Prevents hanging on some segments
 - **Longer speech islands** - Avoids paying for a 30-second Whisper window after every short pause
 - **Immediate file writing** - Prevents large memory buffers
-- **Model reuse** - Load Whisper model once per session
+- **Model reuse** - Load Whisper once per long-lived batch worker
 
 ## File Organization
 
