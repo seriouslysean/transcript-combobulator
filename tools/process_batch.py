@@ -21,6 +21,18 @@ multiprocessing.set_start_method("spawn", force=True)
 AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".m4a", ".ogg", ".aac", ".opus"}
 
 
+def _calculate_torch_threads(
+    max_workers: int,
+    configured_threads: int,
+    cpu_count: int | None = None,
+) -> int:
+    """Resolve threads per worker, splitting detected CPUs across active workers."""
+    if configured_threads > 0:
+        return configured_threads
+    detected_cpus = cpu_count if cpu_count is not None else os.cpu_count()
+    return max(1, (detected_cpus or 4) // max(1, max_workers))
+
+
 def find_audio_files(target_dir: Path) -> list[Path]:
     """Find audio files in target directory, excluding converted files."""
     files = []
@@ -153,10 +165,8 @@ def main() -> None:
     # Load config (imports dotenv, reads PARALLEL_JOBS etc.)
     from src.config import PARALLEL_JOBS, TORCH_THREADS, WORKER_NICE
 
-    max_workers = PARALLEL_JOBS
-    torch_threads = TORCH_THREADS
-    if torch_threads == 0:
-        torch_threads = max(1, (os.cpu_count() or 4) // 4)
+    max_workers = min(max(1, PARALLEL_JOBS), len(files))
+    torch_threads = _calculate_torch_threads(max_workers, TORCH_THREADS)
 
     file_names = [f.name for f in files]
 

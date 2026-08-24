@@ -44,7 +44,7 @@ Implementation details for developers and advanced users.
 
 ### Parallel Processing
 - `PARALLEL_JOBS=2` - Number of long-lived file workers
-- `TORCH_THREADS=0` - Threads per worker; zero enables automatic allocation
+- `TORCH_THREADS=0` - Threads per worker; zero splits available CPUs across active workers
 - `WORKER_NICE=10` - Worker niceness increment; zero keeps normal priority
 
 ## Username Mapping System

@@ -8,6 +8,7 @@ import pytest
 
 from tools.process_batch import (
     _build_table,
+    _calculate_torch_threads,
     _format_duration,
     _initialize_worker,
     _status_display,
@@ -281,3 +282,21 @@ class TestWorkerInitialization:
 
         nice.assert_not_called()
         set_threads.assert_not_called()
+
+
+class TestTorchThreadAllocation:
+    """Tests for automatic intra-op thread allocation."""
+
+    def test_auto_splits_cpus_across_active_workers(self):
+        assert _calculate_torch_threads(2, 0, cpu_count=14) == 7
+        assert _calculate_torch_threads(4, 0, cpu_count=14) == 3
+
+    def test_explicit_setting_wins(self):
+        assert _calculate_torch_threads(2, 5, cpu_count=14) == 5
+
+    def test_never_returns_less_than_one_thread(self):
+        assert _calculate_torch_threads(8, 0, cpu_count=4) == 1
+
+    def test_missing_cpu_count_uses_safe_fallback(self):
+        with patch("tools.process_batch.os.cpu_count", return_value=None):
+            assert _calculate_torch_threads(2, 0) == 2
