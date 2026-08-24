@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
+from rich.console import Console
 
 from tools.process_batch import (
     _build_table,
@@ -13,6 +14,7 @@ from tools.process_batch import (
     _calculate_torch_threads,
     _format_duration,
     _initialize_worker,
+    _publish_metrics_report,
     _status_display,
     find_audio_files,
 )
@@ -462,3 +464,48 @@ class TestMetricsTables:
         table = _build_run_metrics_table(summary, tmp_path / "metrics.json")
 
         assert table.row_count == 9
+
+    def test_run_metrics_table_does_not_claim_failed_report(self, tmp_path):
+        summary = {
+            "files_processed": 1,
+            "files_cached": 0,
+            "files_failed": 0,
+            "input_audio_seconds": 60.0,
+            "processing_seconds": 10.0,
+            "audio_x_realtime": 6.0,
+            "real_time_factor": 0.1667,
+            "vad_chunks": 3,
+            "transcript_segments": 5,
+            "inference_x_realtime": 8.0,
+        }
+        console = Console(record=True, width=120)
+
+        console.print(_build_run_metrics_table(summary, None))
+        rendered = console.export_text()
+
+        assert "Metrics report" in rendered
+        assert "not written" in rendered
+
+
+class TestMetricsPublication:
+    def test_returns_report_path_after_success(self, tmp_path):
+        metrics_path = tmp_path / "metrics.json"
+
+        with patch("tools.process_batch.write_metrics_report") as write:
+            published_path, error = _publish_metrics_report(metrics_path, {})
+
+        write.assert_called_once_with(metrics_path, {})
+        assert published_path == metrics_path
+        assert error is None
+
+    def test_returns_not_written_after_oserror(self, tmp_path):
+        metrics_path = tmp_path / "metrics.json"
+
+        with patch(
+            "tools.process_batch.write_metrics_report",
+            side_effect=OSError("disk full"),
+        ):
+            published_path, error = _publish_metrics_report(metrics_path, {})
+
+        assert published_path is None
+        assert error == "disk full"

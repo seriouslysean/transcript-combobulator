@@ -222,7 +222,9 @@ def _build_file_metrics_table(file_metrics: list[dict[str, Any]]) -> Table:
     return table
 
 
-def _build_run_metrics_table(summary: dict[str, Any], metrics_path: Path) -> Table:
+def _build_run_metrics_table(
+    summary: dict[str, Any], metrics_path: Optional[Path]
+) -> Table:
     """Build a compact aggregate summary for the terminal."""
     table = Table(title="Session Telemetry")
     table.add_column("Metric", style="cyan")
@@ -254,8 +256,22 @@ def _build_run_metrics_table(summary: dict[str, Any], metrics_path: Path) -> Tab
         if summary['inference_x_realtime'] is not None
         else '-',
     )
-    table.add_row("Metrics report", str(metrics_path))
+    table.add_row(
+        "Metrics report",
+        str(metrics_path) if metrics_path is not None else "not written",
+    )
     return table
+
+
+def _publish_metrics_report(
+    metrics_path: Path, report: dict[str, Any]
+) -> tuple[Optional[Path], Optional[str]]:
+    """Write telemetry and return the path only when publication succeeds."""
+    try:
+        write_metrics_report(metrics_path, report)
+    except OSError as e:
+        return None, str(e)
+    return metrics_path, None
 
 
 def main() -> None:
@@ -466,14 +482,15 @@ def main() -> None:
         'files': completed_file_metrics,
         'combine': combine_metrics,
     }
-    try:
-        write_metrics_report(metrics_path, report)
-    except OSError as e:
-        print(f"Metrics report error: {e}")
+    published_metrics_path, metrics_error = _publish_metrics_report(
+        metrics_path, report
+    )
+    if metrics_error:
+        print(f"Metrics report error: {metrics_error}")
 
     console = Console()
     console.print(_build_file_metrics_table(completed_file_metrics))
-    console.print(_build_run_metrics_table(summary, metrics_path))
+    console.print(_build_run_metrics_table(summary, published_metrics_path))
 
     if errors:
         print("\nErrors:")
