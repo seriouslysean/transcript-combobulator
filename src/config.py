@@ -68,7 +68,9 @@ TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 # ── VAD ──
 VAD_THRESHOLD = get_float_env('VAD_THRESHOLD', 0.5)
 VAD_MIN_SPEECH_DURATION = get_float_env('VAD_MIN_SPEECH_DURATION', 0.5)
-VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 1.0)
+# Whisper encodes a full 30-second window for every VAD segment. A longer
+# silence threshold avoids turning short pauses into separate encoder passes.
+VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 3.0)
 PADDING_SECONDS = get_float_env('PADDING_SECONDS', 0.3)
 
 # ── Whisper (optimized for single-speaker channels) ──

@@ -25,8 +25,8 @@ Implementation details for developers and advanced users.
 - `TRANSCRIPTION_MODE=vad` - Use VAD for segmentation
 - `VAD_THRESHOLD=0.5` - Speech detection sensitivity (0.0-1.0)
 - `VAD_MIN_SPEECH_DURATION=0.5` - Minimum speech segment length
-- `VAD_MIN_SILENCE_DURATION=2.0` - Minimum silence to split
-- `PADDING_SECONDS=0.2` - Audio padding around segments
+- `VAD_MIN_SILENCE_DURATION=3.0` - Minimum silence to split; longer islands reduce Whisper encoder calls
+- `PADDING_SECONDS=0.3` - Audio padding around segments
 
 ### Whisper Configuration
 - `WHISPER_MODEL=large-v3-turbo` - Model size/speed tradeoff
@@ -60,7 +60,7 @@ Patterns supported:
 ## Performance Optimizations
 
 - **Word timestamps disabled** - Prevents hanging on some segments
-- **Segment-based processing** - Avoids memory accumulation
+- **Longer speech islands** - Avoids paying for a 30-second Whisper window after every short pause
 - **Immediate file writing** - Prevents large memory buffers
 - **Model reuse** - Load Whisper model once per session
 

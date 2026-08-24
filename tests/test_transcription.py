@@ -39,13 +39,15 @@ def test_segmented_transcription():
     # Remove the WEBVTT header
     segments = segments[1:]
 
-    # Whisper segment count is nondeterministic; the padded file should produce
-    # at least 2 segments (original speech repeated across silence gaps) and
-    # shouldn't exceed a reasonable upper bound.
-    assert len(segments) >= 2, \
-        f"Expected at least 2 segments in padded file, got {len(segments)}"
-    assert len(segments) <= 6, \
-        f"Expected at most 6 segments in padded file, got {len(segments)}"
+    # Count the raw results rather than VTT entries: identical VTT text is
+    # intentionally deduplicated across VAD segments before it is written.
+    # Whisper segment count is nondeterministic, but the repeated input should
+    # still produce at least 2 raw segments and a reasonable upper bound.
+    raw_segments = padded_result['segments']
+    assert len(raw_segments) >= 2, \
+        f"Expected at least 2 raw segments in padded file, got {len(raw_segments)}"
+    assert len(raw_segments) <= 6, \
+        f"Expected at most 6 raw segments in padded file, got {len(raw_segments)}"
 
     # Get just the text content from original (remove WEBVTT header and timestamps)
     original_lines = [line for line in original_text.split('\n') if '-->' not in line and 'WEBVTT' not in line]
