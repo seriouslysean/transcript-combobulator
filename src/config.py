@@ -60,6 +60,7 @@ def get_output_path_for_input(input_path: Path) -> Path:
 # ── Parallel Processing ──
 PARALLEL_JOBS = get_int_env('PARALLEL_JOBS', 2)
 TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
+WORKER_NICE = get_int_env('WORKER_NICE', 10)  # niceness increment; 0 = unchanged
 
 # ── Audio Processing ──
 SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)

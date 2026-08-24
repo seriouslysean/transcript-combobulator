@@ -34,7 +34,6 @@ def _worker(
     file_path: str,
     status_dict: "MutableMapping[str, str]",
     status_key: str,
-    torch_threads: int,
     force: bool,
 ) -> tuple[str, str, str]:
     """Worker function that runs in a subprocess.
@@ -42,20 +41,6 @@ def _worker(
     Returns:
         (filename, "done" or "error", error_message_or_empty)
     """
-    # Lower scheduling priority so foreground apps stay responsive
-    try:
-        os.nice(10)
-    except OSError:
-        pass
-
-    # Limit torch threads per worker
-    if torch_threads > 0:
-        try:
-            import torch
-            torch.set_num_threads(torch_threads)
-        except Exception:
-            pass
-
     # Suppress all logging output — the rich table is the UI
     logging.disable(logging.CRITICAL)
 
@@ -82,6 +67,24 @@ def _worker(
         sys.stderr = old_stderr
         devnull.close()
         logging.disable(logging.NOTSET)
+
+
+def _initialize_worker(torch_threads: int, worker_nice: int) -> None:
+    """Apply process-wide scheduling and Torch settings once per worker."""
+    if worker_nice:
+        try:
+            os.nice(worker_nice)
+        except OSError:
+            pass
+
+    if torch_threads > 0:
+        try:
+            import torch
+
+            torch.set_num_threads(torch_threads)
+            torch.set_num_interop_threads(1)
+        except (RuntimeError, ValueError):
+            pass
 
 
 def _build_table(
@@ -148,7 +151,7 @@ def main() -> None:
         sys.exit(1)
 
     # Load config (imports dotenv, reads PARALLEL_JOBS etc.)
-    from src.config import PARALLEL_JOBS, TORCH_THREADS
+    from src.config import PARALLEL_JOBS, TORCH_THREADS, WORKER_NICE
 
     max_workers = PARALLEL_JOBS
     torch_threads = TORCH_THREADS
@@ -185,7 +188,11 @@ def main() -> None:
 
     try:
         with Live(_build_table(file_names, status_dict, max_workers), refresh_per_second=4) as live:
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            with ProcessPoolExecutor(
+                max_workers=max_workers,
+                initializer=_initialize_worker,
+                initargs=(torch_threads, WORKER_NICE),
+            ) as executor:
                 executor_ref = executor
                 futures = {}
                 for f in files:
@@ -194,7 +201,6 @@ def main() -> None:
                         str(f),
                         status_dict,
                         f.name,
-                        torch_threads,
                         args.force,
                     )
                     futures[fut] = f.name

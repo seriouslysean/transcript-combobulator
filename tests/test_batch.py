@@ -6,7 +6,13 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from tools.process_batch import find_audio_files, _build_table, _format_duration, _status_display
+from tools.process_batch import (
+    _build_table,
+    _format_duration,
+    _initialize_worker,
+    _status_display,
+    find_audio_files,
+)
 
 
 class TestFindAudioFiles:
@@ -252,3 +258,26 @@ class TestProcessSingleFile:
 
         assert output_file.exists()
         process_audio.assert_called_once()
+
+
+class TestWorkerInitialization:
+    """Tests for process-wide worker setup."""
+
+    def test_applies_priority_and_torch_limits_once(self):
+        with patch("tools.process_batch.os.nice") as nice, patch(
+            "torch.set_num_threads"
+        ) as set_threads, patch("torch.set_num_interop_threads") as set_interop:
+            _initialize_worker(torch_threads=3, worker_nice=10)
+
+        nice.assert_called_once_with(10)
+        set_threads.assert_called_once_with(3)
+        set_interop.assert_called_once_with(1)
+
+    def test_zero_values_leave_process_defaults(self):
+        with patch("tools.process_batch.os.nice") as nice, patch(
+            "torch.set_num_threads"
+        ) as set_threads:
+            _initialize_worker(torch_threads=0, worker_nice=0)
+
+        nice.assert_not_called()
+        set_threads.assert_not_called()

@@ -42,6 +42,11 @@ Implementation details for developers and advanced users.
 - `SKIP_FILTERS="[AUDIO OUT],[BLANK_AUDIO]"` - Content filtering
 - `CHUNKS=2` - Split large transcripts into N parts
 
+### Parallel Processing
+- `PARALLEL_JOBS=2` - Number of long-lived file workers
+- `TORCH_THREADS=0` - Threads per worker; zero enables automatic allocation
+- `WORKER_NICE=10` - Worker niceness increment; zero keeps normal priority
+
 ## Username Mapping System
 
 Handles dynamic user positions (Discord Craig bot assigns numbers by join order):
@@ -64,6 +69,7 @@ Patterns supported:
 - **Direct WAV decoding** - Passes segment arrays to Whisper without an FFmpeg process per segment
 - **Immediate file writing** - Prevents large memory buffers
 - **Model reuse** - Load Whisper once per long-lived batch worker
+- **One-time worker setup** - Applies priority and Torch limits once instead of once per file
 
 ## File Organization
 
