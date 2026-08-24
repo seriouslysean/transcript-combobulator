@@ -35,7 +35,7 @@ Implementation details for developers and advanced users.
 - `WHISPER_TEMPERATURE=0.0` - Deterministic output
 - `WHISPER_WORD_TIMESTAMPS=false` - Disabled for performance
 - `WHISPER_CONDITION_ON_PREVIOUS=false` - Prevent context contamination between speech islands
-- `WHISPER_CARRY_INITIAL_PROMPT=true` - Reapply campaign vocabulary in every internal decode window
+- `WHISPER_CARRY_INITIAL_PROMPT=true` - Reapply configured vocabulary in every internal decode window
 - `WHISPER_CONFIDENCE_THRESHOLD=50.0` - Filter low-confidence segments
 
 ### Combination Settings

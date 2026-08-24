@@ -15,7 +15,7 @@ from src.whisper import (
 )
 
 
-def test_whisper_options_carry_campaign_prompt_across_windows() -> None:
+def test_whisper_options_carry_configured_prompt_across_windows() -> None:
     with patch('src.config.WHISPER_CARRY_INITIAL_PROMPT', True):
         assert get_whisper_options()['carry_initial_prompt'] is True
 
