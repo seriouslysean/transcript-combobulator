@@ -2,6 +2,8 @@
 """Test Voice Activity Detection."""
 
 from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 from src.vad import load_vad_model, process_audio, VADError
 from src.config import OUTPUT_DIR
@@ -11,6 +13,23 @@ def test_vad_model_loading():
     """Test that the VAD model loads successfully."""
     model = load_vad_model()
     assert model is not None, "VAD model is None"
+
+
+def test_vad_model_is_cached_per_process():
+    """Long-lived batch workers reuse one Silero model across files."""
+    expected_model = object()
+    load_vad_model.cache_clear()
+
+    try:
+        with patch('src.vad.load_silero_vad', return_value=expected_model) as load:
+            first = load_vad_model()
+            second = load_vad_model()
+
+        assert first is expected_model
+        assert second is expected_model
+        load.assert_called_once()
+    finally:
+        load_vad_model.cache_clear()
 
 def test_vad_detection():
     """Test that VAD detects speech segments in the test JFK file."""
