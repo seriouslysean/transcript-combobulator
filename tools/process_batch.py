@@ -9,11 +9,20 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import MutableMapping
+from typing import Any, MutableMapping, Optional
 
+from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
+
+from src.telemetry import (
+    TELEMETRY_SCHEMA_VERSION,
+    build_run_summary,
+    elapsed_seconds,
+    utc_now_iso,
+    write_metrics_report,
+)
 
 # Ensure spawn method for macOS torch compatibility
 multiprocessing.set_start_method("spawn", force=True)
@@ -47,11 +56,11 @@ def _worker(
     status_dict: "MutableMapping[str, str]",
     status_key: str,
     force: bool,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, dict[str, Any]]:
     """Worker function that runs in a subprocess.
 
     Returns:
-        (filename, "done" or "error", error_message_or_empty)
+        (filename, status, error_message_or_empty, per_file_metrics)
     """
     # Suppress all logging output — the rich table is the UI
     logging.disable(logging.CRITICAL)
@@ -63,6 +72,7 @@ def _worker(
     sys.stdout = devnull
     sys.stderr = devnull
 
+    file_metrics: dict[str, Any] = {}
     try:
         from tools.process_single_file import main as process_main
         process_main(
@@ -70,10 +80,16 @@ def _worker(
             status_dict=status_dict,
             status_key=status_key,
             force=force,
+            metrics=file_metrics,
         )
-        return (Path(file_path).name, "done", "")
+        result_status = 'cached' if file_metrics.get('cache_hit') else 'done'
+        return (Path(file_path).name, result_status, "", file_metrics)
     except Exception as e:
-        return (Path(file_path).name, "error", str(e))
+        file_metrics.setdefault('file', Path(file_path).name)
+        file_metrics.setdefault('status', 'error')
+        file_metrics.setdefault('error_type', type(e).__name__)
+        file_metrics.setdefault('error', str(e))
+        return (Path(file_path).name, "error", str(e), file_metrics)
     finally:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
@@ -145,6 +161,103 @@ def _format_duration(seconds: float) -> str:
     return f"{m}m {s:02d}s"
 
 
+def _format_metric_seconds(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return "-"
+    if value < 1:
+        return f"{value * 1000:.0f}ms"
+    return f"{value:.2f}s"
+
+
+def _build_file_metrics_table(file_metrics: list[dict[str, Any]]) -> Table:
+    """Build the post-run per-file timing summary."""
+    table = Table(title="Per-file Pipeline Metrics")
+    table.add_column("File", style="cyan")
+    table.add_column("Status")
+    table.add_column("Audio", justify="right")
+    table.add_column("Total", justify="right")
+    table.add_column("Convert", justify="right")
+    table.add_column("VAD", justify="right")
+    table.add_column("Model", justify="right")
+    table.add_column("Inference", justify="right")
+    table.add_column("Chunks", justify="right")
+    table.add_column("xRT", justify="right")
+
+    for metrics in sorted(file_metrics, key=lambda item: str(item.get('file', ''))):
+        stages = metrics.get('stages', {})
+        transcription = metrics.get('transcription', {})
+        inference_seconds = sum(
+            float(chunk.get('timings', {}).get('inference_seconds', 0.0))
+            for chunk in transcription.get('chunks', [])
+        )
+        audio_seconds = metrics.get('input_audio_seconds')
+        total_seconds = metrics.get('total_seconds')
+        x_realtime = (
+            audio_seconds / total_seconds
+            if isinstance(audio_seconds, (int, float))
+            and isinstance(total_seconds, (int, float))
+            and total_seconds
+            else None
+        )
+        status = str(metrics.get('status', 'unknown'))
+        status_style = {
+            'processed': 'green',
+            'cached': 'green',
+            'error': 'red bold',
+        }.get(status, '')
+        table.add_row(
+            str(metrics.get('file', '-')),
+            Text(status, style=status_style),
+            _format_duration(float(audio_seconds))
+            if isinstance(audio_seconds, (int, float))
+            else '-',
+            _format_metric_seconds(total_seconds),
+            _format_metric_seconds(stages.get('conversion_seconds')),
+            _format_metric_seconds(stages.get('vad_seconds')),
+            _format_metric_seconds(transcription.get('model_load_seconds')),
+            _format_metric_seconds(inference_seconds),
+            str(metrics.get('vad', {}).get('chunk_count', '-')),
+            f"{x_realtime:.2f}x" if x_realtime is not None else '-',
+        )
+    return table
+
+
+def _build_run_metrics_table(summary: dict[str, Any], metrics_path: Path) -> Table:
+    """Build a compact aggregate summary for the terminal."""
+    table = Table(title="Session Telemetry")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right")
+    file_status = (
+        f"{summary['files_processed']} processed, "
+        f"{summary['files_cached']} cached, {summary['files_failed']} failed"
+    )
+    table.add_row("Files", file_status)
+    table.add_row("Input audio", _format_duration(summary['input_audio_seconds']))
+    table.add_row("Processing wall time", _format_duration(summary['processing_seconds']))
+    table.add_row(
+        "Audio throughput",
+        f"{summary['audio_x_realtime']:.2f}x realtime"
+        if summary['audio_x_realtime'] is not None
+        else '-',
+    )
+    table.add_row(
+        "Real-time factor",
+        f"{summary['real_time_factor']:.4f}"
+        if summary['real_time_factor'] is not None
+        else '-',
+    )
+    table.add_row("VAD chunks", str(summary['vad_chunks']))
+    table.add_row("Transcript segments", str(summary['transcript_segments']))
+    table.add_row(
+        "Inference throughput",
+        f"{summary['inference_x_realtime']:.2f}x realtime"
+        if summary['inference_x_realtime'] is not None
+        else '-',
+    )
+    table.add_row("Metrics report", str(metrics_path))
+    return table
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch-process audio files with live progress")
     parser.add_argument("target_dir", type=str, help="Directory containing audio files")
@@ -162,8 +275,31 @@ def main() -> None:
         print(f"No audio files found in {target_dir}")
         sys.exit(1)
 
-    # Load config (imports dotenv, reads PARALLEL_JOBS etc.)
-    from src.config import PARALLEL_JOBS, TORCH_THREADS, WORKER_NICE
+    # Load config (imports dotenv and captures the run profile once).
+    from src.config import (
+        OUTPUT_DIR,
+        PADDING_SECONDS,
+        PARALLEL_JOBS,
+        SAMPLE_RATE,
+        TORCH_THREADS,
+        VAD_MIN_SILENCE_DURATION,
+        VAD_MIN_SPEECH_DURATION,
+        VAD_THRESHOLD,
+        WHISPER_BEAM_SIZE,
+        WHISPER_CARRY_INITIAL_PROMPT,
+        WHISPER_COMPRESSION_RATIO_THRESHOLD,
+        WHISPER_CONDITION_ON_PREVIOUS,
+        WHISPER_DEVICE,
+        WHISPER_FP16,
+        WHISPER_LANGUAGE,
+        WHISPER_LOGPROB_THRESHOLD,
+        WHISPER_MODEL,
+        WHISPER_NO_SPEECH_THRESHOLD,
+        WHISPER_PROMPT,
+        WHISPER_TEMPERATURE,
+        WHISPER_WORD_TIMESTAMPS,
+        WORKER_NICE,
+    )
 
     max_workers = min(max(1, PARALLEL_JOBS), len(files))
     torch_threads = _calculate_torch_threads(max_workers, TORCH_THREADS)
@@ -175,9 +311,12 @@ def main() -> None:
     status_dict = manager.dict({name: "waiting" for name in file_names})
 
     print(f"Processing {len(files)} audio files in {target_dir}")
-    start_time = time.monotonic()
+    started_at = utc_now_iso()
+    run_started = time.perf_counter()
+    processing_started = time.perf_counter()
 
     errors: list[tuple[str, str]] = []
+    completed_file_metrics: list[dict[str, Any]] = []
 
     # Install a SIGINT handler that forcefully kills child processes.
     # Without this, ProcessPoolExecutor and Manager ignore the first Ctrl+C.
@@ -222,7 +361,8 @@ def main() -> None:
                     done_futures = [f for f in futures if f.done()]
                     for fut in done_futures:
                         if fut in futures:
-                            name, status, err_msg = fut.result()
+                            name, status, err_msg, file_metrics = fut.result()
+                            completed_file_metrics.append(file_metrics)
                             if status == "error":
                                 status_dict[name] = "error"
                                 errors.append((name, err_msg))
@@ -238,26 +378,110 @@ def main() -> None:
     finally:
         signal.signal(signal.SIGINT, old_handler)
 
-    elapsed = time.monotonic() - start_time
-    print(f"Processed {len(files)} files in {_format_duration(elapsed)}")
+    processing_seconds = elapsed_seconds(processing_started, time.perf_counter())
+    print(f"Processed {len(files)} files in {_format_duration(processing_seconds)}")
+
+    session_name = args.session or target_dir.name
+    metrics_path = OUTPUT_DIR / session_name / f"{session_name}-metrics.json"
+    combine_metrics: dict[str, Any] = {
+        'status': 'skipped' if errors else 'running',
+        'seconds': 0.0,
+        'output_files': [],
+    }
+    combine_error: Optional[str] = None
+
+    if not errors:
+        print("Combining transcripts...")
+        from src.combine import combine_transcripts_from_env
+
+        combine_started = time.perf_counter()
+        try:
+            output_files = combine_transcripts_from_env(OUTPUT_DIR, session_name)
+            combine_metrics['status'] = 'completed'
+            combine_metrics['output_files'] = [str(path) for path in output_files]
+            for path in output_files:
+                print(f"Combined transcript: {path}")
+        except Exception as e:
+            combine_error = str(e)
+            combine_metrics['status'] = 'error'
+            combine_metrics['error_type'] = type(e).__name__
+            combine_metrics['error'] = combine_error
+        finally:
+            combine_metrics['seconds'] = elapsed_seconds(
+                combine_started, time.perf_counter()
+            )
+
+    wall_seconds = elapsed_seconds(run_started, time.perf_counter())
+    completed_file_metrics.sort(key=lambda item: str(item.get('file', '')))
+    summary = build_run_summary(
+        completed_file_metrics,
+        processing_seconds=processing_seconds,
+        wall_seconds=wall_seconds,
+        max_workers=max_workers,
+    )
+    report = {
+        'schema_version': TELEMETRY_SCHEMA_VERSION,
+        'run': {
+            'session': session_name,
+            'status': 'failed' if errors or combine_error else 'completed',
+            'started_at': started_at,
+            'finished_at': utc_now_iso(),
+            'target_dir': str(target_dir),
+            'environment_file': os.environ.get('ENV_FILE') or '.env',
+            'force': args.force,
+        },
+        'runtime': {
+            'parallel_jobs_configured': PARALLEL_JOBS,
+            'active_workers': max_workers,
+            'torch_threads_per_worker': torch_threads,
+            'worker_nice': WORKER_NICE,
+        },
+        'configuration': {
+            'sample_rate': SAMPLE_RATE,
+            'whisper': {
+                'model': WHISPER_MODEL,
+                'device': WHISPER_DEVICE,
+                'fp16': WHISPER_FP16,
+                'language': WHISPER_LANGUAGE,
+                'temperature': WHISPER_TEMPERATURE,
+                'beam_size': WHISPER_BEAM_SIZE,
+                'word_timestamps': WHISPER_WORD_TIMESTAMPS,
+                'condition_on_previous_text': WHISPER_CONDITION_ON_PREVIOUS,
+                'carry_initial_prompt': WHISPER_CARRY_INITIAL_PROMPT,
+                'prompt_configured': bool(WHISPER_PROMPT),
+                'no_speech_threshold': WHISPER_NO_SPEECH_THRESHOLD,
+                'logprob_threshold': WHISPER_LOGPROB_THRESHOLD,
+                'compression_ratio_threshold': (
+                    WHISPER_COMPRESSION_RATIO_THRESHOLD
+                ),
+            },
+            'vad': {
+                'threshold': VAD_THRESHOLD,
+                'min_speech_duration': VAD_MIN_SPEECH_DURATION,
+                'min_silence_duration': VAD_MIN_SILENCE_DURATION,
+                'padding_seconds': PADDING_SECONDS,
+            },
+        },
+        'summary': summary,
+        'files': completed_file_metrics,
+        'combine': combine_metrics,
+    }
+    try:
+        write_metrics_report(metrics_path, report)
+    except OSError as e:
+        print(f"Metrics report error: {e}")
+
+    console = Console()
+    console.print(_build_file_metrics_table(completed_file_metrics))
+    console.print(_build_run_metrics_table(summary, metrics_path))
 
     if errors:
         print("\nErrors:")
         for name, msg in errors:
             print(f"  {name}: {msg}")
         sys.exit(1)
-
-    # Combine step
-    session_name = args.session or target_dir.name
-    print("Combining transcripts...")
-    from src.combine import combine_transcripts_from_env
-    from src.config import OUTPUT_DIR
-    try:
-        output_files = combine_transcripts_from_env(OUTPUT_DIR, session_name)
-        for p in output_files:
-            print(f"Combined transcript: {p}")
-    except Exception as e:
-        print(f"Combine error: {e}")
+    if combine_error:
+        print(f"Combine error: {combine_error}")
         sys.exit(1)
 
 

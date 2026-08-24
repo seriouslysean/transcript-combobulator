@@ -71,6 +71,7 @@ Patterns supported:
 - **Direct WAV decoding** - Passes segment arrays to Whisper without an FFmpeg process per segment
 - **Immediate file writing** - Prevents large memory buffers
 - **Model reuse** - Load Whisper once per long-lived batch worker
+- **Structured telemetry** - Persist session, file, stage, and VAD-chunk timings as JSON
 - **One-time worker setup** - Applies priority and Torch limits once instead of once per file
 
 ## File Organization

@@ -29,6 +29,7 @@ def transcribe_segments(
     audio_path: Path,
     original_input_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    metrics: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Transcribe a pre-VAD-processed audio file by reading its mapping JSON.
 
@@ -59,6 +60,7 @@ def transcribe_segments(
             pre_processed_mapping=mapping_data['segments'],
             original_input_path=original_input_path,
             progress_callback=progress_callback,
+            metrics=metrics,
         )
 
         return {
@@ -66,6 +68,7 @@ def transcribe_segments(
             'json_file': str(output_dir / f"{audio_path.stem}_transcription.json"),
             'mapping_file': str(mapping_path),
             'segments': result['segments'],
+            'metrics': result.get('metrics', {}),
         }
 
     except TranscriptionError:
@@ -79,6 +82,7 @@ def transcribe_audio(
     pre_processed_mapping: Optional[list[dict[str, Any]]] = None,
     original_input_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    metrics: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run the full transcription pipeline for a single audio file.
 
@@ -118,8 +122,12 @@ def transcribe_audio(
             raise TranscriptionError(f"No valid segments found for {audio_path.name}")
 
         logger.info(f"Found {len(segments_to_transcribe)} segments to transcribe")
+        transcription_metrics = metrics if metrics is not None else {}
         segments = transcribe_audio_segments(
-            segments_to_transcribe, output_vtt, progress_callback=progress_callback
+            segments_to_transcribe,
+            output_vtt,
+            progress_callback=progress_callback,
+            metrics=transcription_metrics,
         )
 
         logger.info("Saving transcription results...")
@@ -133,7 +141,7 @@ def transcribe_audio(
             json.dump(result, f, indent=2)
 
         logger.info("Transcription complete")
-        return result
+        return {**result, 'metrics': transcription_metrics}
 
     except WhisperError as e:
         raise TranscriptionError(f"Failed to transcribe audio: {e}") from e

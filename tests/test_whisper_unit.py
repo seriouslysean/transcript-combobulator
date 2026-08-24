@@ -45,12 +45,15 @@ def test_transcribe_segment_passes_wav_array_to_model(tmp_path: Path) -> None:
     audio_path.touch()
     waveform = np.array([0.0, 0.25, -0.25], dtype=np.float32)
     model = MagicMock()
+    timing = {}
     model.transcribe.return_value = {
         'segments': [{'start': 0.0, 'end': 1.0, 'text': ' hello'}]
     }
 
     with patch('src.whisper.sf.read', return_value=(waveform, 16000)) as read:
-        segments = transcribe_segment(audio_path, offset=5.0, model=model)
+        segments = transcribe_segment(
+            audio_path, offset=5.0, model=model, timing=timing
+        )
 
     read.assert_called_once_with(str(audio_path), dtype='float32', always_2d=False)
     transcribe_input = model.transcribe.call_args.args[0]
@@ -58,6 +61,10 @@ def test_transcribe_segment_passes_wav_array_to_model(tmp_path: Path) -> None:
     np.testing.assert_array_equal(transcribe_input, waveform)
     assert segments[0]['start'] == 5.0
     assert segments[0]['end'] == 6.0
+    assert timing['audio_seconds'] == round(3 / 16000, 6)
+    assert timing['status'] == 'processed'
+    assert timing['inference_seconds'] >= 0
+    assert timing['total_seconds'] >= timing['inference_seconds']
 
 
 def test_transcribe_segment_rejects_wrong_sample_rate(tmp_path: Path) -> None:
@@ -80,13 +87,20 @@ def test_empty_transcription_replaces_stale_vtt(tmp_path: Path) -> None:
     output_path = tmp_path / 'speaker.vtt'
     output_path.write_text('WEBVTT\n\nOLD TEXT\n', encoding='utf-8')
 
+    metrics = {}
     with patch('src.whisper.load_whisper_model', return_value=object()), patch(
         'src.whisper.transcribe_segment', return_value=[]
     ):
-        segments = transcribe_audio_segments([(segment_path, 0.0)], output_path)
+        segments = transcribe_audio_segments(
+            [(segment_path, 0.0)], output_path, metrics=metrics
+        )
 
     assert segments == []
     assert output_path.read_text(encoding='utf-8') == 'WEBVTT\n\n'
+    assert metrics['chunk_count'] == 1
+    assert metrics['chunks'][0]['status'] == 'empty'
+    assert metrics['result_segment_count'] == 0
+    assert metrics['total_seconds'] >= 0
 
 
 def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:
@@ -95,7 +109,16 @@ def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:
     first.touch()
     second.touch()
 
+    metrics = {}
     with patch('src.whisper.load_whisper_model', return_value=object()), patch(
         'src.whisper.transcribe_segment', side_effect=WhisperError('decode failed')
     ), pytest.raises(WhisperError, match='All 2 audio segments failed'):
-        transcribe_audio_segments([(first, 0.0), (second, 1.0)], tmp_path / 'out.vtt')
+        transcribe_audio_segments(
+            [(first, 0.0), (second, 1.0)],
+            tmp_path / 'out.vtt',
+            metrics=metrics,
+        )
+
+    assert metrics['failed_chunk_count'] == 2
+    assert [chunk['status'] for chunk in metrics['chunks']] == ['error', 'error']
+    assert metrics['total_seconds'] >= 0

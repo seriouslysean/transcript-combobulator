@@ -8,6 +8,8 @@ import pytest
 
 from tools.process_batch import (
     _build_table,
+    _build_file_metrics_table,
+    _build_run_metrics_table,
     _calculate_torch_threads,
     _format_duration,
     _initialize_worker,
@@ -240,9 +242,13 @@ class TestProcessSingleFile:
              patch("tools.process_single_file.get_manifest_path", return_value=tmp_path / "manifest.json"), \
              patch("tools.process_single_file.is_pipeline_complete", return_value=True), \
              patch("tools.process_single_file.process_audio") as process_audio:
-            main(str(input_file), statuses, "speaker.wav")
+            metrics = main(str(input_file), statuses, "speaker.wav")
 
         assert statuses["speaker.wav"] == "cached"
+        assert metrics["status"] == "cached"
+        assert metrics["cache_hit"] is True
+        assert metrics["total_seconds"] >= 0
+        assert "cache_check_seconds" in metrics["stages"]
         process_audio.assert_not_called()
 
     def test_force_ignores_completed_pipeline(self, tmp_path):
@@ -414,3 +420,45 @@ class TestTorchThreadAllocation:
     def test_missing_cpu_count_uses_safe_fallback(self):
         with patch("tools.process_batch.os.cpu_count", return_value=None):
             assert _calculate_torch_threads(2, 0) == 2
+
+
+class TestMetricsTables:
+    def test_file_metrics_table_includes_each_file(self, tmp_path):
+        metrics = [
+            {
+                "file": "speaker.flac",
+                "status": "processed",
+                "input_audio_seconds": 60.0,
+                "total_seconds": 10.0,
+                "stages": {"conversion_seconds": 1.0, "vad_seconds": 2.0},
+                "vad": {"chunk_count": 3},
+                "transcription": {
+                    "model_load_seconds": 0.5,
+                    "chunks": [
+                        {"timings": {"inference_seconds": 4.0}},
+                    ],
+                },
+            }
+        ]
+
+        table = _build_file_metrics_table(metrics)
+
+        assert table.row_count == 1
+
+    def test_run_metrics_table_has_report_path(self, tmp_path):
+        summary = {
+            "files_processed": 1,
+            "files_cached": 0,
+            "files_failed": 0,
+            "input_audio_seconds": 60.0,
+            "processing_seconds": 10.0,
+            "audio_x_realtime": 6.0,
+            "real_time_factor": 0.1667,
+            "vad_chunks": 3,
+            "transcript_segments": 5,
+            "inference_x_realtime": 8.0,
+        }
+
+        table = _build_run_metrics_table(summary, tmp_path / "metrics.json")
+
+        assert table.row_count == 9

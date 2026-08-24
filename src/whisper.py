@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 import warnings
 from datetime import timedelta
 from functools import lru_cache
@@ -22,6 +23,7 @@ from src.config import (
     get_whisper_options,
 )
 from src.logging_config import get_logger
+from src.telemetry import elapsed_seconds
 
 logger = get_logger(__name__)
 
@@ -143,68 +145,192 @@ def transcribe_segment(
     output_path: Optional[Path] = None,
     offset: float = 0.0,
     model: Optional[whisper.Whisper] = None,
+    timing: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
     """Transcribe a single audio file, optionally writing a VTT."""
     if not audio_path.exists():
         raise WhisperError(f"Audio file not found: {audio_path}")
 
+    metrics = timing if timing is not None else {}
+    started = time.perf_counter()
+    metrics['model_was_provided'] = model is not None
     try:
-        model = model or load_whisper_model()
-        audio = _load_segment_audio(audio_path)
-        result = model.transcribe(audio, **get_whisper_options())
-        segments = _segments_from_result(result, offset=offset)
+        stage_started = time.perf_counter()
+        try:
+            model = model or load_whisper_model()
+        finally:
+            metrics['model_resolve_seconds'] = elapsed_seconds(
+                stage_started, time.perf_counter()
+            )
+
+        stage_started = time.perf_counter()
+        try:
+            audio = _load_segment_audio(audio_path)
+            metrics['audio_seconds'] = round(len(audio) / SAMPLE_RATE, 6)
+        finally:
+            metrics['audio_decode_seconds'] = elapsed_seconds(
+                stage_started, time.perf_counter()
+            )
+
+        stage_started = time.perf_counter()
+        try:
+            result = model.transcribe(audio, **get_whisper_options())
+        finally:
+            metrics['inference_seconds'] = elapsed_seconds(
+                stage_started, time.perf_counter()
+            )
+
+        stage_started = time.perf_counter()
+        try:
+            segments = _segments_from_result(result, offset=offset)
+        finally:
+            metrics['result_processing_seconds'] = elapsed_seconds(
+                stage_started, time.perf_counter()
+            )
+
+        stage_started = time.perf_counter()
         if output_path and segments:
-            _write_vtt(output_path, segments)
+            try:
+                _write_vtt(output_path, segments)
+            finally:
+                metrics['vtt_write_seconds'] = elapsed_seconds(
+                    stage_started, time.perf_counter()
+                )
+        else:
+            metrics['vtt_write_seconds'] = 0.0
+        metrics['status'] = 'processed' if segments else 'empty'
+        metrics['result_segment_count'] = len(segments)
+        metrics['text_characters'] = sum(len(s.get('text', '')) for s in segments)
         return segments
     except Exception as e:
+        metrics['status'] = 'error'
+        metrics['error_type'] = type(e).__name__
+        metrics['error'] = str(e)
         raise WhisperError(f"Failed to transcribe segment: {e}") from e
+    finally:
+        metrics['total_seconds'] = elapsed_seconds(started, time.perf_counter())
+
+
+def _whisper_model_cache_hits() -> Optional[int]:
+    cache_info = getattr(load_whisper_model, 'cache_info', None)
+    if not callable(cache_info):
+        return None
+    try:
+        hits = cache_info().hits
+    except (AttributeError, TypeError):
+        return None
+    return hits if isinstance(hits, int) else None
 
 
 def transcribe_audio_segments(
     segments: list[tuple[Path, float]],
     output_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
+    metrics: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
     """Transcribe a list of (segment_path, start_offset) tuples with a shared model.
 
     Dedupes identical lines across segments in the output VTT.
     """
-    total = len(segments)
-    logger.info("Loading Whisper model...")
-    if progress_callback:
-        progress_callback("loading", 0, total)
-
-    model = load_whisper_model()
-    logger.info(f"VAD found {total} segments")
-
-    all_segments: list[dict[str, Any]] = []
-    failed_segments = 0
-    for i, (segment_path, start_time) in enumerate(segments, 1):
-        logger.info(f"Processing segment {i}/{total}...")
+    transcription_metrics = metrics if metrics is not None else {}
+    transcription_metrics.update(
+        {
+            'chunk_count': len(segments),
+            'chunks': [],
+            'failed_chunk_count': 0,
+            'result_segment_count': 0,
+        }
+    )
+    started = time.perf_counter()
+    try:
+        total = len(segments)
+        logger.info("Loading Whisper model...")
         if progress_callback:
-            progress_callback("transcribing", i, total)
+            progress_callback("loading", 0, total)
+
+        cache_hits_before = _whisper_model_cache_hits()
+        stage_started = time.perf_counter()
         try:
-            all_segments.extend(transcribe_segment(segment_path, None, start_time, model))
-        except Exception as e:
-            failed_segments += 1
-            logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
+            model = load_whisper_model()
+        finally:
+            transcription_metrics['model_load_seconds'] = elapsed_seconds(
+                stage_started, time.perf_counter()
+            )
+        cache_hits_after = _whisper_model_cache_hits()
+        transcription_metrics['model_cache_hit'] = (
+            cache_hits_after > cache_hits_before
+            if cache_hits_before is not None and cache_hits_after is not None
+            else None
+        )
+        logger.info(f"VAD found {total} segments")
 
-    if total and failed_segments == total:
-        raise WhisperError(f"All {total} audio segments failed to transcribe")
+        all_segments: list[dict[str, Any]] = []
+        failed_segments = 0
+        for i, (segment_path, start_time) in enumerate(segments, 1):
+            logger.info(f"Processing segment {i}/{total}...")
+            if progress_callback:
+                progress_callback("transcribing", i, total)
+            chunk_metrics: dict[str, Any] = {
+                'index': i,
+                'file': segment_path.name,
+                'offset_seconds': round(float(start_time), 6),
+                'timings': {},
+            }
+            try:
+                chunk_segments = transcribe_segment(
+                    segment_path,
+                    None,
+                    start_time,
+                    model,
+                    timing=chunk_metrics['timings'],
+                )
+                all_segments.extend(chunk_segments)
+                chunk_metrics['status'] = (
+                    'processed' if chunk_segments else 'empty'
+                )
+                chunk_metrics['result_segment_count'] = len(chunk_segments)
+                chunk_metrics['text_characters'] = sum(
+                    len(segment.get('text', '')) for segment in chunk_segments
+                )
+            except Exception as e:
+                failed_segments += 1
+                chunk_metrics['status'] = 'error'
+                chunk_metrics['error_type'] = type(e).__name__
+                chunk_metrics['error'] = str(e)
+                logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
+            chunk_metrics['audio_seconds'] = chunk_metrics['timings'].get(
+                'audio_seconds'
+            )
+            transcription_metrics['chunks'].append(chunk_metrics)
 
-    if output_path:
-        seen: set[str] = set()
-        deduped: list[dict[str, Any]] = []
-        for seg in all_segments:
-            line = seg["text"].strip()
-            if line and line not in seen:
-                deduped.append(seg)
-                seen.add(line)
-        _write_vtt(output_path, deduped)
-        logger.info(f"User transcript saved: {output_path.name}")
+        transcription_metrics['failed_chunk_count'] = failed_segments
+        transcription_metrics['result_segment_count'] = len(all_segments)
+        if total and failed_segments == total:
+            raise WhisperError(f"All {total} audio segments failed to transcribe")
 
-    all_segments.sort(key=lambda s: s["start"])
-    return all_segments
+        stage_started = time.perf_counter()
+        try:
+            if output_path:
+                seen: set[str] = set()
+                deduped: list[dict[str, Any]] = []
+                for seg in all_segments:
+                    line = seg["text"].strip()
+                    if line and line not in seen:
+                        deduped.append(seg)
+                        seen.add(line)
+                _write_vtt(output_path, deduped)
+                logger.info(f"User transcript saved: {output_path.name}")
+        finally:
+            transcription_metrics['vtt_write_seconds'] = elapsed_seconds(
+                stage_started, time.perf_counter()
+            )
+
+        all_segments.sort(key=lambda s: s["start"])
+        return all_segments
+    finally:
+        transcription_metrics['total_seconds'] = elapsed_seconds(
+            started, time.perf_counter()
+        )
 
 
 def filter_by_confidence(

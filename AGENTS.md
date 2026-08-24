@@ -12,6 +12,8 @@ src/
 ├── vad.py              # Silero VAD → segment WAVs + mapping JSON
 ├── whisper.py          # Whisper model wrapping; VTT writing; repetition filter
 ├── transcribe.py       # Pipeline entry: full-file transcribe via VAD + whisper
+├── pipeline_cache.py   # Config-aware completion manifests for resumable runs
+├── telemetry.py        # Per-run, per-file, and per-chunk timing reports
 ├── combine.py          # Merge per-user VTTs → one session transcript
 └── logging_config.py   # setup_logging / get_logger
 
