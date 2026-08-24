@@ -238,7 +238,8 @@ def transcribe_audio_segments(
             'chunk_count': len(segments),
             'chunks': [],
             'failed_chunk_count': 0,
-            'result_segment_count': 0,
+            'raw_result_segment_count': 0,
+            'written_vtt_cue_count': 0,
         }
     )
     started = time.perf_counter()
@@ -304,7 +305,7 @@ def transcribe_audio_segments(
             transcription_metrics['chunks'].append(chunk_metrics)
 
         transcription_metrics['failed_chunk_count'] = failed_segments
-        transcription_metrics['result_segment_count'] = len(all_segments)
+        transcription_metrics['raw_result_segment_count'] = len(all_segments)
         if total and failed_segments == total:
             raise WhisperError(f"All {total} audio segments failed to transcribe")
 
@@ -319,6 +320,7 @@ def transcribe_audio_segments(
                         deduped.append(seg)
                         seen.add(line)
                 _write_vtt(output_path, deduped)
+                transcription_metrics['written_vtt_cue_count'] = len(deduped)
                 logger.info(f"User transcript saved: {output_path.name}")
         finally:
             transcription_metrics['vtt_write_seconds'] = elapsed_seconds(

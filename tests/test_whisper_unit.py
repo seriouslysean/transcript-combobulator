@@ -99,8 +99,40 @@ def test_empty_transcription_replaces_stale_vtt(tmp_path: Path) -> None:
     assert output_path.read_text(encoding='utf-8') == 'WEBVTT\n\n'
     assert metrics['chunk_count'] == 1
     assert metrics['chunks'][0]['status'] == 'empty'
-    assert metrics['result_segment_count'] == 0
+    assert metrics['raw_result_segment_count'] == 0
+    assert metrics['written_vtt_cue_count'] == 0
     assert metrics['total_seconds'] >= 0
+
+
+def test_metrics_distinguish_raw_results_from_written_vtt_cues(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / 'first.wav'
+    second = tmp_path / 'second.wav'
+    third = tmp_path / 'third.wav'
+    output_path = tmp_path / 'speaker.vtt'
+    for path in (first, second, third):
+        path.touch()
+
+    metrics = {}
+    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
+        'src.whisper.transcribe_segment',
+        side_effect=[
+            [{'start': 0.0, 'end': 1.0, 'text': 'Repeated line'}],
+            [{'start': 1.0, 'end': 2.0, 'text': ' Repeated line '}],
+            [{'start': 2.0, 'end': 3.0, 'text': '   '}],
+        ],
+    ):
+        segments = transcribe_audio_segments(
+            [(first, 0.0), (second, 1.0), (third, 2.0)],
+            output_path,
+            metrics=metrics,
+        )
+
+    assert len(segments) == 3
+    assert metrics['raw_result_segment_count'] == 3
+    assert metrics['written_vtt_cue_count'] == 1
+    assert output_path.read_text(encoding='utf-8').count('-->') == 1
 
 
 def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:

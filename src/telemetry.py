@@ -89,7 +89,11 @@ def build_run_summary(
             int(f.get('vad', {}).get('chunk_count', 0)) for f in files
         ),
         'transcript_segments': sum(
-            int(f.get('transcription', {}).get('result_segment_count', 0))
+            int(f.get('transcription', {}).get('written_vtt_cue_count', 0))
+            for f in files
+        ),
+        'raw_result_segments': sum(
+            int(f.get('transcription', {}).get('raw_result_segment_count', 0))
             for f in files
         ),
         'failed_chunks': sum(chunk.get('status') == 'error' for chunk in chunks),

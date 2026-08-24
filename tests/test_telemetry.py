@@ -15,7 +15,8 @@ def test_build_run_summary_aggregates_file_and_chunk_metrics() -> None:
             'stages': {'conversion_seconds': 2.0, 'vad_seconds': 3.0},
             'vad': {'chunk_count': 2},
             'transcription': {
-                'result_segment_count': 3,
+                'raw_result_segment_count': 3,
+                'written_vtt_cue_count': 2,
                 'chunks': [
                     {
                         'status': 'processed',
@@ -52,7 +53,8 @@ def test_build_run_summary_aggregates_file_and_chunk_metrics() -> None:
     assert summary['real_time_factor'] == 0.1667
     assert summary['worker_utilization'] == 0.35
     assert summary['vad_chunks'] == 2
-    assert summary['transcript_segments'] == 3
+    assert summary['transcript_segments'] == 2
+    assert summary['raw_result_segments'] == 3
     assert summary['failed_chunks'] == 1
     assert summary['inference_x_realtime'] == 5.714
     assert summary['cumulative_stage_seconds'] == {
