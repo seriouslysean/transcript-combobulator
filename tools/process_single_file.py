@@ -51,6 +51,10 @@ def main(
 
     _update_status("converting")
     logger.info(f"Step 1: Converting {input_file.name} if needed...")
+    # Reaching this point means the completion cache missed or was bypassed.
+    # Do not let convert_to_wav's derived-file reuse hide a changed source.
+    if output_file.resolve() != input_file:
+        output_file.unlink(missing_ok=True)
     if needs_conversion(input_file):
         convert_to_wav(input_file, output_file)
     else:

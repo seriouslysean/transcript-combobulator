@@ -260,6 +260,82 @@ class TestProcessSingleFile:
         assert output_file.exists()
         process_audio.assert_called_once()
 
+    def test_cache_miss_replaces_existing_normalized_audio(self, tmp_path):
+        """A changed normalized source replaces the prior derived WAV."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "input" / "speaker.wav"
+        input_file.parent.mkdir()
+        input_file.write_bytes(b"new audio")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        output_file = output_dir / "speaker.wav"
+        output_file.write_bytes(b"old audio")
+        transcription = {
+            "vtt_file": str(output_dir / "speaker.vtt"),
+            "json_file": str(output_dir / "speaker.json"),
+            "mapping_file": str(output_dir / "speaker_mapping.json"),
+        }
+
+        with patch(
+            "tools.process_single_file.get_output_path_for_input",
+            return_value=output_dir,
+        ), patch(
+            "tools.process_single_file.is_pipeline_complete", return_value=False
+        ), patch(
+            "tools.process_single_file.needs_conversion", return_value=False
+        ), patch(
+            "tools.process_single_file.process_audio", return_value=(output_dir, [])
+        ), patch(
+            "tools.process_single_file.transcribe_segments",
+            return_value=transcription,
+        ), patch("tools.process_single_file.write_pipeline_manifest"):
+            main(str(input_file))
+
+        assert output_file.read_bytes() == b"new audio"
+
+    def test_cache_miss_removes_existing_audio_before_conversion(self, tmp_path):
+        """Conversion cannot silently reuse a valid but stale derived WAV."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.flac"
+        input_file.touch()
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        output_file = output_dir / "speaker.wav"
+        output_file.write_bytes(b"old audio")
+        transcription = {
+            "vtt_file": str(output_dir / "speaker.vtt"),
+            "json_file": str(output_dir / "speaker.json"),
+            "mapping_file": str(output_dir / "speaker_mapping.json"),
+        }
+
+        def convert_after_removal(source, destination):
+            assert source == input_file
+            assert destination == output_file
+            assert not destination.exists()
+            destination.touch()
+
+        with patch(
+            "tools.process_single_file.get_output_path_for_input",
+            return_value=output_dir,
+        ), patch(
+            "tools.process_single_file.is_pipeline_complete", return_value=False
+        ), patch(
+            "tools.process_single_file.needs_conversion", return_value=True
+        ), patch(
+            "tools.process_single_file.convert_to_wav",
+            side_effect=convert_after_removal,
+        ), patch(
+            "tools.process_single_file.process_audio", return_value=(output_dir, [])
+        ), patch(
+            "tools.process_single_file.transcribe_segments",
+            return_value=transcription,
+        ), patch("tools.process_single_file.write_pipeline_manifest"):
+            main(str(input_file))
+
+        assert output_file.exists()
+
 
 class TestWorkerInitialization:
     """Tests for process-wide worker setup."""
