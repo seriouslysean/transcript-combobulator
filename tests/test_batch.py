@@ -260,6 +260,36 @@ class TestProcessSingleFile:
         assert output_file.exists()
         process_audio.assert_called_once()
 
+    def test_reprocessing_invalidates_manifest_before_pipeline_work(self, tmp_path):
+        """An interrupted forced run cannot leave an old completion record."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        manifest = output_dir / "speaker_pipeline_manifest.json"
+        manifest.write_text('{"fingerprint": "old"}', encoding="utf-8")
+
+        def fail_after_manifest_invalidation(*args, **kwargs):
+            assert not manifest.exists()
+            raise RuntimeError("interrupted")
+
+        with patch(
+            "tools.process_single_file.get_output_path_for_input",
+            return_value=output_dir,
+        ), patch(
+            "tools.process_single_file.is_pipeline_complete", return_value=True
+        ), patch(
+            "tools.process_single_file.needs_conversion", return_value=False
+        ), patch(
+            "tools.process_single_file.process_audio",
+            side_effect=fail_after_manifest_invalidation,
+        ), pytest.raises(RuntimeError, match="interrupted"):
+            main(str(input_file), force=True)
+
+        assert not manifest.exists()
+
     def test_cache_miss_replaces_existing_normalized_audio(self, tmp_path):
         """A changed normalized source replaces the prior derived WAV."""
         from tools.process_single_file import main

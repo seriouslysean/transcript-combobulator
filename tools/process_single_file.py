@@ -49,6 +49,10 @@ def main(
         logger.info(f"Using completed pipeline output for {input_file.name}")
         return
 
+    # A completion record must describe only the run that produced the current
+    # artifacts. Leave the pipeline uncached if this attempt is interrupted.
+    manifest_path.unlink(missing_ok=True)
+
     _update_status("converting")
     logger.info(f"Step 1: Converting {input_file.name} if needed...")
     # Reaching this point means the completion cache missed or was bypassed.
