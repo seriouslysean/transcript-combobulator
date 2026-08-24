@@ -7,6 +7,7 @@ WAV, and writes a mapping JSON describing all segments.
 
 import json
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,9 @@ class VADError(Exception):
     """Base exception for VAD-related errors."""
 
 
+@lru_cache(maxsize=1)
 def load_vad_model() -> Any:
+    """Load Silero VAD once per long-lived worker process."""
     try:
         return load_silero_vad()
     except Exception as e:

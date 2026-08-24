@@ -6,7 +6,14 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import pytest
 
-from tools.process_batch import find_audio_files, _build_table, _format_duration, _status_display
+from tools.process_batch import (
+    _build_table,
+    _calculate_torch_threads,
+    _format_duration,
+    _initialize_worker,
+    _status_display,
+    find_audio_files,
+)
 
 
 class TestFindAudioFiles:
@@ -135,6 +142,11 @@ class TestStatusDisplay:
         assert "done" in label
         assert style == "green"
 
+    def test_cached(self):
+        label, style = _status_display("cached")
+        assert "cached" in label
+        assert style == "green"
+
     def test_transcribing_with_progress(self):
         label, style = _status_display("transcribing 3/15")
         assert label == "transcribing 3/15"
@@ -184,6 +196,14 @@ class TestConfigSettings:
         assert isinstance(TORCH_THREADS, int)
         assert TORCH_THREADS >= 0
 
+    def test_whisper_pipeline_rejects_non_16khz_audio(self):
+        """Array inputs have a fixed 16 kHz interpretation in Whisper."""
+        from src.config import _validate_sample_rate
+
+        assert _validate_sample_rate(16000) == 16000
+        with pytest.raises(ValueError, match="SAMPLE_RATE must be 16000"):
+            _validate_sample_rate(8000)
+
 
 class TestProcessSingleFile:
     """Tests for process_single_file status updates."""
@@ -208,3 +228,189 @@ class TestProcessSingleFile:
         # Both params should have defaults (None)
         assert sig.parameters["status_dict"].default is None
         assert sig.parameters["status_key"].default is None
+
+    def test_main_skips_completed_pipeline(self, tmp_path):
+        """Completed outputs return without running conversion, VAD, or Whisper."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        statuses = {}
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=tmp_path), \
+             patch("tools.process_single_file.get_manifest_path", return_value=tmp_path / "manifest.json"), \
+             patch("tools.process_single_file.is_pipeline_complete", return_value=True), \
+             patch("tools.process_single_file.process_audio") as process_audio:
+            main(str(input_file), statuses, "speaker.wav")
+
+        assert statuses["speaker.wav"] == "cached"
+        process_audio.assert_not_called()
+
+    def test_force_ignores_completed_pipeline(self, tmp_path):
+        """Force mode runs processing even when a completion manifest exists."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        output_file = tmp_path / "speaker.wav"
+        transcription = {
+            "vtt_file": str(tmp_path / "speaker.vtt"),
+            "json_file": str(tmp_path / "speaker.json"),
+            "mapping_file": str(tmp_path / "speaker_mapping.json"),
+        }
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=tmp_path), \
+             patch("tools.process_single_file.is_pipeline_complete", return_value=True), \
+             patch("tools.process_single_file.needs_conversion", return_value=False), \
+             patch("tools.process_single_file.process_audio", return_value=(tmp_path, [])) as process_audio, \
+             patch("tools.process_single_file.transcribe_segments", return_value=transcription), \
+             patch("tools.process_single_file.write_pipeline_manifest"):
+            main(str(input_file), force=True)
+
+        assert output_file.exists()
+        process_audio.assert_called_once()
+
+    def test_reprocessing_invalidates_manifest_before_pipeline_work(self, tmp_path):
+        """An interrupted forced run cannot leave an old completion record."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        manifest = output_dir / "speaker_pipeline_manifest.json"
+        manifest.write_text('{"fingerprint": "old"}', encoding="utf-8")
+
+        def fail_after_manifest_invalidation(*args, **kwargs):
+            assert not manifest.exists()
+            raise RuntimeError("interrupted")
+
+        with patch(
+            "tools.process_single_file.get_output_path_for_input",
+            return_value=output_dir,
+        ), patch(
+            "tools.process_single_file.is_pipeline_complete", return_value=True
+        ), patch(
+            "tools.process_single_file.needs_conversion", return_value=False
+        ), patch(
+            "tools.process_single_file.process_audio",
+            side_effect=fail_after_manifest_invalidation,
+        ), pytest.raises(RuntimeError, match="interrupted"):
+            main(str(input_file), force=True)
+
+        assert not manifest.exists()
+
+    def test_cache_miss_replaces_existing_normalized_audio(self, tmp_path):
+        """A changed normalized source replaces the prior derived WAV."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "input" / "speaker.wav"
+        input_file.parent.mkdir()
+        input_file.write_bytes(b"new audio")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        output_file = output_dir / "speaker.wav"
+        output_file.write_bytes(b"old audio")
+        transcription = {
+            "vtt_file": str(output_dir / "speaker.vtt"),
+            "json_file": str(output_dir / "speaker.json"),
+            "mapping_file": str(output_dir / "speaker_mapping.json"),
+        }
+
+        with patch(
+            "tools.process_single_file.get_output_path_for_input",
+            return_value=output_dir,
+        ), patch(
+            "tools.process_single_file.is_pipeline_complete", return_value=False
+        ), patch(
+            "tools.process_single_file.needs_conversion", return_value=False
+        ), patch(
+            "tools.process_single_file.process_audio", return_value=(output_dir, [])
+        ), patch(
+            "tools.process_single_file.transcribe_segments",
+            return_value=transcription,
+        ), patch("tools.process_single_file.write_pipeline_manifest"):
+            main(str(input_file))
+
+        assert output_file.read_bytes() == b"new audio"
+
+    def test_cache_miss_removes_existing_audio_before_conversion(self, tmp_path):
+        """Conversion cannot silently reuse a valid but stale derived WAV."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.flac"
+        input_file.touch()
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        output_file = output_dir / "speaker.wav"
+        output_file.write_bytes(b"old audio")
+        transcription = {
+            "vtt_file": str(output_dir / "speaker.vtt"),
+            "json_file": str(output_dir / "speaker.json"),
+            "mapping_file": str(output_dir / "speaker_mapping.json"),
+        }
+
+        def convert_after_removal(source, destination):
+            assert source == input_file
+            assert destination == output_file
+            assert not destination.exists()
+            destination.touch()
+
+        with patch(
+            "tools.process_single_file.get_output_path_for_input",
+            return_value=output_dir,
+        ), patch(
+            "tools.process_single_file.is_pipeline_complete", return_value=False
+        ), patch(
+            "tools.process_single_file.needs_conversion", return_value=True
+        ), patch(
+            "tools.process_single_file.convert_to_wav",
+            side_effect=convert_after_removal,
+        ), patch(
+            "tools.process_single_file.process_audio", return_value=(output_dir, [])
+        ), patch(
+            "tools.process_single_file.transcribe_segments",
+            return_value=transcription,
+        ), patch("tools.process_single_file.write_pipeline_manifest"):
+            main(str(input_file))
+
+        assert output_file.exists()
+
+
+class TestWorkerInitialization:
+    """Tests for process-wide worker setup."""
+
+    def test_applies_priority_and_torch_limits_once(self):
+        with patch("tools.process_batch.os.nice") as nice, patch(
+            "torch.set_num_threads"
+        ) as set_threads, patch("torch.set_num_interop_threads") as set_interop:
+            _initialize_worker(torch_threads=3, worker_nice=10)
+
+        nice.assert_called_once_with(10)
+        set_threads.assert_called_once_with(3)
+        set_interop.assert_called_once_with(1)
+
+    def test_zero_values_leave_process_defaults(self):
+        with patch("tools.process_batch.os.nice") as nice, patch(
+            "torch.set_num_threads"
+        ) as set_threads:
+            _initialize_worker(torch_threads=0, worker_nice=0)
+
+        nice.assert_not_called()
+        set_threads.assert_not_called()
+
+
+class TestTorchThreadAllocation:
+    """Tests for automatic intra-op thread allocation."""
+
+    def test_auto_splits_cpus_across_active_workers(self):
+        assert _calculate_torch_threads(2, 0, cpu_count=14) == 7
+        assert _calculate_torch_threads(4, 0, cpu_count=14) == 3
+
+    def test_explicit_setting_wins(self):
+        assert _calculate_torch_threads(2, 5, cpu_count=14) == 5
+
+    def test_never_returns_less_than_one_thread(self):
+        assert _calculate_torch_threads(8, 0, cpu_count=4) == 1
+
+    def test_missing_cpu_count_uses_safe_fallback(self):
+        with patch("tools.process_batch.os.cpu_count", return_value=None):
+            assert _calculate_torch_threads(2, 0) == 2

@@ -4,9 +4,12 @@ import json
 import os
 import warnings
 from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import numpy as np
+import soundfile as sf
 import whisper
 
 from src.config import (
@@ -15,6 +18,7 @@ from src.config import (
     WHISPER_MODEL,
     WHISPER_MODELS_DIR,
     WHISPER_PROMPT,
+    SAMPLE_RATE,
     get_whisper_options,
 )
 from src.logging_config import get_logger
@@ -70,10 +74,12 @@ def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> st
     return text
 
 
+@lru_cache(maxsize=None)
 def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
     """Load a whisper model from the local models dir.
 
-    Raises WhisperError if the model file is missing — run `make setup-whisper`.
+    The model is cached for the lifetime of the worker process. Raises
+    WhisperError if the model file is missing — run `make setup-whisper`.
     """
     model_name = model_name or os.getenv('WHISPER_MODEL', WHISPER_MODEL)
     model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
@@ -120,6 +126,18 @@ def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
             )
 
 
+def _load_segment_audio(audio_path: Path) -> np.ndarray:
+    """Decode a normalized pipeline WAV without spawning FFmpeg."""
+    audio, sample_rate = sf.read(str(audio_path), dtype='float32', always_2d=False)
+    if sample_rate != SAMPLE_RATE:
+        raise WhisperError(
+            f"Expected {SAMPLE_RATE}Hz segment but got {sample_rate}Hz: {audio_path}"
+        )
+    if audio.ndim != 1:
+        raise WhisperError(f"Expected mono segment but got shape {audio.shape}: {audio_path}")
+    return np.asarray(audio, dtype=np.float32)
+
+
 def transcribe_segment(
     audio_path: Path,
     output_path: Optional[Path] = None,
@@ -132,7 +150,8 @@ def transcribe_segment(
 
     try:
         model = model or load_whisper_model()
-        result = model.transcribe(str(audio_path), **get_whisper_options())
+        audio = _load_segment_audio(audio_path)
+        result = model.transcribe(audio, **get_whisper_options())
         segments = _segments_from_result(result, offset=offset)
         if output_path and segments:
             _write_vtt(output_path, segments)
@@ -159,6 +178,7 @@ def transcribe_audio_segments(
     logger.info(f"VAD found {total} segments")
 
     all_segments: list[dict[str, Any]] = []
+    failed_segments = 0
     for i, (segment_path, start_time) in enumerate(segments, 1):
         logger.info(f"Processing segment {i}/{total}...")
         if progress_callback:
@@ -166,9 +186,13 @@ def transcribe_audio_segments(
         try:
             all_segments.extend(transcribe_segment(segment_path, None, start_time, model))
         except Exception as e:
+            failed_segments += 1
             logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
 
-    if output_path and all_segments:
+    if total and failed_segments == total:
+        raise WhisperError(f"All {total} audio segments failed to transcribe")
+
+    if output_path:
         seen: set[str] = set()
         deduped: list[dict[str, Any]] = []
         for seg in all_segments:

@@ -21,6 +21,18 @@ multiprocessing.set_start_method("spawn", force=True)
 AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".m4a", ".ogg", ".aac", ".opus"}
 
 
+def _calculate_torch_threads(
+    max_workers: int,
+    configured_threads: int,
+    cpu_count: int | None = None,
+) -> int:
+    """Resolve threads per worker, splitting detected CPUs across active workers."""
+    if configured_threads > 0:
+        return configured_threads
+    detected_cpus = cpu_count if cpu_count is not None else os.cpu_count()
+    return max(1, (detected_cpus or 4) // max(1, max_workers))
+
+
 def find_audio_files(target_dir: Path) -> list[Path]:
     """Find audio files in target directory, excluding converted files."""
     files = []
@@ -34,27 +46,13 @@ def _worker(
     file_path: str,
     status_dict: "MutableMapping[str, str]",
     status_key: str,
-    torch_threads: int,
+    force: bool,
 ) -> tuple[str, str, str]:
     """Worker function that runs in a subprocess.
 
     Returns:
         (filename, "done" or "error", error_message_or_empty)
     """
-    # Lower scheduling priority so foreground apps stay responsive
-    try:
-        os.nice(10)
-    except OSError:
-        pass
-
-    # Limit torch threads per worker
-    if torch_threads > 0:
-        try:
-            import torch
-            torch.set_num_threads(torch_threads)
-        except Exception:
-            pass
-
     # Suppress all logging output — the rich table is the UI
     logging.disable(logging.CRITICAL)
 
@@ -67,7 +65,12 @@ def _worker(
 
     try:
         from tools.process_single_file import main as process_main
-        process_main(file_path, status_dict=status_dict, status_key=status_key)
+        process_main(
+            file_path,
+            status_dict=status_dict,
+            status_key=status_key,
+            force=force,
+        )
         return (Path(file_path).name, "done", "")
     except Exception as e:
         return (Path(file_path).name, "error", str(e))
@@ -76,6 +79,24 @@ def _worker(
         sys.stderr = old_stderr
         devnull.close()
         logging.disable(logging.NOTSET)
+
+
+def _initialize_worker(torch_threads: int, worker_nice: int) -> None:
+    """Apply process-wide scheduling and Torch settings once per worker."""
+    if worker_nice:
+        try:
+            os.nice(worker_nice)
+        except OSError:
+            pass
+
+    if torch_threads > 0:
+        try:
+            import torch
+
+            torch.set_num_threads(torch_threads)
+            torch.set_num_interop_threads(1)
+        except (RuntimeError, ValueError):
+            pass
 
 
 def _build_table(
@@ -103,6 +124,7 @@ def _status_display(raw_status: str) -> tuple[str, str]:
         "converting": ("converting", "yellow"),
         "splitting": ("splitting", "yellow"),
         "loading model": ("loading model", "blue"),
+        "cached": ("\u2713 cached", "green"),
         "done": ("\u2713 done", "green"),
     }
     if raw_status in static:
@@ -127,6 +149,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Batch-process audio files with live progress")
     parser.add_argument("target_dir", type=str, help="Directory containing audio files")
     parser.add_argument("--session", type=str, default=None, help="Session name for combine step")
+    parser.add_argument("--force", action="store_true", help="Ignore completed output")
     args = parser.parse_args()
 
     target_dir = Path(args.target_dir).resolve()
@@ -140,12 +163,10 @@ def main() -> None:
         sys.exit(1)
 
     # Load config (imports dotenv, reads PARALLEL_JOBS etc.)
-    from src.config import PARALLEL_JOBS, TORCH_THREADS
+    from src.config import PARALLEL_JOBS, TORCH_THREADS, WORKER_NICE
 
-    max_workers = PARALLEL_JOBS
-    torch_threads = TORCH_THREADS
-    if torch_threads == 0:
-        torch_threads = max(1, (os.cpu_count() or 4) // 4)
+    max_workers = min(max(1, PARALLEL_JOBS), len(files))
+    torch_threads = _calculate_torch_threads(max_workers, TORCH_THREADS)
 
     file_names = [f.name for f in files]
 
@@ -177,7 +198,11 @@ def main() -> None:
 
     try:
         with Live(_build_table(file_names, status_dict, max_workers), refresh_per_second=4) as live:
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            with ProcessPoolExecutor(
+                max_workers=max_workers,
+                initializer=_initialize_worker,
+                initargs=(torch_threads, WORKER_NICE),
+            ) as executor:
                 executor_ref = executor
                 futures = {}
                 for f in files:
@@ -186,7 +211,7 @@ def main() -> None:
                         str(f),
                         status_dict,
                         f.name,
-                        torch_threads,
+                        args.force,
                     )
                     futures[fut] = f.name
 

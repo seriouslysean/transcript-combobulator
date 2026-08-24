@@ -25,8 +25,8 @@ Implementation details for developers and advanced users.
 - `TRANSCRIPTION_MODE=vad` - Use VAD for segmentation
 - `VAD_THRESHOLD=0.5` - Speech detection sensitivity (0.0-1.0)
 - `VAD_MIN_SPEECH_DURATION=0.5` - Minimum speech segment length
-- `VAD_MIN_SILENCE_DURATION=2.0` - Minimum silence to split
-- `PADDING_SECONDS=0.2` - Audio padding around segments
+- `VAD_MIN_SILENCE_DURATION=3.0` - Minimum silence to split; longer islands reduce Whisper encoder calls
+- `PADDING_SECONDS=0.3` - Audio padding around segments
 
 ### Whisper Configuration
 - `WHISPER_MODEL=large-v3-turbo` - Model size/speed tradeoff
@@ -41,6 +41,11 @@ Implementation details for developers and advanced users.
 - `INCLUDE_TIMESTAMPS=false` - Include timing in output
 - `SKIP_FILTERS="[AUDIO OUT],[BLANK_AUDIO]"` - Content filtering
 - `CHUNKS=2` - Split large transcripts into N parts
+
+### Parallel Processing
+- `PARALLEL_JOBS=2` - Number of long-lived file workers
+- `TORCH_THREADS=0` - Threads per worker; zero splits available CPUs across active workers
+- `WORKER_NICE=10` - Worker niceness increment; zero keeps normal priority
 
 ## Username Mapping System
 
@@ -60,9 +65,11 @@ Patterns supported:
 ## Performance Optimizations
 
 - **Word timestamps disabled** - Prevents hanging on some segments
-- **Segment-based processing** - Avoids memory accumulation
+- **Longer speech islands** - Avoids paying for a 30-second Whisper window after every short pause
+- **Direct WAV decoding** - Passes segment arrays to Whisper without an FFmpeg process per segment
 - **Immediate file writing** - Prevents large memory buffers
-- **Model reuse** - Load Whisper model once per session
+- **Model reuse** - Load Whisper once per long-lived batch worker
+- **One-time worker setup** - Applies priority and Torch limits once instead of once per file
 
 ## File Organization
 

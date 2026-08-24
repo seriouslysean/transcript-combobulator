@@ -60,15 +60,30 @@ def get_output_path_for_input(input_path: Path) -> Path:
 # ── Parallel Processing ──
 PARALLEL_JOBS = get_int_env('PARALLEL_JOBS', 2)
 TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
+WORKER_NICE = get_int_env('WORKER_NICE', 10)  # niceness increment; 0 = unchanged
 
 # ── Audio Processing ──
-SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)
+WHISPER_SAMPLE_RATE = 16000
+
+
+def _validate_sample_rate(sample_rate: int) -> int:
+    """Whisper interprets ndarray audio at a fixed 16 kHz sample rate."""
+    if sample_rate != WHISPER_SAMPLE_RATE:
+        raise ValueError(
+            f"SAMPLE_RATE must be {WHISPER_SAMPLE_RATE} for Whisper; got {sample_rate}"
+        )
+    return sample_rate
+
+
+SAMPLE_RATE = _validate_sample_rate(get_int_env('SAMPLE_RATE', WHISPER_SAMPLE_RATE))
 TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 
 # ── VAD ──
 VAD_THRESHOLD = get_float_env('VAD_THRESHOLD', 0.5)
 VAD_MIN_SPEECH_DURATION = get_float_env('VAD_MIN_SPEECH_DURATION', 0.5)
-VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 1.0)
+# Whisper encodes a full 30-second window for every VAD segment. A longer
+# silence threshold avoids turning short pauses into separate encoder passes.
+VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 3.0)
 PADDING_SECONDS = get_float_env('PADDING_SECONDS', 0.3)
 
 # ── Whisper (optimized for single-speaker channels) ──
@@ -105,4 +120,21 @@ def get_whisper_options() -> dict[str, Any]:
         'word_timestamps': WHISPER_WORD_TIMESTAMPS,
         'initial_prompt': WHISPER_PROMPT or None,
         'fp16': WHISPER_FP16,
+    }
+
+
+def get_pipeline_fingerprint_settings() -> dict[str, Any]:
+    """Return output-affecting settings used by the per-file resume cache."""
+    return {
+        'sample_rate': SAMPLE_RATE,
+        'transcription_mode': TRANSCRIPTION_MODE,
+        'vad': {
+            'threshold': VAD_THRESHOLD,
+            'min_speech_duration': VAD_MIN_SPEECH_DURATION,
+            'min_silence_duration': VAD_MIN_SILENCE_DURATION,
+            'padding_seconds': PADDING_SECONDS,
+        },
+        'whisper_model': WHISPER_MODEL,
+        'whisper_device': WHISPER_DEVICE,
+        'whisper_options': get_whisper_options(),
     }
