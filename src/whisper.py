@@ -8,6 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import numpy as np
+import soundfile as sf
 import whisper
 
 from src.config import (
@@ -16,6 +18,7 @@ from src.config import (
     WHISPER_MODEL,
     WHISPER_MODELS_DIR,
     WHISPER_PROMPT,
+    SAMPLE_RATE,
     get_whisper_options,
 )
 from src.logging_config import get_logger
@@ -123,6 +126,18 @@ def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
             )
 
 
+def _load_segment_audio(audio_path: Path) -> np.ndarray:
+    """Decode a normalized pipeline WAV without spawning FFmpeg."""
+    audio, sample_rate = sf.read(str(audio_path), dtype='float32', always_2d=False)
+    if sample_rate != SAMPLE_RATE:
+        raise WhisperError(
+            f"Expected {SAMPLE_RATE}Hz segment but got {sample_rate}Hz: {audio_path}"
+        )
+    if audio.ndim != 1:
+        raise WhisperError(f"Expected mono segment but got shape {audio.shape}: {audio_path}")
+    return np.asarray(audio, dtype=np.float32)
+
+
 def transcribe_segment(
     audio_path: Path,
     output_path: Optional[Path] = None,
@@ -135,7 +150,8 @@ def transcribe_segment(
 
     try:
         model = model or load_whisper_model()
-        result = model.transcribe(str(audio_path), **get_whisper_options())
+        audio = _load_segment_audio(audio_path)
+        result = model.transcribe(audio, **get_whisper_options())
         segments = _segments_from_result(result, offset=offset)
         if output_path and segments:
             _write_vtt(output_path, segments)
