@@ -6,12 +6,18 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from src.config import get_whisper_options
 from src.whisper import (
     WhisperError,
     load_whisper_model,
     transcribe_audio_segments,
     transcribe_segment,
 )
+
+
+def test_whisper_options_carry_campaign_prompt_across_windows() -> None:
+    with patch('src.config.WHISPER_CARRY_INITIAL_PROMPT', True):
+        assert get_whisper_options()['carry_initial_prompt'] is True
 
 
 def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:

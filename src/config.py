@@ -80,7 +80,8 @@ TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 
 # ── VAD ──
 VAD_THRESHOLD = get_float_env('VAD_THRESHOLD', 0.5)
-VAD_MIN_SPEECH_DURATION = get_float_env('VAD_MIN_SPEECH_DURATION', 0.5)
+# Preserve isolated short replies such as "yes", "no", and spoken numbers.
+VAD_MIN_SPEECH_DURATION = get_float_env('VAD_MIN_SPEECH_DURATION', 0.25)
 # Whisper encodes a full 30-second window for every VAD segment. A longer
 # silence threshold avoids turning short pauses into separate encoder passes.
 VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 3.0)
@@ -95,6 +96,7 @@ WHISPER_TEMPERATURE = get_float_env('WHISPER_TEMPERATURE', 0.0)
 WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 1)
 WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', False)
 WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', False)
+WHISPER_CARRY_INITIAL_PROMPT = get_bool_env('WHISPER_CARRY_INITIAL_PROMPT', True)
 WHISPER_NO_SPEECH_THRESHOLD = get_float_env('WHISPER_NO_SPEECH_THRESHOLD', 0.6)
 WHISPER_LOGPROB_THRESHOLD = get_float_env('WHISPER_LOGPROB_THRESHOLD', -1.0)
 WHISPER_COMPRESSION_RATIO_THRESHOLD = get_float_env(
@@ -114,6 +116,7 @@ def get_whisper_options() -> dict[str, Any]:
         'temperature': WHISPER_TEMPERATURE,
         'beam_size': WHISPER_BEAM_SIZE if WHISPER_BEAM_SIZE > 1 else None,
         'condition_on_previous_text': WHISPER_CONDITION_ON_PREVIOUS,
+        'carry_initial_prompt': WHISPER_CARRY_INITIAL_PROMPT,
         'no_speech_threshold': WHISPER_NO_SPEECH_THRESHOLD,
         'logprob_threshold': WHISPER_LOGPROB_THRESHOLD,
         'compression_ratio_threshold': WHISPER_COMPRESSION_RATIO_THRESHOLD,

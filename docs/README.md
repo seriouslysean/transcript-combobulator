@@ -61,6 +61,16 @@ TRANSCRIPT_2_LABEL="Barbarian"
 TRANSCRIPT_2_DESCRIPTION="Goliath Barbarian"
 ```
 
+Put campaign vocabulary and proper nouns in the prompt. The default setup
+reapplies it to every internal Whisper window, including speech islands longer
+than 30 seconds:
+
+```sh
+WHISPER_PROMPT="Dungeons & Dragons session featuring Saltmarsh, Eda, and Gellan."
+WHISPER_CARRY_INITIAL_PROMPT=true
+VAD_MIN_SPEECH_DURATION=0.25
+```
+
 Test with examples:
 ```sh
 ENV_FILE=.env.example make combine-transcripts session=example
