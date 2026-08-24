@@ -24,7 +24,7 @@ Implementation details for developers and advanced users.
 - `SAMPLE_RATE=16000` - Whisper optimal sample rate
 - `TRANSCRIPTION_MODE=vad` - Use VAD for segmentation
 - `VAD_THRESHOLD=0.5` - Speech detection sensitivity (0.0-1.0)
-- `VAD_MIN_SPEECH_DURATION=0.5` - Minimum speech segment length
+- `VAD_MIN_SPEECH_DURATION=0.25` - Preserve short replies and spoken numbers
 - `VAD_MIN_SILENCE_DURATION=3.0` - Minimum silence to split; longer islands reduce Whisper encoder calls
 - `PADDING_SECONDS=0.3` - Audio padding around segments
 
@@ -34,6 +34,8 @@ Implementation details for developers and advanced users.
 - `WHISPER_LANGUAGE=en` - Language code
 - `WHISPER_TEMPERATURE=0.0` - Deterministic output
 - `WHISPER_WORD_TIMESTAMPS=false` - Disabled for performance
+- `WHISPER_CONDITION_ON_PREVIOUS=false` - Prevent context contamination between speech islands
+- `WHISPER_CARRY_INITIAL_PROMPT=true` - Reapply configured vocabulary in every internal decode window
 - `WHISPER_CONFIDENCE_THRESHOLD=50.0` - Filter low-confidence segments
 
 ### Combination Settings
@@ -69,6 +71,7 @@ Patterns supported:
 - **Direct WAV decoding** - Passes segment arrays to Whisper without an FFmpeg process per segment
 - **Immediate file writing** - Prevents large memory buffers
 - **Model reuse** - Load Whisper once per long-lived batch worker
+- **Structured telemetry** - Persist session, file, stage, and VAD-chunk timings as JSON
 - **One-time worker setup** - Applies priority and Torch limits once instead of once per file
 
 ## File Organization

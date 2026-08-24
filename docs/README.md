@@ -61,6 +61,16 @@ TRANSCRIPT_2_LABEL="Barbarian"
 TRANSCRIPT_2_DESCRIPTION="Goliath Barbarian"
 ```
 
+Put domain vocabulary and proper nouns in the prompt. The default setup
+reapplies it to every internal Whisper window, including speech islands longer
+than 30 seconds:
+
+```sh
+WHISPER_PROMPT="Conversation mentioning LOCATION_NAME and CHARACTER_NAME."
+WHISPER_CARRY_INITIAL_PROMPT=true
+VAD_MIN_SPEECH_DURATION=0.25
+```
+
 Test with examples:
 ```sh
 ENV_FILE=.env.example make combine-transcripts session=example
@@ -90,6 +100,22 @@ make combine-transcripts session=session-name
 make clean                              # Clean temporary files
 make test                               # Run test suite
 ```
+
+### Run telemetry
+
+Every batch run ends with per-file and session timing tables and writes a
+machine-readable report beside the combined transcript:
+
+```text
+tmp/output/<session>/<session>-metrics.json
+```
+
+The report includes total audio and wall time, real-time factor, worker
+utilization, cache hits, conversion/VAD/transcription stage durations, model
+load reuse, and every VAD chunk's audio decode, Whisper inference, and result
+processing time. Persisted files use opaque file IDs and exclude source names,
+paths, environment filenames, raw error messages, transcript text, and prompt
+content.
 
 ## Example Output
 
