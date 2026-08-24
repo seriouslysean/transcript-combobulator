@@ -196,6 +196,14 @@ class TestConfigSettings:
         assert isinstance(TORCH_THREADS, int)
         assert TORCH_THREADS >= 0
 
+    def test_whisper_pipeline_rejects_non_16khz_audio(self):
+        """Array inputs have a fixed 16 kHz interpretation in Whisper."""
+        from src.config import _validate_sample_rate
+
+        assert _validate_sample_rate(16000) == 16000
+        with pytest.raises(ValueError, match="SAMPLE_RATE must be 16000"):
+            _validate_sample_rate(8000)
+
 
 class TestProcessSingleFile:
     """Tests for process_single_file status updates."""

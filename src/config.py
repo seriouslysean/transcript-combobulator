@@ -63,7 +63,19 @@ TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
 WORKER_NICE = get_int_env('WORKER_NICE', 10)  # niceness increment; 0 = unchanged
 
 # ── Audio Processing ──
-SAMPLE_RATE = get_int_env('SAMPLE_RATE', 16000)
+WHISPER_SAMPLE_RATE = 16000
+
+
+def _validate_sample_rate(sample_rate: int) -> int:
+    """Whisper interprets ndarray audio at a fixed 16 kHz sample rate."""
+    if sample_rate != WHISPER_SAMPLE_RATE:
+        raise ValueError(
+            f"SAMPLE_RATE must be {WHISPER_SAMPLE_RATE} for Whisper; got {sample_rate}"
+        )
+    return sample_rate
+
+
+SAMPLE_RATE = _validate_sample_rate(get_int_env('SAMPLE_RATE', WHISPER_SAMPLE_RATE))
 TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 
 # ── VAD ──
