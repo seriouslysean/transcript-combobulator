@@ -108,3 +108,20 @@ def get_whisper_options() -> dict[str, Any]:
         'initial_prompt': WHISPER_PROMPT or None,
         'fp16': WHISPER_FP16,
     }
+
+
+def get_pipeline_fingerprint_settings() -> dict[str, Any]:
+    """Return output-affecting settings used by the per-file resume cache."""
+    return {
+        'sample_rate': SAMPLE_RATE,
+        'transcription_mode': TRANSCRIPTION_MODE,
+        'vad': {
+            'threshold': VAD_THRESHOLD,
+            'min_speech_duration': VAD_MIN_SPEECH_DURATION,
+            'min_silence_duration': VAD_MIN_SILENCE_DURATION,
+            'padding_seconds': PADDING_SECONDS,
+        },
+        'whisper_model': WHISPER_MODEL,
+        'whisper_device': WHISPER_DEVICE,
+        'whisper_options': get_whisper_options(),
+    }

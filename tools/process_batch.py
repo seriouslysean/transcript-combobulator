@@ -35,6 +35,7 @@ def _worker(
     status_dict: "MutableMapping[str, str]",
     status_key: str,
     torch_threads: int,
+    force: bool,
 ) -> tuple[str, str, str]:
     """Worker function that runs in a subprocess.
 
@@ -67,7 +68,12 @@ def _worker(
 
     try:
         from tools.process_single_file import main as process_main
-        process_main(file_path, status_dict=status_dict, status_key=status_key)
+        process_main(
+            file_path,
+            status_dict=status_dict,
+            status_key=status_key,
+            force=force,
+        )
         return (Path(file_path).name, "done", "")
     except Exception as e:
         return (Path(file_path).name, "error", str(e))
@@ -103,6 +109,7 @@ def _status_display(raw_status: str) -> tuple[str, str]:
         "converting": ("converting", "yellow"),
         "splitting": ("splitting", "yellow"),
         "loading model": ("loading model", "blue"),
+        "cached": ("\u2713 cached", "green"),
         "done": ("\u2713 done", "green"),
     }
     if raw_status in static:
@@ -127,6 +134,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Batch-process audio files with live progress")
     parser.add_argument("target_dir", type=str, help="Directory containing audio files")
     parser.add_argument("--session", type=str, default=None, help="Session name for combine step")
+    parser.add_argument("--force", action="store_true", help="Ignore completed output")
     args = parser.parse_args()
 
     target_dir = Path(args.target_dir).resolve()
@@ -187,6 +195,7 @@ def main() -> None:
                         status_dict,
                         f.name,
                         torch_threads,
+                        args.force,
                     )
                     futures[fut] = f.name
 

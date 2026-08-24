@@ -81,6 +81,7 @@ make setup                              # Install dependencies and download Whis
 make run                                # Process all files in tmp/input/
 make run folder=tmp/input/session-name  # Process specific session
 make run-single file=path/to/file.flac  # Process single file
+make run folder=path/to/session force=1 # Reprocess completed files
 
 # Combination (if needed separately)
 make combine-transcripts session=session-name

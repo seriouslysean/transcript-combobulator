@@ -135,6 +135,11 @@ class TestStatusDisplay:
         assert "done" in label
         assert style == "green"
 
+    def test_cached(self):
+        label, style = _status_display("cached")
+        assert "cached" in label
+        assert style == "green"
+
     def test_transcribing_with_progress(self):
         label, style = _status_display("transcribing 3/15")
         assert label == "transcribing 3/15"
@@ -208,3 +213,42 @@ class TestProcessSingleFile:
         # Both params should have defaults (None)
         assert sig.parameters["status_dict"].default is None
         assert sig.parameters["status_key"].default is None
+
+    def test_main_skips_completed_pipeline(self, tmp_path):
+        """Completed outputs return without running conversion, VAD, or Whisper."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        statuses = {}
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=tmp_path), \
+             patch("tools.process_single_file.get_manifest_path", return_value=tmp_path / "manifest.json"), \
+             patch("tools.process_single_file.is_pipeline_complete", return_value=True), \
+             patch("tools.process_single_file.process_audio") as process_audio:
+            main(str(input_file), statuses, "speaker.wav")
+
+        assert statuses["speaker.wav"] == "cached"
+        process_audio.assert_not_called()
+
+    def test_force_ignores_completed_pipeline(self, tmp_path):
+        """Force mode runs processing even when a completion manifest exists."""
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        output_file = tmp_path / "speaker.wav"
+        transcription = {
+            "vtt_file": str(tmp_path / "speaker.vtt"),
+            "json_file": str(tmp_path / "speaker.json"),
+            "mapping_file": str(tmp_path / "speaker_mapping.json"),
+        }
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=tmp_path), \
+             patch("tools.process_single_file.is_pipeline_complete", return_value=True), \
+             patch("tools.process_single_file.needs_conversion", return_value=False), \
+             patch("tools.process_single_file.process_audio", return_value=(tmp_path, [])) as process_audio, \
+             patch("tools.process_single_file.transcribe_segments", return_value=transcription), \
+             patch("tools.process_single_file.write_pipeline_manifest"):
+            main(str(input_file), force=True)
+
+        assert output_file.exists()
+        process_audio.assert_called_once()

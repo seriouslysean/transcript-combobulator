@@ -34,16 +34,18 @@ run:
 	if [ -n "$(file)" ]; then \
 		if [ ! -f "$(file)" ]; then echo "File not found: $(file)"; exit 1; fi; \
 		echo "Processing single file: $$(basename $(file))..."; \
-		$(MAKE) run-single file=$(file); \
+		$(MAKE) run-single file=$(file) force=$(force); \
 		$(MAKE) combine-transcripts ENV_FILE=$(ENV_FILE); \
 	elif [ -n "$(folder)" ]; then \
 		if [ ! -d "$(folder)" ]; then echo "Directory not found: $(folder)"; exit 1; fi; \
 		session_name=$$(basename "$(folder)"); \
-		$(PY) tools/process_batch.py "$(folder)" --session "$$session_name"; \
+		force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
+		$(PY) tools/process_batch.py "$(folder)" --session "$$session_name" $$force_flag; \
 	else \
 		target_dir="$(ROOT_DIR)/tmp/input"; \
 		if [ ! -d "$$target_dir" ]; then echo "Directory not found: $$target_dir"; exit 1; fi; \
-		$(PY) tools/process_batch.py "$$target_dir"; \
+		force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
+		$(PY) tools/process_batch.py "$$target_dir" $$force_flag; \
 	fi
 
 # Convert -> VAD -> transcribe for one file (no combine)
@@ -53,7 +55,8 @@ run-single:
 		exit 1; \
 	fi
 	echo "Processing $$(basename $(file))..."
-	$(PY) tools/process_single_file.py $(file)
+	force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
+	$(PY) tools/process_single_file.py "$(file)" $$force_flag
 
 # Just the VAD step
 process-vad:
