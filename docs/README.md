@@ -113,8 +113,9 @@ tmp/output/<session>/<session>-metrics.json
 The report includes total audio and wall time, real-time factor, worker
 utilization, cache hits, conversion/VAD/transcription stage durations, model
 load reuse, and every VAD chunk's audio decode, Whisper inference, and result
-processing time. It records counts and timing only—never transcript text or the
-configured prompt.
+processing time. Persisted files use opaque file IDs and exclude source names,
+paths, environment filenames, raw error messages, transcript text, and prompt
+content.
 
 ## Example Output
 
