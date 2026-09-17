@@ -169,3 +169,28 @@ def test_chunk_checkpoint_removed_on_close(tmp_path: Path) -> None:
     cp.record(1, [], {})
     cp.close(remove=True)
     assert not progress.exists()
+
+
+def test_failed_manifest_write_never_leaves_a_stale_record(tmp_path: Path) -> None:
+    """Found by a Codex read of the module: a swallowed write error used to
+    keep the old completion record on disk."""
+    import builtins
+
+    manifest = tmp_path / 'm.json'
+    artifact = tmp_path / 'a'
+    artifact.touch()
+    record_stage(manifest, 'vtt', 'done', [artifact])
+    assert stage_is_complete(load_manifest(manifest), 'vtt', 'done')
+
+    real_open = builtins.open
+
+    def failing_open(path, *args, **kwargs):
+        if str(path).endswith('.tmp') and 'w' in (args[0] if args else kwargs.get('mode', 'r')):
+            raise OSError('disk full')
+        return real_open(path, *args, **kwargs)
+
+    with patch('builtins.open', side_effect=failing_open):
+        invalidate_stage(manifest, 'vtt')
+
+    assert not manifest.exists()
+    assert not stage_is_complete(load_manifest(manifest), 'vtt', 'done')

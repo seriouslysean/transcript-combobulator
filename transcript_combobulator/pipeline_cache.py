@@ -94,16 +94,23 @@ def stage_is_complete(stages: dict[str, Any], stage: str, fingerprint: str) -> b
 
 
 def _write_manifest(manifest_path: Path, stages: dict[str, Any]) -> None:
+    """Atomically replace the manifest. If the write fails, remove the manifest.
+
+    A missing manifest is always safe (everything reruns); a stale one is not,
+    because a record that was meant to be dropped could later pass
+    ``is_pipeline_complete``. So a failed write never leaves the old file.
+    """
     payload = {'cache_version': PIPELINE_CACHE_VERSION, 'stages': stages}
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = manifest_path.with_suffix(f"{manifest_path.suffix}.tmp")
     try:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
         with open(temporary_path, 'w', encoding='utf-8') as f:
             json.dump(payload, f, indent=2)
         temporary_path.replace(manifest_path)
-    except OSError:
+    except OSError as e:
         temporary_path.unlink(missing_ok=True)
-        logger.warning(f"Could not write pipeline manifest: {manifest_path}")
+        manifest_path.unlink(missing_ok=True)
+        logger.warning(f"Could not write pipeline manifest {manifest_path}: {e}; removed it")
 
 
 def record_stage(
