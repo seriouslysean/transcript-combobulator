@@ -55,3 +55,17 @@ def test_relative_env_file_resolves_against_repo_when_absent_from_cwd(
         if line.startswith("WHISPER_MODEL=")
     ][0]
     assert result.stdout.strip() == expected
+
+
+def test_missing_env_file_is_an_error(tmp_path: Path) -> None:
+    env = {**os.environ, "PYTHONPATH": str(REPO_ROOT), "ENV_FILE": ".env.anihilation"}
+    env.pop("PROJECT_ROOT", None)
+    result = subprocess.run(
+        [sys.executable, "-c", "import src.config"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "ENV_FILE='.env.anihilation' not found" in result.stderr

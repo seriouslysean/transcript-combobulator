@@ -45,6 +45,22 @@ The standard pipeline: `tools/process_batch.py` →
   (no-VAD) variant and is internal to the regenerate-VTT flow.
 - **Combine preserves original text.** `_normalize_for_dedup` is used ONLY for
   dedup keys, never for the text written to the output file.
+- **Dedup is consecutive, not global.** `DEDUPE_STRATEGY=consecutive` (default)
+  drops a cue only when it repeats the previous kept cue for that speaker
+  within `DEDUPE_WINDOW_SECONDS`. That is whisper's repeated-line
+  hallucination; a genuine "Yeah." ten minutes later must survive. The same
+  rule runs in `src.whisper.dedupe_segments` (per-speaker VTT) and
+  `src.combine._dedupe_entries` (session). `global` is the legacy lossy mode.
+- **Cue offsets use the padded clip start.** VAD writes `start_seconds` (speech)
+  and `clip_start_seconds` (what the WAV actually contains); whisper's
+  timestamps are relative to the clip, so `clip_start_seconds` is the offset.
+- **Partial transcription is a failure.** Any failed chunk raises before the
+  manifest is written (`FAIL_ON_PARTIAL_TRANSCRIPTION`), so the cache cannot
+  hide a transcript with gaps. A track with no speech at all is an empty
+  transcript, not an error (`ALLOW_SILENT_TRACKS`).
+- **Usernames match as whole tokens** in per-speaker dir names, so `dez`
+  never claims `5-dezfrost`. Batch runs hand combine the exact VTTs they
+  produced; stale sibling dirs are ignored.
 - **Skip filters match raw text**, not normalized text. So `[BLANK_AUDIO]` in a
   VTT line is filtered by the literal `[BLANK_AUDIO]` filter.
 
@@ -76,6 +92,7 @@ a trail:
 - `MAPPING_PRECHECK` (default on) runs `src.combine.validate_speaker_mapping`
   against the input stems before any worker starts. Same errors as the combine
   step, minutes earlier.
+- A missing `ENV_FILE` raises at import instead of silently loading nothing.
 - `LOG_FILE` (default empty) persists worker and parent logs to
   `tmp/output/<session>/<session>.log`; workers tag lines with their audio
   file. `LOG_FILE=none` restores the old drop-everything behaviour. The rich

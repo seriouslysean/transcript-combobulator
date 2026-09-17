@@ -10,7 +10,9 @@ from src.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-PIPELINE_CACHE_VERSION = 1
+# 2: per-speaker VTT dedup became consecutive-only and cue offsets now use the
+# padded clip start, so VTTs written by version 1 are lossy and shifted.
+PIPELINE_CACHE_VERSION = 2
 
 
 def get_manifest_path(output_dir: Path, audio_stem: str) -> Path:

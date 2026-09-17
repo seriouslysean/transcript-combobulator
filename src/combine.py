@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-from src.config import OUTPUT_DIR
+from src.config import DEDUPE_STRATEGY, DEDUPE_WINDOW_SECONDS, OUTPUT_DIR
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -145,18 +145,11 @@ def combine_transcripts(
         logger.info(f"  - Found {len(entries)} entries")
         all_entries.extend(entries)
 
-    all_entries.sort(key=lambda e: e.start_time)
+    # Stable sort on (start, speaker) so ties across speakers are deterministic.
+    all_entries.sort(key=lambda e: (e.start_time, e.speaker))
     logger.info(f"Total combined entries: {len(all_entries)}")
 
-    seen: set[tuple[str, str]] = set()
-    deduped: list[TranscriptEntry] = []
-    for entry in all_entries:
-        key = (entry.speaker, entry.dedup_key)
-        if key in seen:
-            logger.debug(f"DUPLICATE SKIP: {entry.speaker}: '{entry.dedup_key}'")
-            continue
-        seen.add(key)
-        deduped.append(entry)
+    deduped = _dedupe_entries(all_entries)
 
     summary_lines = ["Summary:"]
     seen_summary: set[str] = set()
@@ -229,9 +222,52 @@ def _load_username_mapping() -> dict[str, dict[str, str]]:
     return mapping
 
 
+def _dedupe_entries(
+    entries: list[TranscriptEntry],
+    strategy: str = DEDUPE_STRATEGY,
+    window_seconds: float = DEDUPE_WINDOW_SECONDS,
+) -> list[TranscriptEntry]:
+    """Apply DEDUPE_STRATEGY per speaker. Entries must be sorted by start."""
+    if strategy == 'none':
+        return list(entries)
+    if strategy == 'global':
+        seen: set[tuple[str, str]] = set()
+        kept: list[TranscriptEntry] = []
+        for entry in entries:
+            key = (entry.speaker, entry.dedup_key)
+            if key in seen:
+                logger.debug(f"DUPLICATE SKIP: {entry.speaker}: '{entry.dedup_key}'")
+                continue
+            seen.add(key)
+            kept.append(entry)
+        return kept
+    last_kept: dict[str, TranscriptEntry] = {}
+    kept = []
+    for entry in entries:
+        prev = last_kept.get(entry.speaker)
+        if (
+            prev is not None
+            and prev.dedup_key == entry.dedup_key
+            and entry.start_time - prev.end_time <= window_seconds
+        ):
+            logger.debug(f"CONSECUTIVE SKIP: {entry.speaker}: '{entry.dedup_key}'")
+            continue
+        last_kept[entry.speaker] = entry
+        kept.append(entry)
+    return kept
+
+
 def _match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
-    """Usernames whose value appears as a substring of a per-speaker dir name."""
-    return [u for u in mapping if u in dir_name]
+    """Usernames that appear in a per-speaker dir name as a whole token.
+
+    Token boundaries are non-alphanumerics or the string ends, so 'dez' does
+    not claim '5-dezfrost' and 'nilbits' does not claim '3-nilbits2', while
+    '3-nilbits', '3-nilbits_16khz', and '2-burger_bear' still match.
+    """
+    return [
+        u for u in mapping
+        if re.search(rf'(?<![A-Za-z0-9]){re.escape(u)}(?![A-Za-z0-9])', dir_name)
+    ]
 
 
 def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, str]]:
@@ -271,12 +307,25 @@ def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, st
 def combine_transcripts_from_env(
     base_dir: Path,
     session_subdir: Optional[str] = None,
+    vtt_files: Optional[Iterable[Path]] = None,
 ) -> list[Path]:
-    """Combine transcripts using TRANSCRIPT_N_* env vars for speaker mapping."""
+    """Combine transcripts using TRANSCRIPT_N_* env vars for speaker mapping.
+
+    ``vtt_files`` restricts the combine to exactly those transcripts. Batch
+    runs pass the VTTs they produced so a stale per-speaker directory from an
+    earlier export cannot double a speaker's lines. Without it every VTT
+    under the session directory is used, in sorted order.
+    """
     search_dir = base_dir / session_subdir if session_subdir else base_dir
     output_dir = search_dir
 
-    vtt_files = list(search_dir.glob("**/*.vtt"))
+    if vtt_files is not None:
+        vtt_files = sorted(Path(p) for p in vtt_files)
+        missing = [str(p) for p in vtt_files if not p.exists()]
+        if missing:
+            raise CombineError(f"Transcript files not found: {missing}")
+    else:
+        vtt_files = sorted(search_dir.glob("**/*.vtt"))
     if not vtt_files:
         raise CombineError(f"No VTT files found in {search_dir}")
 

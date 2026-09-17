@@ -14,6 +14,8 @@ import soundfile as sf
 import whisper
 
 from src.config import (
+    DEDUPE_STRATEGY,
+    DEDUPE_WINDOW_SECONDS,
     WHISPER_CONFIDENCE_THRESHOLD,
     WHISPER_DEVICE,
     WHISPER_MODEL,
@@ -115,6 +117,45 @@ def _segments_from_result(
         confidence = min(100, max(0, (1 + avg_logprob) * 100))
         out.append({"start": start, "end": end, "text": text, "confidence": confidence})
     return out
+
+
+def dedupe_segments(
+    segments: list[dict[str, Any]],
+    strategy: str = DEDUPE_STRATEGY,
+    window_seconds: float = DEDUPE_WINDOW_SECONDS,
+) -> list[dict[str, Any]]:
+    """Drop repeated cues per DEDUPE_STRATEGY; blank cues are always dropped.
+
+    'consecutive' only removes a cue whose text matches the previously kept
+    cue and starts within window_seconds of its end. That is the shape of
+    whisper's repeated-line hallucination; a genuine "Yeah." ten minutes later
+    survives. 'global' is the legacy exact-text set across the whole file.
+    """
+    ordered = sorted(segments, key=lambda s: float(s.get("start", 0.0)))
+    kept: list[dict[str, Any]] = []
+    if strategy == 'global':
+        seen: set[str] = set()
+        for seg in ordered:
+            line = seg["text"].strip()
+            if line and line not in seen:
+                kept.append(seg)
+                seen.add(line)
+        return kept
+    prev: Optional[dict[str, Any]] = None
+    for seg in ordered:
+        line = seg["text"].strip()
+        if not line:
+            continue
+        if (
+            strategy == 'consecutive'
+            and prev is not None
+            and line == prev["text"].strip()
+            and float(seg["start"]) - float(prev["end"]) <= window_seconds
+        ):
+            continue
+        kept.append(seg)
+        prev = seg
+    return kept
 
 
 def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
@@ -315,13 +356,7 @@ def transcribe_audio_segments(
         stage_started = time.perf_counter()
         try:
             if output_path:
-                seen: set[str] = set()
-                deduped: list[dict[str, Any]] = []
-                for seg in all_segments:
-                    line = seg["text"].strip()
-                    if line and line not in seen:
-                        deduped.append(seg)
-                        seen.add(line)
+                deduped = dedupe_segments(all_segments)
                 _write_vtt(output_path, deduped)
                 transcription_metrics['written_vtt_cue_count'] = len(deduped)
                 logger.info(f"User transcript saved: {output_path.name}")

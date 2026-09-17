@@ -532,10 +532,17 @@ def main() -> None:
     if not errors:
         print("Combining transcripts...")
         from src.combine import combine_transcripts_from_env
+        from src.config import vtt_path_for_input
 
         combine_started = time.perf_counter()
         try:
-            output_files = combine_transcripts_from_env(OUTPUT_DIR, session_name)
+            # Only the transcripts this run produced (or reused from cache),
+            # never whatever else is lying under the session directory.
+            output_files = combine_transcripts_from_env(
+                OUTPUT_DIR,
+                session_name,
+                vtt_files=[vtt_path_for_input(f) for f in files],
+            )
             combine_metrics['status'] = 'completed'
             combine_metrics['output_files'] = [str(path) for path in output_files]
             for path in output_files:

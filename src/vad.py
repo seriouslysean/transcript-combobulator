@@ -17,6 +17,7 @@ from silero_vad import get_speech_timestamps, load_silero_vad
 
 from src.audio_utils import AudioValidationError, validate_audio_file
 from src.config import (
+    ALLOW_SILENT_TRACKS,
     PADDING_SECONDS,
     SAMPLE_RATE,
     VAD_MIN_SILENCE_DURATION,
@@ -91,7 +92,12 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
         )
 
         if not speech_timestamps:
-            raise VADError("No speech segments detected in audio")
+            if not ALLOW_SILENT_TRACKS:
+                raise VADError("No speech segments detected in audio")
+            logger.warning(
+                f"No speech detected in {input_path.name}; writing an empty mapping "
+                "(ALLOW_SILENT_TRACKS=false to treat this as an error)"
+            )
 
         padding_samples = int(PADDING_SECONDS * SAMPLE_RATE)
         logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")
@@ -105,9 +111,15 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
             segment_path = output_dir / f"{input_path.stem}_segment_{i:03d}.wav"
             sf.write(str(segment_path), segment.T.numpy(), SAMPLE_RATE)
 
+            # start/end are the detected speech bounds; clip_* are the bounds
+            # of the WAV actually written, which include the padding. Whisper
+            # timestamps are relative to the clip, so the clip start is the
+            # offset to add back.
             segments.append({
                 'start_seconds': ts['start'],
                 'end_seconds': ts['end'],
+                'clip_start_seconds': start / SAMPLE_RATE,
+                'clip_end_seconds': end / SAMPLE_RATE,
                 'segment_file': str(segment_path),
             })
 

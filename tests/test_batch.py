@@ -574,3 +574,44 @@ class TestResolveLogFile:
         from src.config import ROOT_DIR
 
         assert _resolve_log_file("logs/run.log", tmp_path, "s") == ROOT_DIR / "logs" / "run.log"
+
+
+class TestPartialTranscriptionFailsFile:
+    """A file with failed chunks must not be recorded as complete."""
+
+    def _run(self, tmp_path, failed, allow_partial):
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        transcription = {
+            "vtt_file": str(tmp_path / "speaker.vtt"),
+            "json_file": str(tmp_path / "speaker.json"),
+            "mapping_file": str(tmp_path / "speaker_mapping.json"),
+            "metrics": {"chunk_count": 200, "failed_chunk_count": failed, "chunks": []},
+        }
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=tmp_path), \
+             patch("tools.process_single_file.is_pipeline_complete", return_value=False), \
+             patch("tools.process_single_file.needs_conversion", return_value=False), \
+             patch("tools.process_single_file.process_audio", return_value=(tmp_path, [])), \
+             patch("tools.process_single_file.transcribe_segments", return_value=transcription), \
+             patch("tools.process_single_file.FAIL_ON_PARTIAL_TRANSCRIPTION", not allow_partial), \
+             patch("tools.process_single_file.write_pipeline_manifest") as manifest:
+            metrics = main(str(input_file))
+        return metrics, manifest
+
+    def test_failed_chunks_raise_and_skip_manifest(self, tmp_path):
+        from src.transcribe import TranscriptionError
+
+        with pytest.raises(TranscriptionError, match="30 of 200 segments failed"):
+            self._run(tmp_path, failed=30, allow_partial=False)
+
+    def test_failed_chunks_accepted_when_configured(self, tmp_path):
+        metrics, manifest = self._run(tmp_path, failed=30, allow_partial=True)
+        assert metrics["status"] == "processed"
+        manifest.assert_called_once()
+
+    def test_clean_file_still_completes(self, tmp_path):
+        metrics, manifest = self._run(tmp_path, failed=0, allow_partial=False)
+        assert metrics["status"] == "processed"
+        manifest.assert_called_once()

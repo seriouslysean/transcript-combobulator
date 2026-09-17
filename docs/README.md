@@ -142,6 +142,20 @@ MAPPING_PRECHECK=true        # fail on a TRANSCRIPT_N_* typo before any inferenc
 LOG_FILE=                    # empty = tmp/output/<session>/<session>.log; none = off
 ```
 
+Transcript fidelity knobs, also with defaults shown:
+
+```sh
+DEDUPE_STRATEGY=consecutive          # consecutive | global | none
+DEDUPE_WINDOW_SECONDS=2.0            # repeat within this gap = whisper hallucination
+FAIL_ON_PARTIAL_TRANSCRIPTION=true   # any failed chunk fails the file so a rerun retries
+ALLOW_SILENT_TRACKS=true             # a muted participant yields an empty transcript
+```
+
+Transcripts produced before these defaults existed were deduplicated across
+the whole session, so every repeated short line from a speaker was dropped,
+and every cue was 0.3 s late. The resume cache version was bumped, so the next
+`make run` on an old session reprocesses it.
+
 Paths are anchored to the repository, not the working directory, so the tools
 behave the same when invoked from elsewhere. Set `PROJECT_ROOT` in the shell
 environment to override.

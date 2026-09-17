@@ -5,6 +5,7 @@ by every other module — do not add imports from src.* here.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,12 @@ def _resolve_env_file(value: str) -> Path:
 
 
 _env_file = _resolve_env_file(os.environ.get('ENV_FILE') or '.env')
+if os.environ.get('ENV_FILE') and not _env_file.is_file():
+    # load_dotenv silently loads nothing for a missing file, which would run
+    # the whole pipeline on defaults with no speaker mapping.
+    raise FileNotFoundError(
+        f"ENV_FILE={os.environ['ENV_FILE']!r} not found (looked at {_env_file})"
+    )
 load_dotenv(dotenv_path=_env_file, override=True)
 
 
@@ -72,6 +79,20 @@ def get_output_path_for_input(input_path: Path) -> Path:
         return OUTPUT_DIR / input_path.stem
 
 
+_USERNAME_VTT_PATTERN = re.compile(r'\d+-(.+)_16khz')
+
+
+def vtt_name_for_stem(stem: str) -> str:
+    """'3-username_16khz' -> 'username_combined.vtt'; anything else -> '<stem>.vtt'."""
+    m = _USERNAME_VTT_PATTERN.match(stem)
+    return f"{m.group(1)}_combined.vtt" if m else f"{stem}.vtt"
+
+
+def vtt_path_for_input(input_path: Path) -> Path:
+    """Where the pipeline writes the per-speaker VTT for a given input file."""
+    return get_output_path_for_input(input_path) / vtt_name_for_stem(input_path.stem)
+
+
 # ── Parallel Processing ──
 PARALLEL_JOBS = get_int_env('PARALLEL_JOBS', 2)
 TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
@@ -89,6 +110,26 @@ MAPPING_PRECHECK = get_bool_env('MAPPING_PRECHECK', True)
 # LOG_FILE: where batch runs persist worker logs. Empty = <output>/<session>/
 # <session>.log; 'none' disables file logging (the pre-guard behaviour).
 LOG_FILE = os.getenv('LOG_FILE', '').strip().strip('"')
+
+# ── Transcript Fidelity ──
+# DEDUPE_STRATEGY applies to both the per-speaker VTT and the combined
+# transcript. 'consecutive' drops a cue only when it repeats the previous kept
+# cue for that speaker within DEDUPE_WINDOW_SECONDS, which is what whisper's
+# repeated-line hallucination looks like. 'global' is the legacy whole-session
+# dedup that also removed genuine repeats such as every second "Yeah.".
+# 'none' keeps everything.
+DEDUPE_STRATEGY = os.getenv('DEDUPE_STRATEGY', 'consecutive').strip().strip('"').lower()
+if DEDUPE_STRATEGY not in ('consecutive', 'global', 'none'):
+    raise ValueError(
+        f"DEDUPE_STRATEGY must be consecutive, global, or none; got {DEDUPE_STRATEGY!r}"
+    )
+DEDUPE_WINDOW_SECONDS = get_float_env('DEDUPE_WINDOW_SECONDS', 2.0)
+# A file with any failed chunks is an error so a rerun retries it; the
+# alternative is a transcript silently missing minutes of speech.
+FAIL_ON_PARTIAL_TRANSCRIPTION = get_bool_env('FAIL_ON_PARTIAL_TRANSCRIPTION', True)
+# A track with no detected speech (muted participant) yields an empty
+# transcript instead of failing the whole session.
+ALLOW_SILENT_TRACKS = get_bool_env('ALLOW_SILENT_TRACKS', True)
 
 # ── Audio Processing ──
 WHISPER_SAMPLE_RATE = 16000
@@ -168,4 +209,8 @@ def get_pipeline_fingerprint_settings() -> dict[str, Any]:
         'whisper_model': WHISPER_MODEL,
         'whisper_device': WHISPER_DEVICE,
         'whisper_options': get_whisper_options(),
+        'dedupe': {
+            'strategy': DEDUPE_STRATEGY,
+            'window_seconds': DEDUPE_WINDOW_SECONDS,
+        },
     }

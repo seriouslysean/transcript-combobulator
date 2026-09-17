@@ -9,6 +9,7 @@ import pytest
 from src.config import get_whisper_options
 from src.whisper import (
     WhisperError,
+    dedupe_segments,
     load_whisper_model,
     transcribe_audio_segments,
     transcribe_segment,
@@ -154,3 +155,31 @@ def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:
     assert metrics['failed_chunk_count'] == 2
     assert [chunk['status'] for chunk in metrics['chunks']] == ['error', 'error']
     assert metrics['total_seconds'] >= 0
+
+
+
+def _seg(start: float, end: float, text: str) -> dict:
+    return {'start': start, 'end': end, 'text': text}
+
+
+def test_dedupe_consecutive_drops_adjacent_repeat_only() -> None:
+    segments = [
+        _seg(0.0, 1.0, 'Yeah.'),
+        _seg(1.2, 2.0, 'Yeah.'),      # hallucinated repeat, 0.2 s later
+        _seg(600.0, 601.0, 'Yeah.'),  # genuine, ten minutes later
+        _seg(601.5, 602.0, '   '),    # blank
+    ]
+    kept = dedupe_segments(segments, strategy='consecutive', window_seconds=2.0)
+    assert [s['start'] for s in kept] == [0.0, 600.0]
+
+
+def test_dedupe_global_matches_legacy_behaviour() -> None:
+    segments = [_seg(0.0, 1.0, 'Yeah.'), _seg(600.0, 601.0, 'Yeah.')]
+    assert len(dedupe_segments(segments, strategy='global')) == 1
+    assert len(dedupe_segments(segments, strategy='none')) == 2
+
+
+def test_dedupe_sorts_by_start_before_comparing() -> None:
+    segments = [_seg(5.0, 6.0, 'B'), _seg(0.0, 1.0, 'A'), _seg(1.1, 2.0, 'A')]
+    kept = dedupe_segments(segments, strategy='consecutive', window_seconds=2.0)
+    assert [s['text'] for s in kept] == ['A', 'B']

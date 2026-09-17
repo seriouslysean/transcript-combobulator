@@ -1,28 +1,29 @@
 """Transcription pipeline: VAD -> per-segment whisper -> combined user VTT."""
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from src.config import get_output_path_for_input
+from src.config import (
+    ALLOW_SILENT_TRACKS,
+    get_output_path_for_input,
+    vtt_name_for_stem,
+    vtt_path_for_input,
+)
 from src.logging_config import get_logger
 from src.vad import process_audio
-from src.whisper import WhisperError, transcribe_audio_segments
+from src.whisper import WhisperError, _write_vtt, transcribe_audio_segments
 
 logger = get_logger(__name__)
 
-_USERNAME_PATTERN = re.compile(r'\d+-(.+)_16khz')
+__all__ = ['TranscriptionError', 'transcribe_segments', 'transcribe_audio', 'vtt_path_for_input']
 
 
 class TranscriptionError(Exception):
     """Base exception for transcription errors."""
 
 
-def _extract_username_vtt_name(stem: str) -> str:
-    """Given a stem like '3-username_16khz', return 'username_combined.vtt'."""
-    m = _USERNAME_PATTERN.match(stem)
-    return f"{m.group(1)}_combined.vtt" if m else f"{stem}.vtt"
+_extract_username_vtt_name = vtt_name_for_stem
 
 
 def transcribe_segments(
@@ -116,13 +117,40 @@ def transcribe_audio(
             if not segment_path.exists():
                 logger.warning(f"Segment file not found: {segment_path}")
                 continue
-            segments_to_transcribe.append((segment_path, segment['start_seconds']))
+            # Whisper's timestamps are relative to the clip, which starts
+            # PADDING_SECONDS before the detected speech. Older mappings lack
+            # clip_start_seconds and fall back to the (late) speech start.
+            offset = float(segment.get('clip_start_seconds', segment['start_seconds']))
+            segments_to_transcribe.append((segment_path, offset))
+
+        transcription_metrics = metrics if metrics is not None else {}
+        output_json = output_dir / f"{audio_path.stem}_transcription.json"
 
         if not segments_to_transcribe:
-            raise TranscriptionError(f"No valid segments found for {audio_path.name}")
+            if mapping or not ALLOW_SILENT_TRACKS:
+                raise TranscriptionError(f"No valid segments found for {audio_path.name}")
+            # A silent track: no speech was detected, so there is nothing to
+            # transcribe. Write an empty transcript rather than fail the batch.
+            logger.warning(f"No speech segments for {audio_path.name}; writing empty transcript")
+            _write_vtt(output_vtt, [])
+            transcription_metrics.update({
+                'chunk_count': 0,
+                'failed_chunk_count': 0,
+                'raw_result_segment_count': 0,
+                'written_vtt_cue_count': 0,
+                'chunks': [],
+                'total_seconds': 0.0,
+            })
+            result: dict[str, Any] = {
+                'audio_path': str(audio_path),
+                'segments': [],
+                'mapping_file': str(mapping_file),
+            }
+            with open(output_json, 'w') as f:
+                json.dump(result, f, indent=2)
+            return {**result, 'metrics': transcription_metrics}
 
         logger.info(f"Found {len(segments_to_transcribe)} segments to transcribe")
-        transcription_metrics = metrics if metrics is not None else {}
         segments = transcribe_audio_segments(
             segments_to_transcribe,
             output_vtt,
@@ -131,7 +159,6 @@ def transcribe_audio(
         )
 
         logger.info("Saving transcription results...")
-        output_json = output_dir / f"{audio_path.stem}_transcription.json"
         result = {
             'audio_path': str(audio_path),
             'segments': segments,

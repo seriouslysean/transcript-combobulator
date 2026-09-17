@@ -106,26 +106,56 @@ class TestCombineTranscripts:
         assert "Alice: Hello, world!" in text
         assert "Alice: This is a test." in text
 
-    def test_global_dedup_by_speaker_and_normalized_text(self, tmp_path):
-        """Repeated normalized content from the same speaker is deduped."""
+    def test_consecutive_repeat_within_window_is_deduped(self, tmp_path):
+        """Whisper's repeated-line hallucination: same text, back to back."""
         vtt = tmp_path / "alice.vtt"
-        _write_vtt(vtt, VTT_SAMPLE)
+        _write_vtt(
+            vtt,
+            "WEBVTT\n\n"
+            "00:00:01.000 --> 00:00:02.000\nHello, world!\n\n"
+            "00:00:02.500 --> 00:00:03.500\nhello world\n\n",
+        )
         out = tmp_path / "combined.txt"
-
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(
-                    name="Alice",
-                    label="Alice",
-                    description="",
-                    transcript_path=vtt,
-                )
+                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
             ],
             output_path=out,
         )
+        assert out.read_text().count("Alice: ") == 1
 
-        text = out.read_text()
-        assert text.count("Alice: Hello, world!") == 1
+    def test_genuine_repeat_later_in_session_is_kept(self, tmp_path):
+        """A speaker saying 'Yeah.' ten minutes apart is two lines, not one."""
+        vtt = tmp_path / "alice.vtt"
+        _write_vtt(
+            vtt,
+            "WEBVTT\n\n"
+            "00:00:01.000 --> 00:00:02.000\nYeah.\n\n"
+            "00:10:01.000 --> 00:10:02.000\nYeah.\n\n",
+        )
+        out = tmp_path / "combined.txt"
+        combine_transcripts(
+            transcript_configs=[
+                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+            ],
+            output_path=out,
+        )
+        assert out.read_text().count("Alice: Yeah.") == 2
+
+    def test_global_strategy_still_available(self, tmp_path):
+        from src.combine import _dedupe_entries, parse_vtt_file
+
+        vtt = tmp_path / "alice.vtt"
+        _write_vtt(
+            vtt,
+            "WEBVTT\n\n"
+            "00:00:01.000 --> 00:00:02.000\nYeah.\n\n"
+            "00:10:01.000 --> 00:10:02.000\nYeah.\n\n",
+        )
+        entries = parse_vtt_file(vtt, "Alice")
+        assert len(_dedupe_entries(entries, strategy="global")) == 1
+        assert len(_dedupe_entries(entries, strategy="none")) == 2
+        assert len(_dedupe_entries(entries, strategy="consecutive", window_seconds=2.0)) == 2
 
     def test_two_speakers_same_text_both_kept(self, tmp_path):
         """Different speakers saying the same thing are not deduped."""
@@ -215,13 +245,71 @@ class TestValidateSpeakerMapping:
         with pytest.raises(CombineError, match="2-dezfrost.*3-hereticjd"):
             validate_speaker_mapping(["1-nilbits", "2-dezfrost", "3-hereticjd"])
 
-    def test_ambiguous_substring_match(self, monkeypatch):
-        _set_mapping(monkeypatch, ["dez", "dezfrost"])
+    def test_ambiguous_token_match(self, monkeypatch):
+        _set_mapping(monkeypatch, ["dez", "frost"])
         with pytest.raises(CombineError, match="Ambiguous username match"):
-            validate_speaker_mapping(["2-dezfrost"])
+            validate_speaker_mapping(["2-dez-frost"])
+
+    def test_username_must_match_as_whole_token(self, monkeypatch):
+        """'dez' must not silently claim dezfrost's lines."""
+        _set_mapping(monkeypatch, ["dez"])
+        with pytest.raises(CombineError, match="No mapping found"):
+            validate_speaker_mapping(["5-dezfrost"])
+
+    def test_token_match_accepts_craig_and_converted_dir_names(self, monkeypatch):
+        _set_mapping(monkeypatch, ["nilbits", "burger_bear"])
+        mapping = validate_speaker_mapping(["3-nilbits", "3-nilbits_16khz", "2-burger_bear"])
+        assert set(mapping) == {"nilbits", "burger_bear"}
+        with pytest.raises(CombineError, match="No mapping found"):
+            validate_speaker_mapping(["3-nilbits2"])
 
     def test_incomplete_entry_is_skipped_and_leaves_dir_unmapped(self, monkeypatch):
         _set_mapping(monkeypatch, ["nilbits"])
         monkeypatch.setenv("TRANSCRIPT_1_DESCRIPTION", "")
         with pytest.raises(CombineError, match="No transcript mappings found"):
             validate_speaker_mapping(["1-nilbits"])
+
+
+class TestCombineFromEnvExplicitFiles:
+    """Batch runs hand combine the exact VTTs they produced."""
+
+    def _session(self, tmp_path, monkeypatch):
+        _set_mapping(monkeypatch, ["nilbits"])
+        session = tmp_path / "night"
+        current = session / "3-nilbits"
+        stale = session / "3-nilbits-v0"
+        for d in (current, stale):
+            d.mkdir(parents=True)
+            _write_vtt(
+                d / "3-nilbits.vtt",
+                "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n",
+            )
+        monkeypatch.setenv("CHUNKS", "1")
+        return session, current, stale
+
+    def test_explicit_list_ignores_stale_sibling_dirs(self, tmp_path, monkeypatch):
+        from src.combine import combine_transcripts_from_env
+
+        session, current, _ = self._session(tmp_path, monkeypatch)
+        out = combine_transcripts_from_env(
+            tmp_path, "night", vtt_files=[current / "3-nilbits.vtt"]
+        )
+        assert out[0].read_text().count("Roll for initiative.") == 1
+
+    def test_glob_fallback_sees_both(self, tmp_path, monkeypatch):
+        from src.combine import combine_transcripts_from_env
+
+        session, _, _ = self._session(tmp_path, monkeypatch)
+        monkeypatch.setenv("DEDUPE_STRATEGY", "none")
+        out = combine_transcripts_from_env(tmp_path, "night")
+        assert out[0].read_text().count("Roll for initiative.") >= 1
+        assert len(list(session.glob("**/*.vtt"))) == 2
+
+    def test_missing_explicit_file_is_loud(self, tmp_path, monkeypatch):
+        from src.combine import combine_transcripts_from_env
+
+        _, current, _ = self._session(tmp_path, monkeypatch)
+        with pytest.raises(CombineError, match="Transcript files not found"):
+            combine_transcripts_from_env(
+                tmp_path, "night", vtt_files=[current / "nope.vtt"]
+            )
