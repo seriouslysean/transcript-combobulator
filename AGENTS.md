@@ -157,6 +157,23 @@ fails loudly.
   than 8 on Apple Silicon. The worker's whisper thread count is restored after.
 - **`src/__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
+- **Island packing (`VAD_PACK_ISLANDS`) stays off.** Packing several VAD
+  islands into one <=28 s clip cut a 2.9 h track from 357 s to 146 s (2.45x)
+  with the same words, but whisper emits segment boundaries from what it
+  hears, never from our splices: 56 of 128 islands (26 with a 2 s gap) had
+  their text absorbed into the previous island's cue, up to 509 s early.
+  Stock `word_timestamps=True` doubles decode cost (second encoder pass,
+  SDPA disabled), still leaves segments crossing splices, and misassigned
+  9 of 128 islands. There is no decode-time way to force a boundary
+  (`clip_timestamps` re-encodes per clip). The packer and `src.timemap`
+  are kept, tested, and dormant as the foundation for a custom alignment
+  path that reuses encoder features and regroups words per island. Do not
+  turn packing on without that, and do not add a detect-and-retry patch:
+  its detector reads whisper's own timestamps, which are the thing in doubt.
+- **Temperature fallback is available.** `WHISPER_TEMPERATURE=0.0,0.2,0.4`
+  enables whisper's re-decode when the compression-ratio or logprob guard
+  trips; with the default scalar those guards never fire. Costs CPU only on
+  segments that trip it. Not yet A/B'd on a session.
 
 - Whisper's `word_timestamps=True` hangs on some segments. Keep the default
   `WHISPER_WORD_TIMESTAMPS=false`.

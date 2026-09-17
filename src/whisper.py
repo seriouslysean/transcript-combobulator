@@ -26,6 +26,7 @@ from src.config import (
 )
 from src.logging_config import get_logger
 from src.telemetry import elapsed_seconds
+from src.timemap import ClipTimeMap, Offset
 
 logger = get_logger(__name__)
 
@@ -107,15 +108,23 @@ def _load_whisper_model(model_name: str) -> whisper.Whisper:
 
 
 def _segments_from_result(
-    result: dict[str, Any], offset: float = 0.0
+    result: dict[str, Any], offset: Offset = 0.0
 ) -> list[dict[str, Any]]:
-    """Extract [{start, end, text, confidence}] from a whisper result."""
+    """Extract [{start, end, text, confidence}] from a whisper result.
+
+    ``offset`` is a plain clip start for single-island clips, or a
+    ClipTimeMap for packed clips whose silence was removed.
+    """
     out: list[dict[str, Any]] = []
     for segment in result.get("segments", []):
         if not isinstance(segment, dict):
             continue
-        start = float(segment.get("start", 0.0)) + offset
-        end = float(segment.get("end", 0.0)) + offset
+        local_start = float(segment.get("start", 0.0))
+        local_end = float(segment.get("end", 0.0))
+        if isinstance(offset, ClipTimeMap):
+            start, end = offset.map_span(local_start, local_end)
+        else:
+            start, end = local_start + offset, local_end + offset
         text = collapse_repetition(str(segment.get("text", "")).strip())
         avg_logprob = float(segment.get('avg_logprob', 0))
         confidence = min(100, max(0, (1 + avg_logprob) * 100))
@@ -191,7 +200,7 @@ def _load_segment_audio(audio_path: Path) -> npt.NDArray[np.float32]:
 def transcribe_segment(
     audio_path: Path,
     output_path: Optional[Path] = None,
-    offset: float = 0.0,
+    offset: Offset = 0.0,
     model: Optional[whisper.Whisper] = None,
     timing: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
@@ -271,7 +280,7 @@ def _whisper_model_cache_hits() -> Optional[int]:
 
 
 def transcribe_audio_segments(
-    segments: list[tuple[Path, float]],
+    segments: list[tuple[Path, Offset]],
     output_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     metrics: Optional[dict[str, Any]] = None,
@@ -322,7 +331,11 @@ def transcribe_audio_segments(
             chunk_metrics: dict[str, Any] = {
                 'index': i,
                 'file': segment_path.name,
-                'offset_seconds': round(float(start_time), 6),
+                'offset_seconds': round(
+                    start_time.pieces[0].source_start
+                    if isinstance(start_time, ClipTimeMap) else float(start_time),
+                    6,
+                ),
                 'timings': {},
             }
             try:

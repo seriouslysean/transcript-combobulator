@@ -11,6 +11,7 @@ from src.config import (
     vtt_path_for_input,
 )
 from src.logging_config import get_logger
+from src.timemap import ClipTimeMap, Offset
 from src.vad import process_audio
 from src.whisper import WhisperError, _write_vtt, transcribe_audio_segments
 
@@ -109,17 +110,18 @@ def transcribe_audio(
         mapping_file = output_dir / f"{audio_path.stem}_mapping.json"
         output_vtt = output_dir / vtt_name_for_stem(audio_path.stem)
 
-        segments_to_transcribe: list[tuple[Path, float]] = []
+        segments_to_transcribe: list[tuple[Path, Offset]] = []
         for segment in mapping:
             segment_path = Path(segment['segment_file'])
             if not segment_path.exists():
                 logger.warning(f"Segment file not found: {segment_path}")
                 continue
-            # Whisper's timestamps are relative to the clip, which starts
-            # PADDING_SECONDS before the detected speech. Older mappings lack
-            # clip_start_seconds and fall back to the (late) speech start.
-            offset = float(segment.get('clip_start_seconds', segment['start_seconds']))
-            segments_to_transcribe.append((segment_path, offset))
+            # Whisper's timestamps are relative to the clip. A single-island
+            # clip starts PADDING_SECONDS before the speech; a packed clip
+            # carries a piece list mapping each island back to the source.
+            segments_to_transcribe.append(
+                (segment_path, ClipTimeMap.from_mapping_entry(segment))
+            )
 
         transcription_metrics = metrics if metrics is not None else {}
         output_json = output_dir / f"{audio_path.stem}_transcription.json"
