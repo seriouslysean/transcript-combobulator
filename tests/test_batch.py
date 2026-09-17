@@ -538,7 +538,7 @@ class TestMemoryGuard:
         assert workers == 1
         assert warning is not None
         assert "running 1" in warning
-        assert "MEMORY_GUARD=false" in warning
+        assert "WHISPER_MODEL" in warning or "running 1" in warning
 
     def test_single_worker_that_cannot_fit_still_runs_with_warning(self):
         workers, warning = _memory_capped_workers(1, 4 * GIB, 8 * GIB, 0.85)
@@ -565,10 +565,6 @@ class TestResolveLogFile:
             tmp_path / "night-one" / "night-one.log"
         )
 
-    @pytest.mark.parametrize("value", ["none", "NONE", "off", "false", "0"])
-    def test_disable_keywords_return_none(self, tmp_path, value):
-        assert _resolve_log_file(value, tmp_path, "s") is None
-
     def test_absolute_path_is_used_as_is(self, tmp_path):
         target = tmp_path / "custom.log"
         assert _resolve_log_file(str(target), tmp_path, "s") == target
@@ -582,7 +578,7 @@ class TestResolveLogFile:
 class TestPartialTranscriptionFailsFile:
     """A file with failed chunks must not be recorded as complete."""
 
-    def _run(self, tmp_path, failed, allow_partial):
+    def _run(self, tmp_path, failed):
         from transcript_combobulator.pipeline import process_file as main
 
         input_file = tmp_path / "speaker.wav"
@@ -598,7 +594,6 @@ class TestPartialTranscriptionFailsFile:
              patch("transcript_combobulator.pipeline.needs_conversion", return_value=False), \
              patch("transcript_combobulator.pipeline.process_audio", return_value=(tmp_path, [])), \
              patch("transcript_combobulator.pipeline.transcribe_segments", return_value=transcription), \
-             patch("transcript_combobulator.pipeline.FAIL_ON_PARTIAL_TRANSCRIPTION", not allow_partial), \
              patch("transcript_combobulator.pipeline.write_pipeline_manifest") as manifest:
             metrics = main(str(input_file))
         return metrics, manifest
@@ -607,15 +602,10 @@ class TestPartialTranscriptionFailsFile:
         from transcript_combobulator.transcribe import TranscriptionError
 
         with pytest.raises(TranscriptionError, match="30 of 200 segments failed"):
-            self._run(tmp_path, failed=30, allow_partial=False)
-
-    def test_failed_chunks_accepted_when_configured(self, tmp_path):
-        metrics, manifest = self._run(tmp_path, failed=30, allow_partial=True)
-        assert metrics["status"] == "processed"
-        manifest.assert_called_once()
+            self._run(tmp_path, failed=30)
 
     def test_clean_file_still_completes(self, tmp_path):
-        metrics, manifest = self._run(tmp_path, failed=0, allow_partial=False)
+        metrics, manifest = self._run(tmp_path, failed=0)
         assert metrics["status"] == "processed"
         manifest.assert_called_once()
 

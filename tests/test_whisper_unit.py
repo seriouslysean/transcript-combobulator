@@ -171,19 +171,19 @@ def test_dedupe_consecutive_drops_adjacent_repeat_only() -> None:
         _seg(600.0, 601.0, 'Yeah.'),  # genuine, ten minutes later
         _seg(601.5, 602.0, '   '),    # blank
     ]
-    kept = dedupe_segments(segments, strategy='consecutive', window_seconds=2.0)
+    kept = dedupe_segments(segments, window_seconds=2.0)
     assert [s['start'] for s in kept] == [0.0, 600.0]
 
 
-def test_dedupe_global_matches_legacy_behaviour() -> None:
-    segments = [_seg(0.0, 1.0, 'Yeah.'), _seg(600.0, 601.0, 'Yeah.')]
-    assert len(dedupe_segments(segments, strategy='global')) == 1
-    assert len(dedupe_segments(segments, strategy='none')) == 2
+def test_dedupe_window_bounds_the_match() -> None:
+    segments = [_seg(0.0, 1.0, 'Yeah.'), _seg(2.5, 3.0, 'Yeah.')]
+    assert len(dedupe_segments(segments, window_seconds=2.0)) == 1
+    assert len(dedupe_segments(segments, window_seconds=1.0)) == 2
 
 
 def test_dedupe_sorts_by_start_before_comparing() -> None:
     segments = [_seg(5.0, 6.0, 'B'), _seg(0.0, 1.0, 'A'), _seg(1.1, 2.0, 'A')]
-    kept = dedupe_segments(segments, strategy='consecutive', window_seconds=2.0)
+    kept = dedupe_segments(segments, window_seconds=2.0)
     assert [s['text'] for s in kept] == ['A', 'B']
 
 

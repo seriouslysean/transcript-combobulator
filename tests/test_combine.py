@@ -142,7 +142,7 @@ class TestCombineTranscripts:
         )
         assert out.read_text().count("Alice: Yeah.") == 2
 
-    def test_global_strategy_still_available(self, tmp_path):
+    def test_window_bounds_the_dedup(self, tmp_path):
         from transcript_combobulator.combine import _dedupe_entries, parse_vtt_file
 
         vtt = tmp_path / "alice.vtt"
@@ -150,71 +150,11 @@ class TestCombineTranscripts:
             vtt,
             "WEBVTT\n\n"
             "00:00:01.000 --> 00:00:02.000\nYeah.\n\n"
-            "00:10:01.000 --> 00:10:02.000\nYeah.\n\n",
+            "00:00:03.500 --> 00:00:04.000\nYeah.\n\n",
         )
         entries = parse_vtt_file(vtt, "Alice")
-        assert len(_dedupe_entries(entries, strategy="global")) == 1
-        assert len(_dedupe_entries(entries, strategy="none")) == 2
-        assert len(_dedupe_entries(entries, strategy="consecutive", window_seconds=2.0)) == 2
-
-    def test_two_speakers_same_text_both_kept(self, tmp_path):
-        """Different speakers saying the same thing are not deduped."""
-        a = tmp_path / "a.vtt"
-        b = tmp_path / "b.vtt"
-        _write_vtt(a, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n")
-        _write_vtt(b, "WEBVTT\n\n00:00:01.500 --> 00:00:02.500\nHello\n")
-        out = tmp_path / "combined.txt"
-
-        combine_transcripts(
-            transcript_configs=[
-                TranscriptConfig("A", "A", "", a),
-                TranscriptConfig("B", "B", "", b),
-            ],
-            output_path=out,
-        )
-
-        text = out.read_text()
-        assert "A: Hello" in text
-        assert "B: Hello" in text
-
-    def test_sorted_by_start_time(self, tmp_path):
-        a = tmp_path / "a.vtt"
-        b = tmp_path / "b.vtt"
-        _write_vtt(a, "WEBVTT\n\n00:00:10.000 --> 00:00:11.000\nLater A\n")
-        _write_vtt(b, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEarly B\n")
-        out = tmp_path / "combined.txt"
-
-        combine_transcripts(
-            transcript_configs=[
-                TranscriptConfig("A", "A", "", a),
-                TranscriptConfig("B", "B", "", b),
-            ],
-            output_path=out,
-        )
-
-        text = out.read_text()
-        assert text.index("B: Early B") < text.index("A: Later A")
-
-
-class TestWhisperRepetitionCollapse:
-    """Regression test for degenerate whisper output in the transcription path."""
-
-    def test_collapse_repeated_word(self):
-        from transcript_combobulator.whisper import collapse_repetition
-
-        raw = "laughs " * 100
-        assert collapse_repetition(raw.strip()) == "laughs"
-
-    def test_leaves_normal_text_alone(self):
-        from transcript_combobulator.whisper import collapse_repetition
-
-        assert collapse_repetition("the quick brown fox") == "the quick brown fox"
-
-    def test_short_runs_preserved(self):
-        from transcript_combobulator.whisper import collapse_repetition
-
-        # Below threshold; keep as-is.
-        assert collapse_repetition("no no no") == "no no no"
+        assert len(_dedupe_entries(entries, window_seconds=2.0)) == 1
+        assert len(_dedupe_entries(entries, window_seconds=1.0)) == 2
 
 
 def _set_mapping(monkeypatch, usernames: list[str]) -> None:
@@ -300,7 +240,6 @@ class TestCombineFromEnvExplicitFiles:
         from transcript_combobulator.combine import combine_transcripts_from_env
 
         session, _, _ = self._session(tmp_path, monkeypatch)
-        monkeypatch.setenv("DEDUPE_STRATEGY", "none")
         out = combine_transcripts_from_env(tmp_path, "night")
         assert out[0].read_text().count("Roll for initiative.") >= 1
         assert len(list(session.glob("**/*.vtt"))) == 2

@@ -13,7 +13,6 @@ from typing import Iterable, Optional
 
 from transcript_combobulator.config import (
     CHUNKS,
-    DEDUPE_STRATEGY,
     DEDUPE_WINDOW_SECONDS,
     INCLUDE_TIMESTAMPS,
     OUTPUT_DIR,
@@ -231,25 +230,12 @@ def _load_username_mapping() -> dict[str, dict[str, str]]:
 
 def _dedupe_entries(
     entries: list[TranscriptEntry],
-    strategy: str = DEDUPE_STRATEGY,
     window_seconds: float = DEDUPE_WINDOW_SECONDS,
 ) -> list[TranscriptEntry]:
-    """Apply DEDUPE_STRATEGY per speaker. Entries must be sorted by start."""
-    if strategy == 'none':
-        return list(entries)
-    if strategy == 'global':
-        seen: set[tuple[str, str]] = set()
-        kept: list[TranscriptEntry] = []
-        for entry in entries:
-            key = (entry.speaker, entry.dedup_key)
-            if key in seen:
-                logger.debug(f"DUPLICATE SKIP: {entry.speaker}: '{entry.dedup_key}'")
-                continue
-            seen.add(key)
-            kept.append(entry)
-        return kept
+    """Drop an entry that repeats the previous kept entry for the same speaker
+    within window_seconds. Entries must be sorted by start."""
     last_kept: dict[str, TranscriptEntry] = {}
-    kept = []
+    kept: list[TranscriptEntry] = []
     for entry in entries:
         prev = last_kept.get(entry.speaker)
         if (

@@ -15,7 +15,6 @@ from transcript_combobulator.audio_utils import (
     validate_audio_file,
 )
 from transcript_combobulator.config import (
-    FAIL_ON_PARTIAL_TRANSCRIPTION,
     get_output_path_for_input,
     vtt_name_for_stem,
 )
@@ -223,12 +222,11 @@ def process_file(
         # segment does not lose the file, but a file with gaps must not be
         # recorded as complete: the cache would then block the retry.
         failed_chunks = int(file_metrics['transcription'].get('failed_chunk_count', 0) or 0)
-        if failed_chunks and FAIL_ON_PARTIAL_TRANSCRIPTION:
+        if failed_chunks:
             total_chunks = file_metrics['transcription'].get('chunk_count', '?')
             raise TranscriptionError(
                 f"{failed_chunks} of {total_chunks} segments failed to transcribe for "
-                f"{input_file.name}; rerun to retry "
-                "(FAIL_ON_PARTIAL_TRANSCRIPTION=false accepts partial output)"
+                f"{input_file.name}; rerun to retry the failed chunks"
             )
 
         if not stage_is_complete(stages, 'inference', fingerprints['inference']):

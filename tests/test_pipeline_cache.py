@@ -85,7 +85,7 @@ def test_stage_fingerprints_chain_from_the_changed_stage_onward(tmp_path: Path) 
     source.write_bytes(b'audio')
     base = build_stage_fingerprints(source)
 
-    with patch('transcript_combobulator.config.DEDUPE_STRATEGY', 'none'):
+    with patch('transcript_combobulator.config.DEDUPE_WINDOW_SECONDS', 9.0):
         dedupe_changed = build_stage_fingerprints(source)
     assert dedupe_changed['conversion'] == base['conversion']
     assert dedupe_changed['vad'] == base['vad']

@@ -144,11 +144,14 @@ ENV_FILE=/path/to/.env.campaign /path/to/repo/.venv/bin/combobulator run /srv/cr
 Defaults in `.env`:
 
 ```sh
-MEMORY_GUARD=true            # lower PARALLEL_JOBS if the model won't fit in RAM
 MEMORY_GUARD_FRACTION=0.85   # share of physical RAM the workers may use
-MAPPING_PRECHECK=true        # fail on a TRANSCRIPT_N_* typo before any inference
-LOG_FILE=                    # empty = tmp/output/<session>/<session>.log; none = off
+LOG_FILE=                    # empty = tmp/output/<session>/<session>.log
 ```
+
+Always on, no switch: the speaker mapping is validated before any inference,
+the worker count is capped to what fits in RAM, a file with any failed chunk
+fails so a rerun retries it, and a track with no speech yields an empty
+transcript instead of failing the session.
 
 Whisper's own fallback re-decode is off by default (`WHISPER_TEMPERATURE=0.0`).
 `WHISPER_TEMPERATURE=0.0,0.2,0.4` turns it on. Measured on a real session it
@@ -159,19 +162,16 @@ default stays scalar. Each saved segment records the temperature whisper used.
 Transcript fidelity knobs, also with defaults shown:
 
 ```sh
-DEDUPE_STRATEGY=consecutive          # consecutive | global | none
-DEDUPE_WINDOW_SECONDS=2.0            # repeat within this gap = whisper hallucination
-FAIL_ON_PARTIAL_TRANSCRIPTION=true   # any failed chunk fails the file so a rerun retries
-ALLOW_SILENT_TRACKS=true             # a muted participant yields an empty transcript
+DEDUPE_WINDOW_SECONDS=2.0            # a repeat within this gap is a whisper hallucination
 ```
 
-Transcripts produced before these defaults existed were deduplicated across
+Transcripts produced before this rule existed were deduplicated across
 the whole session, so every repeated short line from a speaker was dropped,
 and every cue was 0.3 s late. The resume cache version was bumped, so the next
 `make run` on an old session reprocesses it.
 
 VAD streams the audio from disk (256 MB peak on a 2.9 h track) using Silero's
-ONNX build; `VAD_BACKEND=jit` selects the TorchScript build, same regions.
+ONNX build.
 
 Interrupted runs resume. Conversion, VAD, and transcription each record their
 own completion, and transcription checkpoints every chunk, so a run killed at

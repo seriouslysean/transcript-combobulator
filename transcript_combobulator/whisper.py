@@ -15,7 +15,6 @@ import soundfile as sf
 import whisper
 
 from transcript_combobulator.config import (
-    DEDUPE_STRATEGY,
     DEDUPE_WINDOW_SECONDS,
     WHISPER_CONFIDENCE_THRESHOLD,
     WHISPER_DEVICE,
@@ -135,34 +134,22 @@ def _segments_from_result(
 
 def dedupe_segments(
     segments: list[dict[str, Any]],
-    strategy: str = DEDUPE_STRATEGY,
     window_seconds: float = DEDUPE_WINDOW_SECONDS,
 ) -> list[dict[str, Any]]:
-    """Drop repeated cues per DEDUPE_STRATEGY; blank cues are always dropped.
+    """Drop a cue that repeats the previous kept cue within window_seconds.
 
-    'consecutive' only removes a cue whose text matches the previously kept
-    cue and starts within window_seconds of its end. That is the shape of
-    whisper's repeated-line hallucination; a genuine "Yeah." ten minutes later
-    survives. 'global' is the legacy exact-text set across the whole file.
+    That is the shape of whisper's repeated-line hallucination; a genuine
+    "Yeah." ten minutes later survives. Blank cues are always dropped.
     """
     ordered = sorted(segments, key=lambda s: float(s.get("start", 0.0)))
     kept: list[dict[str, Any]] = []
-    if strategy == 'global':
-        seen: set[str] = set()
-        for seg in ordered:
-            line = seg["text"].strip()
-            if line and line not in seen:
-                kept.append(seg)
-                seen.add(line)
-        return kept
     prev: Optional[dict[str, Any]] = None
     for seg in ordered:
         line = seg["text"].strip()
         if not line:
             continue
         if (
-            strategy == 'consecutive'
-            and prev is not None
+            prev is not None
             and line == prev["text"].strip()
             and float(seg["start"]) - float(prev["end"]) <= window_seconds
         ):
