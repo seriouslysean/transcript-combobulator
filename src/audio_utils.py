@@ -1,14 +1,20 @@
 """Audio format validation and conversion to 16kHz mono WAV."""
 
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import soundfile as sf
-import torchaudio
 
+from src.config import AUDIO_CONVERTER
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Streaming block size for the two-pass peak normalisation (samples).
+_NORMALIZE_BLOCK = 16000 * 60
 
 SUPPORTED_FORMATS = {'.wav', '.flac', '.mp3', '.m4a', '.ogg', '.aac', '.opus'}
 
@@ -78,23 +84,14 @@ def convert_to_wav(
         input_info = validate_audio_file(input_path)
         logger.info(
             f"Converting {input_path} (SR: {input_info['sample_rate']}, "
-            f"Channels: {input_info['channels']}) to WAV"
+            f"Channels: {input_info['channels']}) to WAV via {AUDIO_CONVERTER}"
         )
-
-        wav, sr = torchaudio.load(str(input_path))
-
-        if wav.shape[0] > 1:
-            wav = wav.mean(dim=0, keepdim=True)
-            logger.info("Converted to mono")
-
-        if sr != target_sample_rate:
-            wav = torchaudio.transforms.Resample(sr, target_sample_rate)(wav)
-            logger.info(f"Resampled from {sr}Hz to {target_sample_rate}Hz")
-
-        wav = wav / (wav.abs().max() + 1e-8)
-
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        torchaudio.save(str(output_path), wav, target_sample_rate)
+
+        if AUDIO_CONVERTER == 'torchaudio':
+            _convert_with_torchaudio(input_path, output_path, target_sample_rate)
+        else:
+            _convert_with_ffmpeg(input_path, output_path, target_sample_rate)
 
         info = validate_audio_file(output_path)
         logger.info(
@@ -103,6 +100,67 @@ def convert_to_wav(
         )
     except Exception as e:
         raise AudioValidationError(f"Failed to convert {input_path} to WAV: {e}") from e
+
+
+def _convert_with_ffmpeg(input_path: Path, output_path: Path, target_sample_rate: int) -> None:
+    """Downmix + resample with ffmpeg, then peak-normalise in streaming blocks.
+
+    ffmpeg decodes and resamples in a bounded buffer instead of loading the
+    whole file. The normalisation matches the torchaudio path: divide by the
+    post-downmix, post-resample absolute peak (plus 1e-8).
+    """
+    ffmpeg = shutil.which('ffmpeg')
+    if not ffmpeg:
+        raise AudioValidationError(
+            "ffmpeg not found on PATH (Debian: apt install ffmpeg; macOS: brew install ffmpeg), "
+            "or set AUDIO_CONVERTER=torchaudio"
+        )
+    raw_path = output_path.with_name(f"{output_path.stem}.unnormalized.wav")
+    try:
+        subprocess.run(
+            [
+                ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+                '-i', str(input_path),
+                '-ac', '1', '-ar', str(target_sample_rate), '-c:a', 'pcm_f32le',
+                str(raw_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raw_path.unlink(missing_ok=True)
+        raise AudioValidationError(f"ffmpeg failed: {e.stderr.strip() or e}") from e
+
+    try:
+        peak = 0.0
+        for block in sf.blocks(str(raw_path), blocksize=_NORMALIZE_BLOCK, dtype='float32'):
+            if block.size:
+                peak = max(peak, float(np.abs(block).max()))
+        scale = 1.0 / (peak + 1e-8)
+        with sf.SoundFile(
+            str(output_path), 'w', samplerate=target_sample_rate, channels=1, subtype='PCM_16'
+        ) as out:
+            for block in sf.blocks(str(raw_path), blocksize=_NORMALIZE_BLOCK, dtype='float32'):
+                out.write(block * scale)
+    finally:
+        raw_path.unlink(missing_ok=True)
+    logger.info(f"Converted to mono {target_sample_rate}Hz, peak {peak:.4f} normalised to 1.0")
+
+
+def _convert_with_torchaudio(input_path: Path, output_path: Path, target_sample_rate: int) -> None:
+    """Legacy in-memory path; holds the whole file as float32 tensors."""
+    import torchaudio
+
+    wav, sr = torchaudio.load(str(input_path))
+    if wav.shape[0] > 1:
+        wav = wav.mean(dim=0, keepdim=True)
+        logger.info("Converted to mono")
+    if sr != target_sample_rate:
+        wav = torchaudio.transforms.Resample(sr, target_sample_rate)(wav)
+        logger.info(f"Resampled from {sr}Hz to {target_sample_rate}Hz")
+    wav = wav / (wav.abs().max() + 1e-8)
+    torchaudio.save(str(output_path), wav, target_sample_rate)
 
 
 def get_audio_info_summary(file_path: Path) -> str:

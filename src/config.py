@@ -133,6 +133,14 @@ ALLOW_SILENT_TRACKS = get_bool_env('ALLOW_SILENT_TRACKS', True)
 
 # ── Audio Processing ──
 WHISPER_SAMPLE_RATE = 16000
+# ffmpeg streams the conversion (tens of MB peak); torchaudio materialises the
+# whole file as float32 tensors (several GB for a 3 h stereo recording).
+AUDIO_CONVERTER = os.getenv('AUDIO_CONVERTER', 'ffmpeg').strip().strip('"').lower()
+if AUDIO_CONVERTER not in ('ffmpeg', 'torchaudio'):
+    raise ValueError(f"AUDIO_CONVERTER must be ffmpeg or torchaudio; got {AUDIO_CONVERTER!r}")
+# Silero processes 512-sample frames one at a time; thread fan-out costs more
+# than it saves (1 thread measured ~2x faster than 4 on Apple Silicon).
+VAD_THREADS = get_int_env('VAD_THREADS', 1)
 
 
 def _validate_sample_rate(sample_rate: int) -> int:

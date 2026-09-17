@@ -138,6 +138,18 @@ fails loudly.
 
 ## Performance Notes
 
+- **Conversion streams through ffmpeg** (`AUDIO_CONVERTER=ffmpeg`, default).
+  Measured on a 2.9 h Craig track: 5.4 s at 41 MB peak RSS versus 13.7 s at
+  8.8 GB for the legacy in-memory `torchaudio` path, with sample-identical
+  length and a mean absolute difference of 2e-5. The torchaudio path alone
+  exceeds an 8 GB Pi. Peak normalisation is preserved by a two-pass streaming
+  scan, so the "normalized once" invariant still holds.
+- **Silero VAD runs on one thread** (`VAD_THREADS=1`). It processes 512-sample
+  frames one at a time; 1 thread measured 2.2x faster than 4 and 3.7x faster
+  than 8 on Apple Silicon. The worker's whisper thread count is restored after.
+- **`src/__init__.py` imports nothing.** The batch parent only needs config,
+  combine, and telemetry; importing the package must not load torch.
+
 - Whisper's `word_timestamps=True` hangs on some segments. Keep the default
   `WHISPER_WORD_TIMESTAMPS=false`.
 - `beam_size=1` and `condition_on_previous_text=false` are intentional for

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import soundfile as sf
+import torch
 import torchaudio
 from silero_vad import get_speech_timestamps, load_silero_vad
 
@@ -22,6 +23,7 @@ from src.config import (
     SAMPLE_RATE,
     VAD_MIN_SILENCE_DURATION,
     VAD_MIN_SPEECH_DURATION,
+    VAD_THREADS,
     VAD_THRESHOLD,
 )
 from src.logging_config import get_logger
@@ -81,15 +83,24 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
         if wav.shape[0] > 1:
             wav = wav.mean(dim=0, keepdim=True)
 
-        speech_timestamps = get_speech_timestamps(
-            wav,
-            model,
-            return_seconds=True,
-            sampling_rate=SAMPLE_RATE,
-            threshold=VAD_THRESHOLD,
-            min_speech_duration_ms=int(VAD_MIN_SPEECH_DURATION * 1000),
-            min_silence_duration_ms=int(VAD_MIN_SILENCE_DURATION * 1000),
-        )
+        # Silero runs frame by frame; intra-op threading only adds overhead.
+        # Restore the worker's whisper thread count afterwards, even on error.
+        previous_threads = torch.get_num_threads()
+        if VAD_THREADS > 0:
+            torch.set_num_threads(VAD_THREADS)
+        try:
+            speech_timestamps = get_speech_timestamps(
+                wav,
+                model,
+                return_seconds=True,
+                sampling_rate=SAMPLE_RATE,
+                threshold=VAD_THRESHOLD,
+                min_speech_duration_ms=int(VAD_MIN_SPEECH_DURATION * 1000),
+                min_silence_duration_ms=int(VAD_MIN_SILENCE_DURATION * 1000),
+            )
+        finally:
+            if VAD_THREADS > 0:
+                torch.set_num_threads(previous_threads)
 
         if not speech_timestamps:
             if not ALLOW_SILENT_TRACKS:
