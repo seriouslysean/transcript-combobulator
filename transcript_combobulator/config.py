@@ -1,7 +1,7 @@
 """Central configuration. Loads a single .env file and exposes typed settings.
 
 Respects ENV_FILE to override the default .env. This module is imported early
-by every other module — do not add imports from src.* here.
+by every other module — do not add imports from transcript_combobulator.* here.
 """
 
 import os

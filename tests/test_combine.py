@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.combine import (
+from transcript_combobulator.combine import (
     CombineError,
     validate_speaker_mapping,
     TranscriptConfig,
@@ -143,7 +143,7 @@ class TestCombineTranscripts:
         assert out.read_text().count("Alice: Yeah.") == 2
 
     def test_global_strategy_still_available(self, tmp_path):
-        from src.combine import _dedupe_entries, parse_vtt_file
+        from transcript_combobulator.combine import _dedupe_entries, parse_vtt_file
 
         vtt = tmp_path / "alice.vtt"
         _write_vtt(
@@ -200,18 +200,18 @@ class TestWhisperRepetitionCollapse:
     """Regression test for degenerate whisper output in the transcription path."""
 
     def test_collapse_repeated_word(self):
-        from src.whisper import collapse_repetition
+        from transcript_combobulator.whisper import collapse_repetition
 
         raw = "laughs " * 100
         assert collapse_repetition(raw.strip()) == "laughs"
 
     def test_leaves_normal_text_alone(self):
-        from src.whisper import collapse_repetition
+        from transcript_combobulator.whisper import collapse_repetition
 
         assert collapse_repetition("the quick brown fox") == "the quick brown fox"
 
     def test_short_runs_preserved(self):
-        from src.whisper import collapse_repetition
+        from transcript_combobulator.whisper import collapse_repetition
 
         # Below threshold; keep as-is.
         assert collapse_repetition("no no no") == "no no no"
@@ -288,7 +288,7 @@ class TestCombineFromEnvExplicitFiles:
         return session, current, stale
 
     def test_explicit_list_ignores_stale_sibling_dirs(self, tmp_path, monkeypatch):
-        from src.combine import combine_transcripts_from_env
+        from transcript_combobulator.combine import combine_transcripts_from_env
 
         session, current, _ = self._session(tmp_path, monkeypatch)
         out = combine_transcripts_from_env(
@@ -297,7 +297,7 @@ class TestCombineFromEnvExplicitFiles:
         assert out[0].read_text().count("Roll for initiative.") == 1
 
     def test_glob_fallback_sees_both(self, tmp_path, monkeypatch):
-        from src.combine import combine_transcripts_from_env
+        from transcript_combobulator.combine import combine_transcripts_from_env
 
         session, _, _ = self._session(tmp_path, monkeypatch)
         monkeypatch.setenv("DEDUPE_STRATEGY", "none")
@@ -306,7 +306,7 @@ class TestCombineFromEnvExplicitFiles:
         assert len(list(session.glob("**/*.vtt"))) == 2
 
     def test_missing_explicit_file_is_loud(self, tmp_path, monkeypatch):
-        from src.combine import combine_transcripts_from_env
+        from transcript_combobulator.combine import combine_transcripts_from_env
 
         _, current, _ = self._session(tmp_path, monkeypatch)
         with pytest.raises(CombineError, match="Transcript files not found"):

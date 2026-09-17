@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 pytestmark = pytest.mark.slow  # real whisper/VAD inference
-from src.vad import load_vad_model, process_audio, VADError
-from src.config import OUTPUT_DIR
+from transcript_combobulator.vad import load_vad_model, process_audio, VADError
+from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
 import json
 
 def test_vad_model_loading():
@@ -23,7 +23,7 @@ def test_vad_model_is_cached_per_process():
     load_vad_model.cache_clear()
 
     try:
-        with patch('src.vad.load_silero_vad', return_value=expected_model) as load:
+        with patch('transcript_combobulator.vad.load_silero_vad', return_value=expected_model) as load:
             first = load_vad_model()
             second = load_vad_model()
 
@@ -35,7 +35,7 @@ def test_vad_model_is_cached_per_process():
 
 def test_vad_detection():
     """Test that VAD detects speech segments in the test JFK file."""
-    input_file = Path('tmp/input/test_jfk.wav')
+    input_file = INPUT_DIR / 'test_jfk.wav'
     assert input_file.exists(), "Test JFK file not found"
 
     # Process the audio

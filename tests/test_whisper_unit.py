@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from src.config import get_whisper_options
-from src.whisper import (
+from transcript_combobulator.config import get_whisper_options
+from transcript_combobulator.whisper import (
     WhisperError,
     _load_whisper_model,
     dedupe_segments,
@@ -19,7 +19,7 @@ from src.whisper import (
 
 
 def test_whisper_options_carry_configured_prompt_across_windows() -> None:
-    with patch('src.config.WHISPER_CARRY_INITIAL_PROMPT', True):
+    with patch('transcript_combobulator.config.WHISPER_CARRY_INITIAL_PROMPT', True):
         assert get_whisper_options()['carry_initial_prompt'] is True
 
 
@@ -30,9 +30,9 @@ def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:
     _load_whisper_model.cache_clear()
 
     try:
-        with patch('src.whisper.WHISPER_MODELS_DIR', tmp_path), patch(
-            'src.whisper.get_whisper_device', return_value='cpu'
-        ), patch('src.whisper.whisper.load_model', return_value=expected_model) as load:
+        with patch('transcript_combobulator.whisper.WHISPER_MODELS_DIR', tmp_path), patch(
+            'transcript_combobulator.whisper.get_whisper_device', return_value='cpu'
+        ), patch('transcript_combobulator.whisper.whisper.load_model', return_value=expected_model) as load:
             first = load_whisper_model(model_name)
             second = load_whisper_model(model_name)
 
@@ -53,7 +53,7 @@ def test_transcribe_segment_passes_wav_array_to_model(tmp_path: Path) -> None:
         'segments': [{'start': 0.0, 'end': 1.0, 'text': ' hello'}]
     }
 
-    with patch('src.whisper.sf.read', return_value=(waveform, 16000)) as read:
+    with patch('transcript_combobulator.whisper.sf.read', return_value=(waveform, 16000)) as read:
         segments = transcribe_segment(
             audio_path, offset=5.0, model=model, timing=timing
         )
@@ -76,7 +76,7 @@ def test_transcribe_segment_rejects_wrong_sample_rate(tmp_path: Path) -> None:
     model = MagicMock()
 
     with patch(
-        'src.whisper.sf.read',
+        'transcript_combobulator.whisper.sf.read',
         return_value=(np.zeros(10, dtype=np.float32), 44100),
     ), pytest.raises(WhisperError, match='Expected 16000Hz'):
         transcribe_segment(audio_path, model=model)
@@ -91,8 +91,8 @@ def test_empty_transcription_replaces_stale_vtt(tmp_path: Path) -> None:
     output_path.write_text('WEBVTT\n\nOLD TEXT\n', encoding='utf-8')
 
     metrics = {}
-    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
-        'src.whisper.transcribe_segment', return_value=[]
+    with patch('transcript_combobulator.whisper.load_whisper_model', return_value=object()), patch(
+        'transcript_combobulator.whisper.transcribe_segment', return_value=[]
     ):
         segments = transcribe_audio_segments(
             [(segment_path, 0.0)], output_path, metrics=metrics
@@ -118,8 +118,8 @@ def test_metrics_distinguish_raw_results_from_written_vtt_cues(
         path.touch()
 
     metrics = {}
-    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
-        'src.whisper.transcribe_segment',
+    with patch('transcript_combobulator.whisper.load_whisper_model', return_value=object()), patch(
+        'transcript_combobulator.whisper.transcribe_segment',
         side_effect=[
             [{'start': 0.0, 'end': 1.0, 'text': 'Repeated line'}],
             [{'start': 1.0, 'end': 2.0, 'text': ' Repeated line '}],
@@ -145,8 +145,8 @@ def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:
     second.touch()
 
     metrics = {}
-    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
-        'src.whisper.transcribe_segment', side_effect=WhisperError('decode failed')
+    with patch('transcript_combobulator.whisper.load_whisper_model', return_value=object()), patch(
+        'transcript_combobulator.whisper.transcribe_segment', side_effect=WhisperError('decode failed')
     ), pytest.raises(WhisperError, match='All 2 audio segments failed'):
         transcribe_audio_segments(
             [(first, 0.0), (second, 1.0)],
@@ -215,7 +215,7 @@ def test_regenerate_vtt_reads_pipeline_json_and_filters(tmp_path: Path) -> None:
 
 
 def test_interrupted_transcription_resumes_from_checkpoint(tmp_path: Path) -> None:
-    from src.pipeline_cache import load_chunk_checkpoint
+    from transcript_combobulator.pipeline_cache import load_chunk_checkpoint
 
     clips = [tmp_path / f'c{i}.wav' for i in range(3)]
     for c in clips:
@@ -227,8 +227,8 @@ def test_interrupted_transcription_resumes_from_checkpoint(tmp_path: Path) -> No
 
     # First run: chunk 2 fails; chunks 1 and 3 are checkpointed.
     metrics = {}
-    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
-        'src.whisper.transcribe_segment',
+    with patch('transcript_combobulator.whisper.load_whisper_model', return_value=object()), patch(
+        'transcript_combobulator.whisper.transcribe_segment',
         side_effect=[seg(0.0, 'one'), WhisperError('boom'), seg(20.0, 'three')],
     ):
         transcribe_audio_segments(jobs, vtt, metrics=metrics, checkpoint_path=progress, checkpoint_key='fp')
@@ -238,8 +238,8 @@ def test_interrupted_transcription_resumes_from_checkpoint(tmp_path: Path) -> No
 
     # Second run: only chunk 2 is transcribed; output equals a clean run.
     metrics = {}
-    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
-        'src.whisper.transcribe_segment', side_effect=[seg(10.0, 'two')]
+    with patch('transcript_combobulator.whisper.load_whisper_model', return_value=object()), patch(
+        'transcript_combobulator.whisper.transcribe_segment', side_effect=[seg(10.0, 'two')]
     ) as ts:
         segments = transcribe_audio_segments(jobs, vtt, metrics=metrics, checkpoint_path=progress, checkpoint_key='fp')
     assert ts.call_count == 1
@@ -256,8 +256,8 @@ def test_checkpoint_with_changed_settings_is_discarded(tmp_path: Path) -> None:
     clip.touch()
     progress = tmp_path / 'progress.jsonl'
     progress.write_text('{"key": "old"}\n{"index": 1, "segments": [{"start": 0, "end": 1, "text": "stale"}], "timings": {}}\n')
-    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
-        'src.whisper.transcribe_segment', return_value=[{'start': 0.0, 'end': 1.0, 'text': 'fresh', 'confidence': 90.0}]
+    with patch('transcript_combobulator.whisper.load_whisper_model', return_value=object()), patch(
+        'transcript_combobulator.whisper.transcribe_segment', return_value=[{'start': 0.0, 'end': 1.0, 'text': 'fresh', 'confidence': 90.0}]
     ) as ts:
         segments = transcribe_audio_segments([(clip, 0.0)], tmp_path / 'o.vtt', checkpoint_path=progress, checkpoint_key='new')
     assert ts.call_count == 1

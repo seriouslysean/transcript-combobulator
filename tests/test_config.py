@@ -14,7 +14,7 @@ def _root_dir_seen_from(cwd: Path, extra_env: dict[str, str] | None = None) -> s
     if extra_env:
         env.update(extra_env)
     result = subprocess.run(
-        [sys.executable, "-c", "from src.config import ROOT_DIR; print(ROOT_DIR)"],
+        [sys.executable, "-c", "from transcript_combobulator.config import ROOT_DIR; print(ROOT_DIR)"],
         cwd=cwd,
         env=env,
         capture_output=True,
@@ -42,7 +42,7 @@ def test_relative_env_file_resolves_against_repo_when_absent_from_cwd(
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT), "ENV_FILE": ".env.jfk-sample"}
     env.pop("PROJECT_ROOT", None)
     result = subprocess.run(
-        [sys.executable, "-c", "import os, src.config; print(os.environ['WHISPER_MODEL'])"],
+        [sys.executable, "-c", "import os, transcript_combobulator.config; print(os.environ['WHISPER_MODEL'])"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -61,7 +61,7 @@ def test_missing_env_file_is_an_error(tmp_path: Path) -> None:
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT), "ENV_FILE": ".env.anihilation"}
     env.pop("PROJECT_ROOT", None)
     result = subprocess.run(
-        [sys.executable, "-c", "import src.config"],
+        [sys.executable, "-c", "import transcript_combobulator.config"],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -72,7 +72,7 @@ def test_missing_env_file_is_an_error(tmp_path: Path) -> None:
 
 
 def test_temperature_scalar_or_fallback_tuple() -> None:
-    from src.config import _parse_temperature
+    from transcript_combobulator.config import _parse_temperature
 
     assert _parse_temperature("0.0") == 0.0
     assert _parse_temperature("0.0, 0.2,0.4") == (0.0, 0.2, 0.4)

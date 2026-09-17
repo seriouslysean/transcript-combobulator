@@ -132,7 +132,15 @@ make clean-output                       # Delete every session's outputs under t
 
 Batch runs validate the speaker mapping before transcribing, cap the worker
 count to what fits in RAM, write a session log, and exit non-zero on any
-failure, so a cron job or systemd unit can call `make run folder=...` directly.
+failure. A cron job or systemd unit calls the installed console script from any
+working directory, no `make`, no `PYTHONPATH`:
+
+```sh
+ENV_FILE=/path/to/.env.campaign /path/to/repo/.venv/bin/combobulator run /srv/craig/2026-09-20 --session 2026-09-20
+```
+
+`combobulator --help` lists the other commands (`file`, `combine`,
+`filter-vtt`, `setup-model`, `samples`); every Makefile target wraps one.
 Defaults in `.env`:
 
 ```sh

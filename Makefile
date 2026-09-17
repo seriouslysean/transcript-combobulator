@@ -11,9 +11,9 @@ PYTHON ?= python3
 # pip extras to install. `mac` adds mlx-whisper on Apple Silicon.
 EXTRAS ?= dev
 
-# Run commands inside the virtualenv with our src/ on sys.path
-VENV_CMD = cd $(ROOT_DIR) && . .venv/bin/activate && PYTHONPATH=$(ROOT_DIR)
-PY = $(VENV_CMD) ENV_FILE=$(ENV_FILE) python
+# The installed console script; ENV_FILE passes through from the environment.
+VENV_CMD = cd $(ROOT_DIR) && . .venv/bin/activate &&
+CLI = $(VENV_CMD) ENV_FILE=$(ENV_FILE) combobulator
 
 .SILENT:
 .DEFAULT_GOAL := help
@@ -59,7 +59,7 @@ install: ## Install the project into .venv (EXTRAS=dev or EXTRAS=dev,mac)
 	$(VENV_CMD) pip install -e ".[$(EXTRAS)]"
 
 setup-whisper: ## Download WHISPER_MODEL into models/ without loading it
-	$(PY) tools/setup_whisper.py
+	$(CLI) setup-model
 
 # ── Pipeline ──
 run: ## Full session pipeline: folder=tmp/input/<session> [force=1]
@@ -67,28 +67,28 @@ run: ## Full session pipeline: folder=tmp/input/<session> [force=1]
 	if [ ! -d "$(folder)" ]; then echo "Directory not found: $(folder)"; exit 1; fi
 	session_name=$$(basename "$(folder)"); \
 	force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
-	$(PY) tools/process_batch.py "$(folder)" --session "$$session_name" $$force_flag
+	$(CLI) run "$(folder)" --session "$$session_name" $$force_flag
 
 run-single: ## Convert -> VAD -> transcribe one file, no combine: file=path [force=1]
 	if [ -z "$(file)" ]; then echo "Usage: make run-single file=path/to/file.flac [force=1]"; exit 1; fi
 	if [ ! -f "$(file)" ]; then echo "File not found: $(file)"; exit 1; fi
 	echo "Processing $$(basename $(file))..."
 	force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
-	$(PY) tools/process_single_file.py "$(file)" $$force_flag
+	$(CLI) file "$(file)" $$force_flag
 
 combine-transcripts: ## Merge per-speaker VTTs into one transcript: session=<name>
 	if [ -z "$(session)" ]; then echo "Usage: make combine-transcripts session=<name>"; exit 1; fi
 	echo "Combining transcripts for $(session)..."
-	$(PY) -c "from src.config import OUTPUT_DIR; from src.combine import combine_transcripts_from_env; combine_transcripts_from_env(OUTPUT_DIR, '$(session)')"
+	$(CLI) combine "$(session)"
 
 filter-vtt: ## Rewrite a speaker's VTT from saved JSON above a confidence: file=<input audio> [threshold=50]
 	if [ -z "$(file)" ]; then echo "Usage: make filter-vtt file=tmp/input/<session>/<speaker>.flac [threshold=50]"; exit 1; fi
-	$(PY) tools/filter_vtt.py "$(file)" $(if $(threshold),--threshold $(threshold),)
+	$(CLI) filter-vtt "$(file)" $(if $(threshold),--threshold $(threshold),)
 
 # ── Dev ──
 create-sample-files: ## Build tmp/input/jfk-sample/ from samples/
 	if [ ! -d "$(ROOT_DIR)/samples" ]; then echo "Samples directory not found at samples/"; exit 1; fi
-	$(PY) tools/create_sample_files.py
+	$(CLI) samples
 
 test: ## Run the whole suite, including real whisper/VAD inference
 	$(VENV_CMD) python -m pytest tests/ -v
@@ -97,7 +97,7 @@ test-fast: ## Run the suite without the slow inference tests
 	$(VENV_CMD) python -m pytest tests/ -v -m "not slow"
 
 lint: ## Run mypy (strict)
-	$(VENV_CMD) mypy src tools
+	$(VENV_CMD) mypy transcript_combobulator
 
 # ── Cleanup ──
 # These delete data. tmp/output holds every session's transcripts, metrics,

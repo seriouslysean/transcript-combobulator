@@ -18,8 +18,8 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from src.logging_config import add_file_handler, remove_file_handler
-from src.telemetry import (
+from transcript_combobulator.logging_config import add_file_handler, remove_file_handler
+from transcript_combobulator.telemetry import (
     TELEMETRY_SCHEMA_VERSION,
     build_run_summary,
     elapsed_seconds,
@@ -105,7 +105,7 @@ def _resolve_log_file(configured: str, output_dir: Path, session_name: str) -> P
         return output_dir / session_name / f"{session_name}.log"
     path = Path(configured)
     if not path.is_absolute():
-        from src.config import ROOT_DIR
+        from transcript_combobulator.config import ROOT_DIR
         path = ROOT_DIR / path
     return path
 
@@ -150,8 +150,8 @@ def _worker(
 
     file_metrics: dict[str, Any] = {}
     try:
-        from tools.process_single_file import main as process_main
-        process_main(
+        from transcript_combobulator.pipeline import process_file
+        process_file(
             file_path,
             status_dict=status_dict,
             status_key=status_key,
@@ -353,12 +353,12 @@ def _publish_metrics_report(
     return metrics_path, None
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Batch-process audio files with live progress")
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="combobulator run", description="Batch-process a session folder with live progress")
     parser.add_argument("target_dir", type=str, help="Directory containing audio files")
     parser.add_argument("--session", type=str, default=None, help="Session name for combine step")
     parser.add_argument("--force", action="store_true", help="Ignore completed output")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     target_dir = Path(args.target_dir).resolve()
     if not target_dir.is_dir():
@@ -371,7 +371,7 @@ def main() -> None:
         sys.exit(1)
 
     # Load config (imports dotenv and captures the run profile once).
-    from src.config import (
+    from transcript_combobulator.config import (
         LOG_FILE,
         MAPPING_PRECHECK,
         MEMORY_GUARD,
@@ -408,7 +408,7 @@ def main() -> None:
 
     # Fail on a speaker-mapping typo now, not after hours of transcription.
     if MAPPING_PRECHECK:
-        from src.combine import CombineError, validate_speaker_mapping
+        from transcript_combobulator.combine import CombineError, validate_speaker_mapping
 
         try:
             validate_speaker_mapping(f.stem for f in files)
@@ -550,8 +550,8 @@ def main() -> None:
 
     if not errors:
         print("Combining transcripts...")
-        from src.combine import combine_transcripts_from_env
-        from src.config import vtt_path_for_input
+        from transcript_combobulator.combine import combine_transcripts_from_env
+        from transcript_combobulator.config import vtt_path_for_input
 
         combine_started = time.perf_counter()
         try:
@@ -658,7 +658,3 @@ def main() -> None:
     if combine_error:
         print(f"Combine error: {combine_error}")
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

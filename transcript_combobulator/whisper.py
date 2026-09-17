@@ -14,7 +14,7 @@ import numpy.typing as npt
 import soundfile as sf
 import whisper
 
-from src.config import (
+from transcript_combobulator.config import (
     DEDUPE_STRATEGY,
     DEDUPE_WINDOW_SECONDS,
     WHISPER_CONFIDENCE_THRESHOLD,
@@ -24,9 +24,9 @@ from src.config import (
     SAMPLE_RATE,
     get_whisper_options,
 )
-from src.logging_config import get_logger
-from src.pipeline_cache import ChunkCheckpoint
-from src.telemetry import elapsed_seconds
+from transcript_combobulator.logging_config import get_logger
+from transcript_combobulator.pipeline_cache import ChunkCheckpoint
+from transcript_combobulator.telemetry import elapsed_seconds
 
 logger = get_logger(__name__)
 

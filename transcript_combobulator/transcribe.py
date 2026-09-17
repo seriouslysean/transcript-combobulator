@@ -4,15 +4,15 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from src.config import (
+from transcript_combobulator.config import (
     ALLOW_SILENT_TRACKS,
     get_output_path_for_input,
     vtt_name_for_stem,
     vtt_path_for_input,
 )
-from src.logging_config import get_logger
-from src.vad import process_audio
-from src.whisper import WhisperError, _write_vtt, transcribe_audio_segments
+from transcript_combobulator.logging_config import get_logger
+from transcript_combobulator.vad import process_audio
+from transcript_combobulator.whisper import WhisperError, _write_vtt, transcribe_audio_segments
 
 logger = get_logger(__name__)
 
@@ -35,7 +35,7 @@ def transcribe_segments(
     """Transcribe a pre-VAD-processed audio file by reading its mapping JSON.
 
     Expects <audio_path.stem>_mapping.json to exist in the output directory
-    (written by src.vad.process_audio).
+    (written by transcript_combobulator.vad.process_audio).
     """
     try:
         output_dir = (

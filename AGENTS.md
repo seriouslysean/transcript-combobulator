@@ -6,42 +6,47 @@ coding agent, read this first.
 ## Module Layout
 
 ```
-src/
-├── config.py           # ENV_FILE-aware settings; imported by everything
-├── audio_utils.py      # Validate + convert any audio to 16kHz mono WAV
-├── vad.py              # Silero VAD → segment WAVs + mapping JSON
-├── whisper.py          # Whisper model wrapping; VTT writing; repetition filter
-├── transcribe.py       # Pipeline entry: full-file transcribe via VAD + whisper
-├── pipeline_cache.py   # Config-aware completion manifests for resumable runs
+transcript_combobulator/
+├── cli.py              # `combobulator <command>`: run, file, combine, filter-vtt, setup-model, samples
+├── __main__.py         # `python -m transcript_combobulator` → cli.main
+├── batch.py            # Parallel session runner with rich progress UI (`run`)
+├── pipeline.py         # Per-file pipeline: convert → VAD → transcribe, stage-level resume (`file`)
+├── config.py           # ENV_FILE-aware settings and path anchoring; imported by everything
+├── audio_utils.py      # Validate + convert any audio to 16kHz mono WAV (ffmpeg, streaming)
+├── vad.py              # Silero VAD (streamed, ONNX) → segment WAVs + mapping JSON
+├── whisper.py          # Whisper model wrapping; VTT writing; dedup; repetition filter
+├── transcribe.py       # Mapping JSON → per-segment whisper → VTT + JSON
+├── pipeline_cache.py   # Per-stage completion records and per-chunk checkpoints
 ├── telemetry.py        # Per-run, per-file, and per-chunk timing reports
-├── combine.py          # Merge per-user VTTs → one session transcript
-└── logging_config.py   # setup_logging / get_logger
-
-tools/
-├── process_batch.py         # Parallel batch processor with rich progress UI
-├── process_single_file.py   # One-file pipeline (convert → VAD → transcribe)
-├── filter_vtt.py            # Re-emit a speaker VTT from saved JSON above a confidence
-├── create_sample_files.py   # Build sample/test audio from samples/
-└── setup_whisper.py         # Download whisper model into models/ (no load)
+├── combine.py          # Merge per-speaker VTTs → one session transcript
+├── vtt_filter.py       # Re-emit a speaker VTT from saved JSON above a confidence
+├── samples.py          # Build sample/test audio from samples/
+├── model_setup.py      # Download whisper model into models/ (no load)
+└── logging_config.py   # setup_logging / file handlers
 ```
 
-The standard pipeline: `tools/process_batch.py` →
-`tools/process_single_file.py` → `src.audio_utils.convert_to_wav` →
-`src.vad.process_audio` (writes segment WAVs + `<stem>_mapping.json`) →
-`src.transcribe.transcribe_segments` → `src.whisper.transcribe_audio_segments`
-→ `src.combine.combine_transcripts_from_env`.
+`pip install -e .` installs the `combobulator` console script; the Makefile
+targets are thin wrappers around it. Automation calls the script directly:
+`ENV_FILE=.env.<campaign> combobulator run /path/to/session --session <name>`,
+from any working directory, with no `make` and no `PYTHONPATH`.
+
+The standard pipeline: `transcript_combobulator.batch.main` →
+`transcript_combobulator.pipeline.process_file` → `transcript_combobulator.audio_utils.convert_to_wav` →
+`transcript_combobulator.vad.process_audio` (writes segment WAVs + `<stem>_mapping.json`) →
+`transcript_combobulator.transcribe.transcribe_segments` → `transcript_combobulator.whisper.transcribe_audio_segments`
+→ `transcript_combobulator.combine.combine_transcripts_from_env`.
 
 ## Invariants
 
-- **One place for env loading.** `src/config.py` calls `load_dotenv` at import.
+- **One place for env loading.** `transcript_combobulator/config.py` calls `load_dotenv` at import.
   Do NOT add `load_dotenv` anywhere else.
-- **Audio is normalized once.** `src.audio_utils.convert_to_wav` normalizes to
+- **Audio is normalized once.** `transcript_combobulator.audio_utils.convert_to_wav` normalizes to
   `[-1, 1]`. Don't re-normalize downstream.
-- **Mapping JSON is written once.** `src.vad.process_audio` is the only writer.
-  `src.transcribe.transcribe_audio` and the VAD-cached path in
-  `tools/process_single_file.py` trust it and read it back.
+- **Mapping JSON is written once.** `transcript_combobulator.vad.process_audio` is the only writer.
+  `transcript_combobulator.transcribe.transcribe_audio` and the VAD-cached path in
+  `transcript_combobulator/pipeline.py` trust it and read it back.
 - **Only one `transcribe_audio` public function.** It lives in
-  `src.transcribe`. `src.whisper.transcribe_file_direct` is the one-shot
+  `transcript_combobulator.transcribe`. `transcript_combobulator.whisper.transcribe_file_direct` is the one-shot
   (no-VAD) variant and is internal to the regenerate-VTT flow.
 - **Combine preserves original text.** `_normalize_for_dedup` is used ONLY for
   dedup keys, never for the text written to the output file.
@@ -49,8 +54,8 @@ The standard pipeline: `tools/process_batch.py` →
   drops a cue only when it repeats the previous kept cue for that speaker
   within `DEDUPE_WINDOW_SECONDS`. That is whisper's repeated-line
   hallucination; a genuine "Yeah." ten minutes later must survive. The same
-  rule runs in `src.whisper.dedupe_segments` (per-speaker VTT) and
-  `src.combine._dedupe_entries` (session). `global` is the legacy lossy mode.
+  rule runs in `transcript_combobulator.whisper.dedupe_segments` (per-speaker VTT) and
+  `transcript_combobulator.combine._dedupe_entries` (session). `global` is the legacy lossy mode.
 - **Cue offsets use the padded clip start.** VAD writes `start_seconds` (speech)
   and `clip_start_seconds` (what the WAV actually contains); whisper's
   timestamps are relative to the clip, so `clip_start_seconds` is the offset.
@@ -93,10 +98,10 @@ session's transcripts.
 
 ## Resume Semantics
 
-`src/pipeline_cache.py` keeps one manifest per input file with a record per
+`transcript_combobulator/pipeline_cache.py` keeps one manifest per input file with a record per
 stage: `conversion`, `vad`, `inference`, `vtt`. Each stage's fingerprint is
 chained from the previous one over that stage's own settings
-(`src.config.get_stage_fingerprint_settings`), so a change re-runs that stage
+(`transcript_combobulator.config.get_stage_fingerprint_settings`), so a change re-runs that stage
 and everything after it, nothing before it:
 
 | Changed | Re-runs |
@@ -122,10 +127,10 @@ resuming: output identical to the uninterrupted run.
 
 ## Batch Run Behaviour
 
-`tools/process_batch.py` is what automation calls, so it fails fast and leaves
-a trail:
+`combobulator run` (`transcript_combobulator/batch.py`) is what automation
+calls, so it fails fast and leaves a trail:
 
-- `MAPPING_PRECHECK` (default on) runs `src.combine.validate_speaker_mapping`
+- `MAPPING_PRECHECK` (default on) runs `transcript_combobulator.combine.validate_speaker_mapping`
   against the input stems before any worker starts. Same errors as the combine
   step, minutes earlier.
 - A missing `ENV_FILE` raises at import instead of silently loading nothing.
@@ -135,7 +140,7 @@ a trail:
   table still owns the terminal either way.
 - SIGINT and SIGTERM both kill the workers and the Manager and exit
   `128 + signal`, so a systemd stop does not orphan spawned processes.
-- All paths derive from `src.config.ROOT_DIR`, which is the repo (from
+- All paths derive from `transcript_combobulator.config.ROOT_DIR`, which is the repo (from
   `__file__`, or `PROJECT_ROOT` in the shell env), not the cwd. A relative
   `ENV_FILE` resolves against the cwd first, then the repo.
 
@@ -170,7 +175,7 @@ fails loudly.
 - **Converted**: `3-nilbits.wav` inside it (16 kHz mono PCM_16, peak-normalised)
 - **Per-speaker VTT + JSON**: `3-nilbits.vtt`, `3-nilbits_transcription.json`,
   `3-nilbits_mapping.json`, `3-nilbits_segment_NNN.wav`
-  (`src.config.vtt_path_for_input` is the one source of truth for the VTT path)
+  (`transcript_combobulator.config.vtt_path_for_input` is the one source of truth for the VTT path)
 - **Session outputs**: `<session>-combined.txt` (or `-1.txt`, `-2.txt` when
   `CHUNKS>1`), `<session>-metrics.json`, `<session>.log`
 
@@ -185,7 +190,7 @@ fails loudly.
 - **Silero VAD runs on one thread** (`VAD_THREADS=1`). It processes 512-sample
   frames one at a time; 1 thread measured 2.2x faster than 4 and 3.7x faster
   than 8 on Apple Silicon. The worker's whisper thread count is restored after.
-- **VAD streams the WAV and uses Silero's ONNX build.** `src.vad.detect_speech`
+- **VAD streams the WAV and uses Silero's ONNX build.** `transcript_combobulator.vad.detect_speech`
   collects frame probabilities over 60 s blocks with the detector's state
   carried across boundaries, then applies a verbatim port of silero-vad
   6.2.1's region logic; `tests/test_vad_streaming.py` asserts identity with
@@ -194,7 +199,7 @@ fails loudly.
   256 MB peak RSS, regions identical to the whole-file result. The
   TorchScript build (`VAD_BACKEND=jit`) gave the same regions but its peak
   swung between 0.9 and 3.9 GB run to run, which is why onnx is the default.
-- **`src/__init__.py` imports nothing.** The batch parent only needs config,
+- **The package `__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
 - **One encoder pass per VAD island is the floor on stock whisper, by
   decision.** Whisper encodes a fixed 30 s window, so short islands pay full
@@ -225,15 +230,15 @@ fails loudly.
   `MEMORY_GUARD_FRACTION` of physical RAM; it never raises the count. An 8 GB
   Pi with `large-v3-turbo` lands on 1 worker. `TORCH_THREADS=0` auto-splits
   threads across the active workers.
-- `src.whisper.load_whisper_model` loads by file path on purpose. Loading by
+- `transcript_combobulator.whisper.load_whisper_model` loads by file path on purpose. Loading by
   name makes whisper sha256 the whole checkpoint per worker per run.
 - On macOS, `multiprocessing.set_start_method("spawn")` is mandatory for torch.
-  `tools/process_batch.py` handles this at import time.
+  `transcript_combobulator/batch.py` handles this at import time.
 
 ## Known Whisper Failure Modes
 
 - **Repetition hallucination** on laughs/silence: whisper emits one word
-  hundreds of times (e.g. `"laughs laughs laughs…"`). `src.whisper.collapse_repetition`
+  hundreds of times (e.g. `"laughs laughs laughs…"`). `transcript_combobulator.whisper.collapse_repetition`
   collapses these to a single occurrence before they reach the VTT.
 - **Confidence drift** on quiet or ambiguous audio: `make filter-vtt
   file=<input> threshold=50` re-emits a filtered VTT from the saved
@@ -269,7 +274,7 @@ fails loudly.
 - `silero-vad` bundles both its models inside the wheel; `load_silero_vad()`
   needs no network access. It does not declare `onnxruntime`, which the
   default `VAD_BACKEND=onnx` needs, so `pyproject.toml` pins it.
-- `src.vad._speech_regions_from_probs` is a verbatim port of silero's region
+- `transcript_combobulator.vad._speech_regions_from_probs` is a verbatim port of silero's region
   logic because silero only accepts a whole-file tensor. Bumping `silero-vad`
   must keep `tests/test_vad_streaming.py` green; if silero changes the
   algorithm, port the change, do not paper over the diff.
@@ -292,8 +297,9 @@ fails loudly.
 
 1. Check this file for existing patterns first.
 2. Use a Makefile target. Add one if the operation should be reproducible.
-3. Put shared logic in `src/`, glue code in `tools/`.
-4. Load config only through `src.config`. Never call `load_dotenv` or
+3. Put logic in a `transcript_combobulator` module; expose it as a `cli.py`
+   subcommand if a person or automation should call it.
+4. Load config only through `transcript_combobulator.config`. Never call `load_dotenv` or
    `os.getenv` for a setting anywhere else; add the constant to config.
 5. Add a test in `tests/test_<module>.py` using synthetic fixtures where
    possible. Only use the slow whisper tests when actually testing whisper
@@ -303,9 +309,9 @@ fails loudly.
 ## Common Pitfalls
 
 - ❌ Editing `.env` (use `ENV_FILE=` instead)
-- ❌ Calling `load_dotenv` anywhere other than `src/config.py`
-- ❌ Hardcoding paths; use `src.config.OUTPUT_DIR` / `INPUT_DIR` / `get_output_path_for_input`
-- ❌ Hardcoding whisper kwargs; use `src.config.get_whisper_options()`
+- ❌ Calling `load_dotenv` anywhere other than `transcript_combobulator/config.py`
+- ❌ Hardcoding paths; use `transcript_combobulator.config.OUTPUT_DIR` / `INPUT_DIR` / `get_output_path_for_input`
+- ❌ Hardcoding whisper kwargs; use `transcript_combobulator.config.get_whisper_options()`
 - ❌ Normalizing audio twice (audio_utils does it)
 - ❌ Normalizing transcript text for display (normalize is dedup-only)
 - ❌ Re-reading a file in the same process just to verify it; trust the write

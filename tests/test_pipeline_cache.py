@@ -5,7 +5,7 @@ from pathlib import Path
 
 from unittest.mock import patch
 
-from src.pipeline_cache import (
+from transcript_combobulator.pipeline_cache import (
     ChunkCheckpoint,
     build_pipeline_fingerprint,
     build_stage_fingerprints,
@@ -85,14 +85,14 @@ def test_stage_fingerprints_chain_from_the_changed_stage_onward(tmp_path: Path) 
     source.write_bytes(b'audio')
     base = build_stage_fingerprints(source)
 
-    with patch('src.config.DEDUPE_STRATEGY', 'none'):
+    with patch('transcript_combobulator.config.DEDUPE_STRATEGY', 'none'):
         dedupe_changed = build_stage_fingerprints(source)
     assert dedupe_changed['conversion'] == base['conversion']
     assert dedupe_changed['vad'] == base['vad']
     assert dedupe_changed['inference'] == base['inference']
     assert dedupe_changed['vtt'] != base['vtt']
 
-    with patch('src.config.VAD_THRESHOLD', 0.9):
+    with patch('transcript_combobulator.config.VAD_THRESHOLD', 0.9):
         vad_changed = build_stage_fingerprints(source)
     assert vad_changed['conversion'] == base['conversion']
     assert vad_changed['vad'] != base['vad']

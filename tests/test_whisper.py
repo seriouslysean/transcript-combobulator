@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 
 pytestmark = pytest.mark.slow  # real whisper/VAD inference
-from src.transcribe import transcribe_audio
-from src.config import OUTPUT_DIR
+from transcript_combobulator.transcribe import transcribe_audio
+from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
 import json
 
 def test_basic_transcription():
     """Test transcription of the original JFK audio file."""
-    input_file = Path('tmp/input/test_jfk.wav')
+    input_file = INPUT_DIR / 'test_jfk.wav'
     assert input_file.exists(), "Test JFK file not found"
 
     # Transcribe the file

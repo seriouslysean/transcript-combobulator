@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-from src.config import (
+from transcript_combobulator.config import (
     CHUNKS,
     DEDUPE_STRATEGY,
     DEDUPE_WINDOW_SECONDS,
@@ -19,7 +19,7 @@ from src.config import (
     OUTPUT_DIR,
     SKIP_FILTERS,
 )
-from src.logging_config import get_logger
+from transcript_combobulator.logging_config import get_logger
 
 logger = get_logger(__name__)
 
