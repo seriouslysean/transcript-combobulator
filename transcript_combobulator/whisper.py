@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import time
 import warnings
 from datetime import timedelta
@@ -57,24 +58,50 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
 
 
-def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> str:
-    """Collapse degenerate whisper output like 'laughs laughs laughs …'.
+_MAX_REPEAT_PHRASE_WORDS = 8
+_HYPHEN_RUN = re.compile(r"\b(\w+)(?:-\1){%d,}\b" % (_REPETITION_THRESHOLD - 1))
 
-    If the text is a single short word repeated >= threshold times (with only
-    whitespace/punctuation between), replace with a single occurrence.
-    Otherwise return the input unchanged.
+
+def _norm_token(token: str) -> str:
+    return token.strip(".,!?;:").lower()
+
+
+def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> str:
+    """Collapse degenerate whisper output: a word or short phrase looping.
+
+    A run of the same 1 to 8 word phrase repeated ``threshold`` or more times
+    back to back ("laughs laughs laughs …", "I think, I think, I think, …",
+    a prompt echoed six times) is replaced by one occurrence, wherever it sits
+    in the segment. Hyphen-joined runs ("I-I-I-I-I-I") collapse the same way.
+    Anything repeated fewer times is left alone: "You're right. You're right.
+    You're right." is speech.
     """
     if not text:
         return text
+    text = _HYPHEN_RUN.sub(r"\1", text)
     tokens = text.split()
     if len(tokens) < threshold:
         return text
-    first = tokens[0].strip(".,!?;:").lower()
-    if not first or len(first) > 12:
-        return text
-    if all(t.strip(".,!?;:").lower() == first for t in tokens):
-        return tokens[0]
-    return text
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        collapsed = False
+        for n in range(1, _MAX_REPEAT_PHRASE_WORDS + 1):
+            unit = [_norm_token(t) for t in tokens[i:i + n]]
+            if len(unit) < n or not all(unit):
+                break
+            repeats = 1
+            while [_norm_token(t) for t in tokens[i + repeats * n:i + (repeats + 1) * n]] == unit:
+                repeats += 1
+            if repeats >= threshold:
+                out.extend(tokens[i:i + n])
+                i += repeats * n
+                collapsed = True
+                break
+        if not collapsed:
+            out.append(tokens[i])
+            i += 1
+    return " ".join(out)
 
 
 def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:

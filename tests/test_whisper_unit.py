@@ -262,3 +262,26 @@ def test_checkpoint_with_changed_settings_is_discarded(tmp_path: Path) -> None:
         segments = transcribe_audio_segments([(clip, 0.0)], tmp_path / 'o.vtt', checkpoint_path=progress, checkpoint_key='new')
     assert ts.call_count == 1
     assert segments[0]['text'] == 'fresh'
+
+
+
+def test_collapse_phrase_loops_but_keeps_short_repeats() -> None:
+    from transcript_combobulator.whisper import collapse_repetition
+
+    # single word, whole segment (the original case)
+    assert collapse_repetition("laughs laughs laughs laughs laughs laughs laughs") == "laughs"
+    # single word loop inside a longer segment
+    assert collapse_repetition("Okay so no no no no no no no we go left") == "Okay so no we go left"
+    # multi-word phrase looping >= 6 times collapses to one occurrence
+    six = "I think, " * 6 + "uh, Jaqen taps Veldis"
+    assert collapse_repetition(six) == "I think, uh, Jaqen taps Veldis"
+    # a prompt echoed six times in one segment
+    echo = "this is a recording of a session. " * 6
+    assert collapse_repetition(echo.strip()) == "this is a recording of a session."
+    # genuine repetition below the threshold is untouched
+    real = "You're right. You're right. You're right. They're the aggressors."
+    assert collapse_repetition(real) == real
+    # hyphen-joined runs
+    assert collapse_repetition("I-I-I-I-I-I-I-I-I-I don't know") == "I don't know"
+    assert collapse_repetition("") == ""
+    assert collapse_repetition("short") == "short"
