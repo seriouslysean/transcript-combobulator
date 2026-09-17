@@ -60,7 +60,6 @@ def test_silent_track_writes_empty_transcript(tmp_path: Path) -> None:
     audio.touch()
     metrics = {}
     with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("transcript_combobulator.transcribe.ALLOW_SILENT_TRACKS", True), \
          patch("transcript_combobulator.transcribe.transcribe_audio_segments") as whisper_call:
         result = transcribe_audio(audio, pre_processed_mapping=[], metrics=metrics)
 
@@ -72,20 +71,10 @@ def test_silent_track_writes_empty_transcript(tmp_path: Path) -> None:
     assert metrics["written_vtt_cue_count"] == 0
 
 
-def test_silent_track_is_an_error_when_disallowed(tmp_path: Path) -> None:
-    audio = tmp_path / "5-afk.wav"
-    audio.touch()
-    with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("transcript_combobulator.transcribe.ALLOW_SILENT_TRACKS", False), \
-         pytest.raises(TranscriptionError, match="No valid segments"):
-        transcribe_audio(audio, pre_processed_mapping=[])
-
-
 def test_mapping_with_only_missing_files_is_still_an_error(tmp_path: Path) -> None:
     audio = tmp_path / "3-nilbits.wav"
     audio.touch()
     with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("transcript_combobulator.transcribe.ALLOW_SILENT_TRACKS", True), \
          pytest.raises(TranscriptionError, match="No valid segments"):
         transcribe_audio(
             audio,

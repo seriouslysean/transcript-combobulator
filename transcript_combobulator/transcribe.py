@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from transcript_combobulator.config import (
-    ALLOW_SILENT_TRACKS,
     get_output_path_for_input,
     vtt_name_for_stem,
     vtt_path_for_input,
@@ -131,7 +130,7 @@ def transcribe_audio(
         output_json = output_dir / f"{audio_path.stem}_transcription.json"
 
         if not segments_to_transcribe:
-            if mapping or not ALLOW_SILENT_TRACKS:
+            if mapping:
                 raise TranscriptionError(f"No valid segments found for {audio_path.name}")
             # A silent track: no speech was detected, so there is nothing to
             # transcribe. Write an empty transcript rather than fail the batch.

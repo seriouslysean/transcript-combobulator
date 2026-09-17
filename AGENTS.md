@@ -50,19 +50,19 @@ The standard pipeline: `transcript_combobulator.batch.main` →
   (no-VAD) variant and is internal to the regenerate-VTT flow.
 - **Combine preserves original text.** `_normalize_for_dedup` is used ONLY for
   dedup keys, never for the text written to the output file.
-- **Dedup is consecutive, not global.** `DEDUPE_STRATEGY=consecutive` (default)
-  drops a cue only when it repeats the previous kept cue for that speaker
-  within `DEDUPE_WINDOW_SECONDS`. That is whisper's repeated-line
-  hallucination; a genuine "Yeah." ten minutes later must survive. The same
-  rule runs in `transcript_combobulator.whisper.dedupe_segments` (per-speaker VTT) and
-  `transcript_combobulator.combine._dedupe_entries` (session). `global` is the legacy lossy mode.
+- **Dedup is consecutive only.** A cue is dropped when it repeats the previous
+  kept cue for that speaker within `DEDUPE_WINDOW_SECONDS`. That is whisper's
+  repeated-line hallucination; a genuine "Yeah." ten minutes later must
+  survive. The same rule runs in `transcript_combobulator.whisper.dedupe_segments`
+  (per-speaker VTT) and `transcript_combobulator.combine._dedupe_entries`
+  (session). There is no whole-session mode: it removed real speech.
 - **Cue offsets use the padded clip start.** VAD writes `start_seconds` (speech)
   and `clip_start_seconds` (what the WAV actually contains); whisper's
   timestamps are relative to the clip, so `clip_start_seconds` is the offset.
 - **Partial transcription is a failure.** Any failed chunk raises before the
-  manifest is written (`FAIL_ON_PARTIAL_TRANSCRIPTION`), so the cache cannot
+  manifest is written, so the cache cannot
   hide a transcript with gaps. A track with no speech at all is an empty
-  transcript, not an error (`ALLOW_SILENT_TRACKS`).
+  transcript, not an error.
 - **Usernames match as whole tokens** in per-speaker dir names, so `dez`
   never claims `5-dezfrost`. Batch runs hand combine the exact VTTs they
   produced; stale sibling dirs are ignored.
@@ -121,7 +121,7 @@ with the inference fingerprint, then one JSON line per completed chunk). A
 rerun with the same fingerprint reuses those chunks (`status: resumed`) and
 transcribes only the missing ones; a truncated last line is ignored and that
 chunk redone. The file is removed when every chunk succeeded and kept when
-any failed, so `FAIL_ON_PARTIAL_TRANSCRIPTION` reruns retry only the failed
+any failed, so a rerun retries only the failed
 chunks. Verified by killing a real 2.9 h track mid-transcription and
 resuming: output identical to the uninterrupted run.
 
@@ -130,13 +130,13 @@ resuming: output identical to the uninterrupted run.
 `combobulator run` (`transcript_combobulator/batch.py`) is what automation
 calls, so it fails fast and leaves a trail:
 
-- `MAPPING_PRECHECK` (default on) runs `transcript_combobulator.combine.validate_speaker_mapping`
+- Before any worker starts, `transcript_combobulator.combine.validate_speaker_mapping` runs
   against the input stems before any worker starts. Same errors as the combine
   step, minutes earlier.
 - A missing `ENV_FILE` raises at import instead of silently loading nothing.
 - `LOG_FILE` (default empty) persists worker and parent logs to
   `tmp/output/<session>/<session>.log`; workers tag lines with their audio
-  file. `LOG_FILE=none` restores the old drop-everything behaviour. The rich
+  file. The rich
   table still owns the terminal either way.
 - SIGINT and SIGTERM both kill the workers and the Manager and exit
   `128 + signal`, so a systemd stop does not orphan spawned processes.
@@ -197,8 +197,8 @@ fails loudly.
   the installed `get_speech_timestamps`. Segments are written by seeking
   into the WAV. Measured on a 2.9 h track, whole `process_audio` call:
   256 MB peak RSS, regions identical to the whole-file result. The
-  TorchScript build (`VAD_BACKEND=jit`) gave the same regions but its peak
-  swung between 0.9 and 3.9 GB run to run, which is why onnx is the default.
+  TorchScript build gave the same regions but its peak
+  swung between 0.9 and 3.9 GB run to run, which is why only the ONNX build is used.
 - **The package `__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
 - **One encoder pass per VAD island is the floor on stock whisper, by
@@ -234,7 +234,7 @@ fails loudly.
 - `beam_size=1` and `condition_on_previous_text=false` are intentional for
   VAD-segment transcription (each segment is already a speech island).
 - Each parallel worker loads its own whisper model (~3x the checkpoint size at
-  load: fp16 file plus fp32 params). `MEMORY_GUARD` (default on) lowers the
+  load: fp16 file plus fp32 params). The memory guard lowers the
   active worker count so `PARALLEL_JOBS` workers fit in
   `MEMORY_GUARD_FRACTION` of physical RAM; it never raises the count. An 8 GB
   Pi with `large-v3-turbo` lands on 1 worker. `TORCH_THREADS=0` auto-splits
@@ -281,8 +281,8 @@ fails loudly.
   0.11) is deliberately not a dependency. Do not reintroduce
   `torchaudio.load`/`save`.
 - `silero-vad` bundles both its models inside the wheel; `load_silero_vad()`
-  needs no network access. It does not declare `onnxruntime`, which the
-  default `VAD_BACKEND=onnx` needs, so `pyproject.toml` pins it.
+  needs no network access. It does not declare `onnxruntime`, which its
+  ONNX build needs, so `pyproject.toml` pins it.
 - `transcript_combobulator.vad._speech_regions_from_probs` is a verbatim port of silero's region
   logic because silero only accepts a whole-file tensor. Bumping `silero-vad`
   must keep `tests/test_vad_streaming.py` green; if silero changes the
@@ -296,11 +296,10 @@ fails loudly.
   `TranscriptionError`, `CombineError`. Wrap underlying errors via `raise ... from`.
 - Log warnings for skippable problems (missing segment file). Raise for
   structural problems (missing mapping, missing model, unmapped speaker).
-- A track with no detected speech is an empty transcript, not an error
-  (`ALLOW_SILENT_TRACKS`).
+- A track with no detected speech is an empty transcript, not an error.
 - Individual chunk failures are logged and skipped inside whisper, but a file
-  with any failed chunk raises before its manifest is written
-  (`FAIL_ON_PARTIAL_TRANSCRIPTION`) so the cache cannot hide gaps.
+  with any failed chunk raises before its manifest is written so the cache
+  cannot hide gaps.
 
 ## Adding a New Feature
 

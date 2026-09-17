@@ -38,7 +38,7 @@ Implementation details for developers and advanced users.
 - `WHISPER_CONFIDENCE_THRESHOLD=50.0` - Filter low-confidence segments
 
 ### Combination Settings
-- `DEDUPE_STRATEGY=consecutive` - Remove duplicate messages
+- `DEDUPE_WINDOW_SECONDS=2.0` - A repeated line within this gap is a hallucination, not speech
 - `INCLUDE_TIMESTAMPS=false` - Include timing in output
 - `SKIP_FILTERS="[AUDIO OUT],[BLANK_AUDIO]"` - Content filtering
 - `CHUNKS=2` - Split large transcripts into N parts

@@ -85,22 +85,19 @@ def _memory_capped_workers(
             f"Memory guard: one worker needs ~{per_worker / _GIB:.1f} GiB but "
             f"{fraction:.0%} of {total_bytes / _GIB:.1f} GiB RAM is "
             f"{budget / _GIB:.1f} GiB. Expect the OOM killer; use a smaller "
-            "WHISPER_MODEL or set MEMORY_GUARD=false to silence this."
+            "WHISPER_MODEL."
         )
     if fits >= requested:
         return requested, None
     return fits, (
         f"Memory guard: {requested} workers need ~{requested * per_worker / _GIB:.1f} GiB "
         f"but {fraction:.0%} of {total_bytes / _GIB:.1f} GiB RAM is "
-        f"{budget / _GIB:.1f} GiB; running {fits}. "
-        "Set MEMORY_GUARD=false to override."
+        f"{budget / _GIB:.1f} GiB; running {fits}."
     )
 
 
-def _resolve_log_file(configured: str, output_dir: Path, session_name: str) -> Path | None:
-    """Map LOG_FILE to a path: default under the session output, 'none' disables."""
-    if configured.lower() in ('none', 'off', 'false', '0'):
-        return None
+def _resolve_log_file(configured: str, output_dir: Path, session_name: str) -> Path:
+    """Map LOG_FILE to a path; empty means the session's own log file."""
     if not configured:
         return output_dir / session_name / f"{session_name}.log"
     path = Path(configured)
@@ -373,8 +370,6 @@ def main(argv: list[str] | None = None) -> None:
     # Load config (imports dotenv and captures the run profile once).
     from transcript_combobulator.config import (
         LOG_FILE,
-        MAPPING_PRECHECK,
-        MEMORY_GUARD,
         MEMORY_GUARD_FRACTION,
         OUTPUT_DIR,
         PADDING_SECONDS,
@@ -403,30 +398,28 @@ def main(argv: list[str] | None = None) -> None:
 
     session_name = args.session or target_dir.name
     log_file = _resolve_log_file(LOG_FILE, OUTPUT_DIR, session_name)
-    parent_log_handler = add_file_handler(log_file) if log_file else None
+    parent_log_handler = add_file_handler(log_file)
     run_logger = logging.getLogger("process_batch")
 
     # Fail on a speaker-mapping typo now, not after hours of transcription.
-    if MAPPING_PRECHECK:
-        from transcript_combobulator.combine import CombineError, validate_speaker_mapping
+    from transcript_combobulator.combine import CombineError, validate_speaker_mapping
 
-        try:
-            validate_speaker_mapping(f.stem for f in files)
-        except CombineError as e:
-            print(f"Speaker mapping error: {e}")
-            run_logger.error("Speaker mapping error: %s", e)
-            sys.exit(1)
+    try:
+        validate_speaker_mapping(f.stem for f in files)
+    except CombineError as e:
+        print(f"Speaker mapping error: {e}")
+        run_logger.error("Speaker mapping error: %s", e)
+        sys.exit(1)
 
     max_workers = min(max(1, PARALLEL_JOBS), len(files))
-    if MEMORY_GUARD:
-        model_file = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
-        model_bytes = model_file.stat().st_size if model_file.exists() else 0
-        max_workers, memory_warning = _memory_capped_workers(
-            max_workers, model_bytes, _total_memory_bytes(), MEMORY_GUARD_FRACTION
-        )
-        if memory_warning:
-            print(memory_warning)
-            run_logger.warning(memory_warning)
+    model_file = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+    model_bytes = model_file.stat().st_size if model_file.exists() else 0
+    max_workers, memory_warning = _memory_capped_workers(
+        max_workers, model_bytes, _total_memory_bytes(), MEMORY_GUARD_FRACTION
+    )
+    if memory_warning:
+        print(memory_warning)
+        run_logger.warning(memory_warning)
     torch_threads = _calculate_torch_threads(max_workers, TORCH_THREADS)
 
     file_names = [f.name for f in files]
@@ -436,8 +429,7 @@ def main(argv: list[str] | None = None) -> None:
     status_dict = manager.dict({name: "waiting" for name in file_names})
 
     print(f"Processing {len(files)} audio files in {target_dir}")
-    if log_file:
-        print(f"Log file: {log_file}")
+    print(f"Log file: {log_file}")
     run_logger.info(
         "Run start: %d files in %s, %d workers, %d torch threads each",
         len(files), target_dir, max_workers, torch_threads,
@@ -488,7 +480,7 @@ def main(argv: list[str] | None = None) -> None:
                         status_dict,
                         f.name,
                         args.force,
-                        str(log_file) if log_file else None,
+                        str(log_file),
                     )
                     futures[fut] = f.name
 
@@ -647,8 +639,7 @@ def main(argv: list[str] | None = None) -> None:
         "Run end: status=%s wall=%.1fs metrics=%s",
         run_status, wall_seconds, published_metrics_path or 'not written',
     )
-    if parent_log_handler is not None:
-        remove_file_handler(parent_log_handler)
+    remove_file_handler(parent_log_handler)
 
     if errors:
         print("\nErrors:")

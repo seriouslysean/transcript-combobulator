@@ -27,9 +27,7 @@ from silero_vad import load_silero_vad
 
 from transcript_combobulator.audio_utils import AudioValidationError, validate_audio_file
 from transcript_combobulator.config import (
-    ALLOW_SILENT_TRACKS,
     PADDING_SECONDS,
-    VAD_BACKEND,
     SAMPLE_RATE,
     VAD_MIN_SILENCE_DURATION,
     VAD_MIN_SPEECH_DURATION,
@@ -47,11 +45,16 @@ class VADError(Exception):
 
 @lru_cache(maxsize=1)
 def load_vad_model() -> Any:
-    """Load Silero VAD once per long-lived worker process (see VAD_BACKEND)."""
+    """Load Silero's ONNX model once per long-lived worker process.
+
+    Same weights as the TorchScript build, same regions on a 2.9 h track, but
+    a bounded footprint (256 MB peak for the whole VAD call versus 0.9 to
+    3.9 GB swinging run to run for the TorchScript build).
+    """
     try:
-        return load_silero_vad(onnx=VAD_BACKEND == 'onnx')
+        return load_silero_vad(onnx=True)
     except Exception as e:
-        raise VADError(f"Failed to load VAD model ({VAD_BACKEND}): {e}") from e
+        raise VADError(f"Failed to load VAD model: {e}") from e
 
 
 _WINDOW_SAMPLES = 512          # silero's frame at 16 kHz
@@ -282,12 +285,8 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
                 torch.set_num_threads(previous_threads)
 
         if not speech_timestamps:
-            if not ALLOW_SILENT_TRACKS:
-                raise VADError("No speech segments detected in audio")
-            logger.warning(
-                f"No speech detected in {input_path.name}; writing an empty mapping "
-                "(ALLOW_SILENT_TRACKS=false to treat this as an error)"
-            )
+            # A muted participant is a real, empty track, not a failure.
+            logger.warning(f"No speech detected in {input_path.name}; writing an empty mapping")
 
         padding_samples = int(PADDING_SECONDS * SAMPLE_RATE)
         logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")

@@ -91,16 +91,12 @@ TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
 WORKER_NICE = get_int_env('WORKER_NICE', 10)  # niceness increment; 0 = unchanged
 
 # ── Batch Run Guards ──
-# MEMORY_GUARD caps active workers so the estimated per-worker footprint
-# (roughly 3x the whisper checkpoint size plus runtime) fits within
-# MEMORY_GUARD_FRACTION of physical RAM. It only ever lowers PARALLEL_JOBS.
-MEMORY_GUARD = get_bool_env('MEMORY_GUARD', True)
+# Active workers are capped so the estimated per-worker footprint (roughly
+# 3x the whisper checkpoint size plus runtime) fits within this share of
+# physical RAM. The cap only ever lowers PARALLEL_JOBS.
 MEMORY_GUARD_FRACTION = get_float_env('MEMORY_GUARD_FRACTION', 0.85)
-# MAPPING_PRECHECK validates TRANSCRIPT_N_* against the input files before any
-# transcription starts, instead of failing at the combine step hours later.
-MAPPING_PRECHECK = get_bool_env('MAPPING_PRECHECK', True)
 # LOG_FILE: where batch runs persist worker logs. Empty = <output>/<session>/
-# <session>.log; 'none' disables file logging (the pre-guard behaviour).
+# <session>.log.
 LOG_FILE = os.getenv('LOG_FILE', '').strip().strip('"')
 
 # ── Combine Output ──
@@ -113,37 +109,17 @@ SKIP_FILTERS = [
 CHUNKS = max(1, get_int_env('CHUNKS', 1))
 
 # ── Transcript Fidelity ──
-# DEDUPE_STRATEGY applies to both the per-speaker VTT and the combined
-# transcript. 'consecutive' drops a cue only when it repeats the previous kept
-# cue for that speaker within DEDUPE_WINDOW_SECONDS, which is what whisper's
-# repeated-line hallucination looks like. 'global' is the legacy whole-session
-# dedup that also removed genuine repeats such as every second "Yeah.".
-# 'none' keeps everything.
-DEDUPE_STRATEGY = os.getenv('DEDUPE_STRATEGY', 'consecutive').strip().strip('"').lower()
-if DEDUPE_STRATEGY not in ('consecutive', 'global', 'none'):
-    raise ValueError(
-        f"DEDUPE_STRATEGY must be consecutive, global, or none; got {DEDUPE_STRATEGY!r}"
-    )
+# A cue is dropped only when it repeats the previous kept cue for that speaker
+# within this many seconds, which is what whisper's repeated-line
+# hallucination looks like. Applies to the per-speaker VTT and the combined
+# transcript alike. A genuine "Yeah." ten minutes later always survives.
 DEDUPE_WINDOW_SECONDS = get_float_env('DEDUPE_WINDOW_SECONDS', 2.0)
-# A file with any failed chunks is an error so a rerun retries it; the
-# alternative is a transcript silently missing minutes of speech.
-FAIL_ON_PARTIAL_TRANSCRIPTION = get_bool_env('FAIL_ON_PARTIAL_TRANSCRIPTION', True)
-# A track with no detected speech (muted participant) yields an empty
-# transcript instead of failing the whole session.
-ALLOW_SILENT_TRACKS = get_bool_env('ALLOW_SILENT_TRACKS', True)
 
 # ── Audio Processing ──
 WHISPER_SAMPLE_RATE = 16000
 # Silero processes 512-sample frames one at a time; thread fan-out costs more
 # than it saves (1 thread measured ~2x faster than 4 on Apple Silicon).
 VAD_THREADS = get_int_env('VAD_THREADS', 1)
-# Silero ships the same weights as a TorchScript (jit) and an ONNX model. The
-# ONNX build runs on onnxruntime with a bounded footprint (236 MB peak on a
-# 2.9 h track); the jit build's peak swung between 0.9 and 3.9 GB run to run
-# for identical output. Regions were identical between the two on that track.
-VAD_BACKEND = os.getenv('VAD_BACKEND', 'onnx').strip().strip('"').lower()
-if VAD_BACKEND not in ('onnx', 'jit'):
-    raise ValueError(f"VAD_BACKEND must be onnx or jit; got {VAD_BACKEND!r}")
 
 
 def _validate_sample_rate(sample_rate: int) -> int:
@@ -254,20 +230,6 @@ def get_stage_fingerprint_settings() -> dict[str, dict[str, Any]]:
             'whisper_options': get_whisper_options(),
         },
         'vtt': {
-            'dedupe': {
-                'strategy': DEDUPE_STRATEGY,
-                'window_seconds': DEDUPE_WINDOW_SECONDS,
-            },
+            'dedupe_window_seconds': DEDUPE_WINDOW_SECONDS,
         },
-    }
-
-
-def get_pipeline_fingerprint_settings() -> dict[str, Any]:
-    """Flat view of every output-affecting setting (all stages merged)."""
-    stages = get_stage_fingerprint_settings()
-    return {
-        'sample_rate': stages['conversion']['sample_rate'],
-        'vad': stages['vad'],
-        **stages['inference'],
-        **stages['vtt'],
     }
