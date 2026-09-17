@@ -215,6 +215,19 @@ fails loudly.
   stock whisper, slow and correct, rather than patching the model or adding
   a second one. Do not reintroduce packing, encoder-context patches, or a
   detect-and-retry shim.
+- **`WHISPER_MODEL` stays `large-v3-turbo`, by measurement.** small.en on the
+  same 11.5 h session, judged at the level of session notes against an
+  80-item skeleton built from turbo: 56 intact, 21 degraded, 3 lost,
+  including the session's biggest outcome (the DM's narration of the boss
+  falling and the rest fleeing replaced by the transcription prompt echoed
+  sixteen times). small.en substitutes rather than omits: 9 of its 17
+  prompt echoes landed on the DM's track mid-narration, and the two PC
+  names never appeared in their canonical spelling. Whisper's own guards
+  (temperature fallback, no prompt carry) reduced echoes from 17 to 9 and
+  did not close the gap (20 to 28% of words still differ). Smaller models
+  are not an option for this audio; the pipeline is built for machines that
+  can run turbo. Turbo's own known artefact is the bare "Thank you."
+  silence filler (37 lines per session), which displaces nothing.
 - **Temperature fallback stays off, by measurement.** `WHISPER_TEMPERATURE=
   0.0,0.2,0.4` enables whisper's re-decode when its compression-ratio or
   logprob guard trips; with the default scalar those guards never fire.
