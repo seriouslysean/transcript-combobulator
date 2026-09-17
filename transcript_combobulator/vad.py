@@ -52,6 +52,14 @@ def load_vad_model() -> Any:
     3.9 GB swinging run to run for the TorchScript build).
     """
     try:
+        import onnxruntime
+
+        # onnxruntime >= 1.21 on macOS can abort at process exit
+        # ("recursive_mutex lock failed") when its telemetry uploader thread
+        # touches a static mutex during finalisation. Disabling telemetry is
+        # the documented fix (microsoft/onnxruntime#24579), and a headless
+        # box should not be phoning home anyway.
+        onnxruntime.disable_telemetry_events()
         return load_silero_vad(onnx=True)
     except Exception as e:
         raise VADError(f"Failed to load VAD model: {e}") from e
