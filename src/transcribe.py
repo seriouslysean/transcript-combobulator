@@ -29,6 +29,8 @@ def transcribe_segments(
     original_input_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     metrics: Optional[dict[str, Any]] = None,
+    checkpoint_path: Optional[Path] = None,
+    checkpoint_key: Optional[str] = None,
 ) -> dict[str, Any]:
     """Transcribe a pre-VAD-processed audio file by reading its mapping JSON.
 
@@ -60,6 +62,8 @@ def transcribe_segments(
             original_input_path=original_input_path,
             progress_callback=progress_callback,
             metrics=metrics,
+            checkpoint_path=checkpoint_path,
+            checkpoint_key=checkpoint_key,
         )
 
         return {
@@ -82,6 +86,8 @@ def transcribe_audio(
     original_input_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     metrics: Optional[dict[str, Any]] = None,
+    checkpoint_path: Optional[Path] = None,
+    checkpoint_key: Optional[str] = None,
 ) -> dict[str, Any]:
     """Run the full transcription pipeline for a single audio file.
 
@@ -154,6 +160,8 @@ def transcribe_audio(
             output_vtt,
             progress_callback=progress_callback,
             metrics=transcription_metrics,
+            checkpoint_path=checkpoint_path,
+            checkpoint_key=checkpoint_key,
         )
 
         logger.info("Saving transcription results...")

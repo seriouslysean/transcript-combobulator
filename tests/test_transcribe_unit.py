@@ -23,7 +23,7 @@ def test_offset_uses_padded_clip_start(tmp_path: Path) -> None:
     }]
     captured = {}
 
-    def fake_transcribe(segments, output_vtt, progress_callback=None, metrics=None):
+    def fake_transcribe(segments, output_vtt, progress_callback=None, metrics=None, **kwargs):
         captured["segments"] = segments
         return []
 
@@ -41,7 +41,7 @@ def test_offset_falls_back_to_speech_start_for_old_mappings(tmp_path: Path) -> N
     clip.touch()
     captured = {}
 
-    def fake_transcribe(segments, output_vtt, progress_callback=None, metrics=None):
+    def fake_transcribe(segments, output_vtt, progress_callback=None, metrics=None, **kwargs):
         captured["segments"] = segments
         return []
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test batch processing utilities."""
 
+import json
 import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -279,10 +280,19 @@ class TestProcessSingleFile:
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         manifest = output_dir / "speaker_pipeline_manifest.json"
-        manifest.write_text('{"fingerprint": "old"}', encoding="utf-8")
+        manifest.write_text(
+            '{"cache_version": 3, "stages": {"vtt": {"fingerprint": "old", "artifacts": ["x"]}}}',
+            encoding="utf-8",
+        )
 
         def fail_after_manifest_invalidation(*args, **kwargs):
-            assert not manifest.exists()
+            # A forced run wipes the old record before any work; whatever the
+            # conversion stage wrote since must not be a completion record.
+            from src.pipeline_cache import load_manifest
+
+            stages = load_manifest(manifest)
+            assert 'vtt' not in stages
+            assert all(record.get('fingerprint') != 'old' for record in stages.values())
             raise RuntimeError("interrupted")
 
         with patch(
@@ -298,7 +308,9 @@ class TestProcessSingleFile:
         ), pytest.raises(RuntimeError, match="interrupted"):
             main(str(input_file), force=True)
 
-        assert not manifest.exists()
+        from src.pipeline_cache import load_manifest
+
+        assert 'vtt' not in load_manifest(manifest)
 
     def test_cache_miss_replaces_existing_normalized_audio(self, tmp_path):
         """A changed normalized source replaces the prior derived WAV."""
@@ -606,3 +618,78 @@ class TestPartialTranscriptionFailsFile:
         metrics, manifest = self._run(tmp_path, failed=0, allow_partial=False)
         assert metrics["status"] == "processed"
         manifest.assert_called_once()
+
+
+class TestStageReuse:
+    """Completed stages are reused; only the changed stage and later rerun."""
+
+    def _setup(self, tmp_path):
+        from src.pipeline_cache import build_stage_fingerprints, record_stage
+
+        input_file = tmp_path / "speaker.flac"
+        input_file.write_bytes(b"audio")
+        output_dir = tmp_path / "out"
+        output_dir.mkdir()
+        wav = output_dir / "speaker.wav"
+        wav.touch()
+        mapping = output_dir / "speaker_mapping.json"
+        seg = output_dir / "speaker_segment_000.wav"
+        seg.touch()
+        mapping.write_text(json.dumps({"segments": [
+            {"start_seconds": 1.0, "end_seconds": 2.0, "clip_start_seconds": 0.7, "clip_end_seconds": 2.3, "segment_file": str(seg)}
+        ]}))
+        manifest = output_dir / "speaker_pipeline_manifest.json"
+        fps = build_stage_fingerprints(input_file)
+        record_stage(manifest, "conversion", fps["conversion"], [wav])
+        record_stage(manifest, "vad", fps["vad"], [mapping, seg])
+        return input_file, output_dir, manifest, fps
+
+    def test_conversion_and_vad_are_skipped_when_recorded(self, tmp_path):
+        from tools.process_single_file import main
+
+        input_file, output_dir, manifest, fps = self._setup(tmp_path)
+        transcription = {
+            "vtt_file": str(output_dir / "speaker.vtt"),
+            "json_file": str(output_dir / "speaker_transcription.json"),
+            "mapping_file": str(output_dir / "speaker_mapping.json"),
+            "metrics": {"chunk_count": 1, "failed_chunk_count": 0, "chunks": []},
+        }
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=output_dir), \
+             patch("tools.process_single_file.convert_to_wav") as convert, \
+             patch("tools.process_single_file.needs_conversion", return_value=True), \
+             patch("tools.process_single_file.process_audio") as vad, \
+             patch("tools.process_single_file.transcribe_segments", return_value=transcription) as ts, \
+             patch("tools.process_single_file.write_pipeline_manifest"):
+            metrics = main(str(input_file))
+
+        convert.assert_not_called()
+        vad.assert_not_called()
+        assert ts.call_args.kwargs["checkpoint_key"] == fps["inference"]
+        assert metrics["conversion"]["action"] == "cached"
+        assert metrics["vad_cached"] is True
+        assert metrics["vad"]["chunk_count"] == 1
+
+    def test_presentation_only_change_rewrites_vtt_without_inference(self, tmp_path):
+        from src.pipeline_cache import record_stage
+        from tools.process_single_file import main
+
+        input_file, output_dir, manifest, fps = self._setup(tmp_path)
+        json_path = output_dir / "speaker_transcription.json"
+        json_path.write_text(json.dumps({"segments": [
+            {"start": 1.0, "end": 2.0, "text": "Hello", "confidence": 90.0}
+        ]}))
+        vtt = output_dir / "speaker.vtt"
+        vtt.touch()
+        record_stage(manifest, "inference", fps["inference"], [json_path, vtt])
+
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=output_dir), \
+             patch("tools.process_single_file.process_audio") as vad, \
+             patch("tools.process_single_file.transcribe_segments") as ts, \
+             patch("tools.process_single_file.write_pipeline_manifest"):
+            metrics = main(str(input_file))
+
+        vad.assert_not_called()
+        ts.assert_not_called()
+        assert metrics["transcription"]["inference_cached"] is True
+        assert "Hello" in vtt.read_text(encoding="utf-8")
+        assert "vtt_rewrite_seconds" in metrics["stages"]

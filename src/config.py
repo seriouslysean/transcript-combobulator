@@ -224,22 +224,43 @@ def _model_file_identity() -> dict[str, int] | None:
     return {'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns}
 
 
-def get_pipeline_fingerprint_settings() -> dict[str, Any]:
-    """Return output-affecting settings used by the per-file resume cache."""
+def get_stage_fingerprint_settings() -> dict[str, dict[str, Any]]:
+    """Output-affecting settings per pipeline stage, for the resume cache.
+
+    Each stage's fingerprint chains from the previous one, so a change here
+    invalidates that stage and everything after it and nothing before it:
+    a dedup change rewrites the VTT without re-running inference, and a VAD
+    change re-runs VAD and inference without re-converting.
+    """
     return {
-        'sample_rate': SAMPLE_RATE,
+        'conversion': {'sample_rate': SAMPLE_RATE},
         'vad': {
             'threshold': VAD_THRESHOLD,
             'min_speech_duration': VAD_MIN_SPEECH_DURATION,
             'min_silence_duration': VAD_MIN_SILENCE_DURATION,
             'padding_seconds': PADDING_SECONDS,
         },
-        'whisper_model': WHISPER_MODEL,
-        'whisper_model_file': _model_file_identity(),
-        'whisper_device': WHISPER_DEVICE,
-        'whisper_options': get_whisper_options(),
-        'dedupe': {
-            'strategy': DEDUPE_STRATEGY,
-            'window_seconds': DEDUPE_WINDOW_SECONDS,
+        'inference': {
+            'whisper_model': WHISPER_MODEL,
+            'whisper_model_file': _model_file_identity(),
+            'whisper_device': WHISPER_DEVICE,
+            'whisper_options': get_whisper_options(),
         },
+        'vtt': {
+            'dedupe': {
+                'strategy': DEDUPE_STRATEGY,
+                'window_seconds': DEDUPE_WINDOW_SECONDS,
+            },
+        },
+    }
+
+
+def get_pipeline_fingerprint_settings() -> dict[str, Any]:
+    """Flat view of every output-affecting setting (all stages merged)."""
+    stages = get_stage_fingerprint_settings()
+    return {
+        'sample_rate': stages['conversion']['sample_rate'],
+        'vad': stages['vad'],
+        **stages['inference'],
+        **stages['vtt'],
     }

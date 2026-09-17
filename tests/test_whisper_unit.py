@@ -211,3 +211,54 @@ def test_regenerate_vtt_reads_pipeline_json_and_filters(tmp_path: Path) -> None:
     # "Drop me" is filtered? They are: 3.1 - 1.0 = 2.1 > 2.0, so both stay.
     assert text.count("Keep me") == 3
     assert [s["start"] for s in kept] == [0.0, 3.1, 60.0]
+
+
+
+def test_interrupted_transcription_resumes_from_checkpoint(tmp_path: Path) -> None:
+    from src.pipeline_cache import load_chunk_checkpoint
+
+    clips = [tmp_path / f'c{i}.wav' for i in range(3)]
+    for c in clips:
+        c.touch()
+    jobs = [(clips[0], 0.0), (clips[1], 10.0), (clips[2], 20.0)]
+    progress = tmp_path / 'progress.jsonl'
+    vtt = tmp_path / 'out.vtt'
+    seg = lambda t, text: [{'start': t, 'end': t + 1.0, 'text': text, 'confidence': 90.0}]
+
+    # First run: chunk 2 fails; chunks 1 and 3 are checkpointed.
+    metrics = {}
+    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
+        'src.whisper.transcribe_segment',
+        side_effect=[seg(0.0, 'one'), WhisperError('boom'), seg(20.0, 'three')],
+    ):
+        transcribe_audio_segments(jobs, vtt, metrics=metrics, checkpoint_path=progress, checkpoint_key='fp')
+    assert metrics['failed_chunk_count'] == 1
+    assert progress.exists()
+    assert set(load_chunk_checkpoint(progress, 'fp')) == {1, 3}
+
+    # Second run: only chunk 2 is transcribed; output equals a clean run.
+    metrics = {}
+    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
+        'src.whisper.transcribe_segment', side_effect=[seg(10.0, 'two')]
+    ) as ts:
+        segments = transcribe_audio_segments(jobs, vtt, metrics=metrics, checkpoint_path=progress, checkpoint_key='fp')
+    assert ts.call_count == 1
+    assert [s['text'] for s in segments] == ['one', 'two', 'three']
+    assert metrics['resumed_chunk_count'] == 2
+    assert metrics['failed_chunk_count'] == 0
+    assert [c['status'] for c in metrics['chunks']] == ['resumed', 'processed', 'resumed']
+    assert not progress.exists()
+    assert vtt.read_text(encoding='utf-8').count('-->') == 3
+
+
+def test_checkpoint_with_changed_settings_is_discarded(tmp_path: Path) -> None:
+    clip = tmp_path / 'c.wav'
+    clip.touch()
+    progress = tmp_path / 'progress.jsonl'
+    progress.write_text('{"key": "old"}\n{"index": 1, "segments": [{"start": 0, "end": 1, "text": "stale"}], "timings": {}}\n')
+    with patch('src.whisper.load_whisper_model', return_value=object()), patch(
+        'src.whisper.transcribe_segment', return_value=[{'start': 0.0, 'end': 1.0, 'text': 'fresh', 'confidence': 90.0}]
+    ) as ts:
+        segments = transcribe_audio_segments([(clip, 0.0)], tmp_path / 'o.vtt', checkpoint_path=progress, checkpoint_key='new')
+    assert ts.call_count == 1
+    assert segments[0]['text'] == 'fresh'

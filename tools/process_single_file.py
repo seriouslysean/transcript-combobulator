@@ -1,6 +1,7 @@
 """Process a single audio file: convert -> VAD -> transcribe."""
 
 import argparse
+import json
 import logging
 import shutil
 import time
@@ -14,16 +15,27 @@ from src.audio_utils import (
     needs_conversion,
     validate_audio_file,
 )
-from src.config import FAIL_ON_PARTIAL_TRANSCRIPTION, get_output_path_for_input
+from src.config import (
+    FAIL_ON_PARTIAL_TRANSCRIPTION,
+    get_output_path_for_input,
+    vtt_name_for_stem,
+)
 from src.logging_config import setup_logging
 from src.pipeline_cache import (
+    build_stage_fingerprints,
     get_manifest_path,
+    get_progress_path,
+    invalidate_stage,
     is_pipeline_complete,
+    load_manifest,
+    record_stage,
+    stage_is_complete,
     write_pipeline_manifest,
 )
 from src.transcribe import TranscriptionError, transcribe_segments
 from src.telemetry import elapsed_seconds, utc_now_iso
 from src.vad import process_audio
+from src.whisper import regenerate_vtt_with_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -101,33 +113,64 @@ def main(
             logger.info(f"Using completed pipeline output for {input_file.name}")
             return file_metrics
 
+        fingerprints = build_stage_fingerprints(input_file)
+        progress_path = get_progress_path(output_dir, input_file.stem)
+        mapping_path = output_dir / f"{input_file.stem}_mapping.json"
+        json_path = output_dir / f"{input_file.stem}_transcription.json"
+        vtt_path = output_dir / vtt_name_for_stem(input_file.stem)
         with _timed_stage(file_metrics, 'cache_invalidation'):
-            # A completion record must describe only the run that produced the
-            # current artifacts. Leave the pipeline uncached if interrupted.
-            manifest_path.unlink(missing_ok=True)
+            if force:
+                # A forced run trusts nothing it finds.
+                manifest_path.unlink(missing_ok=True)
+                progress_path.unlink(missing_ok=True)
+            else:
+                # The completion record must describe only the run that
+                # produced the current artifacts. Earlier stage records stay
+                # and are validated one by one before anything is reused.
+                invalidate_stage(manifest_path, 'vtt')
+        stages = load_manifest(manifest_path)
 
         _update_status("converting")
         logger.info(f"Step 1: Converting {input_file.name} if needed...")
         with _timed_stage(file_metrics, 'conversion'):
-            # A cache miss must not reuse audio derived from an older source.
-            if output_file.resolve() != input_file:
-                output_file.unlink(missing_ok=True)
-            conversion_required = needs_conversion(input_file)
-            file_metrics['conversion'] = {
-                'required': conversion_required,
-                'action': 'converted' if conversion_required else 'copied',
-            }
-            if conversion_required:
-                convert_to_wav(input_file, output_file)
+            if stage_is_complete(stages, 'conversion', fingerprints['conversion']):
+                file_metrics['conversion'] = {'required': False, 'action': 'cached'}
+                logger.info("Conversion already complete for this source; reusing")
             else:
-                if not output_file.exists():
-                    shutil.copy(input_file, output_file)
-                logger.info("No conversion needed, copied to output directory")
+                # A cache miss must not reuse audio derived from an older source.
+                if output_file.resolve() != input_file:
+                    output_file.unlink(missing_ok=True)
+                conversion_required = needs_conversion(input_file)
+                file_metrics['conversion'] = {
+                    'required': conversion_required,
+                    'action': 'converted' if conversion_required else 'copied',
+                }
+                if conversion_required:
+                    convert_to_wav(input_file, output_file)
+                else:
+                    if not output_file.exists():
+                        shutil.copy(input_file, output_file)
+                    logger.info("No conversion needed, copied to output directory")
+                record_stage(manifest_path, 'conversion', fingerprints['conversion'], [output_file])
+                stages = load_manifest(manifest_path)
 
         _update_status("splitting")
         logger.info(f"Step 2: Processing VAD on {output_file.name}...")
         with _timed_stage(file_metrics, 'vad'):
-            _, vad_segments = process_audio(output_file)
+            if stage_is_complete(stages, 'vad', fingerprints['vad']):
+                with open(mapping_path, encoding='utf-8') as f:
+                    vad_segments = json.load(f)['segments']
+                file_metrics['vad_cached'] = True
+                logger.info(f"VAD already complete; reusing {len(vad_segments)} segments")
+            else:
+                _, vad_segments = process_audio(output_file)
+                record_stage(
+                    manifest_path,
+                    'vad',
+                    fingerprints['vad'],
+                    [mapping_path, *(Path(s['segment_file']) for s in vad_segments)],
+                )
+                stages = load_manifest(manifest_path)
         file_metrics['vad'] = {
             'chunk_count': len(vad_segments),
             'speech_seconds': round(
@@ -144,13 +187,35 @@ def main(
         logger.info("Step 3: Transcribing segments...")
         transcription_metrics: dict[str, Any] = {}
         file_metrics['transcription'] = transcription_metrics
+        transcription: dict[str, Any]
         with _timed_stage(file_metrics, 'transcription'):
-            transcription = transcribe_segments(
-                output_file,
-                input_file,
-                progress_callback=_progress_callback,
-                metrics=transcription_metrics,
-            )
+            if stage_is_complete(stages, 'inference', fingerprints['inference']):
+                # Only presentation settings changed (or the VTT went missing):
+                # rewrite the VTT from the saved JSON without any inference.
+                logger.info("Transcription already complete; rewriting VTT from saved JSON")
+                with _timed_stage(file_metrics, 'vtt_rewrite'):
+                    regenerate_vtt_with_confidence(json_path, vtt_path, None)
+                transcription = {
+                    'vtt_file': str(vtt_path),
+                    'json_file': str(json_path),
+                    'mapping_file': str(mapping_path),
+                    'metrics': {
+                        'chunk_count': len(vad_segments),
+                        'failed_chunk_count': 0,
+                        'resumed_chunk_count': len(vad_segments),
+                        'chunks': [],
+                        'inference_cached': True,
+                    },
+                }
+            else:
+                transcription = transcribe_segments(
+                    output_file,
+                    input_file,
+                    progress_callback=_progress_callback,
+                    metrics=transcription_metrics,
+                    checkpoint_path=progress_path,
+                    checkpoint_key=fingerprints['inference'],
+                )
         file_metrics['transcription'] = transcription.get(
             'metrics', transcription_metrics
         )
@@ -165,6 +230,14 @@ def main(
                 f"{failed_chunks} of {total_chunks} segments failed to transcribe for "
                 f"{input_file.name}; rerun to retry "
                 "(FAIL_ON_PARTIAL_TRANSCRIPTION=false accepts partial output)"
+            )
+
+        if not stage_is_complete(stages, 'inference', fingerprints['inference']):
+            record_stage(
+                manifest_path,
+                'inference',
+                fingerprints['inference'],
+                [Path(transcription['json_file']), Path(transcription['vtt_file'])],
             )
 
         artifacts = [

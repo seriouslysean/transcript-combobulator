@@ -25,6 +25,7 @@ from src.config import (
     get_whisper_options,
 )
 from src.logging_config import get_logger
+from src.pipeline_cache import ChunkCheckpoint
 from src.telemetry import elapsed_seconds
 
 logger = get_logger(__name__)
@@ -275,6 +276,8 @@ def transcribe_audio_segments(
     output_path: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     metrics: Optional[dict[str, Any]] = None,
+    checkpoint_path: Optional[Path] = None,
+    checkpoint_key: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Transcribe a list of (segment_path, start_offset) tuples with a shared model.
 
@@ -315,16 +318,38 @@ def transcribe_audio_segments(
 
         all_segments: list[dict[str, Any]] = []
         failed_segments = 0
+        checkpoint: Optional[ChunkCheckpoint] = None
+        if checkpoint_path is not None and checkpoint_key:
+            checkpoint = ChunkCheckpoint(checkpoint_path, checkpoint_key)
+            if checkpoint.completed:
+                logger.info(
+                    f"Resuming: {len(checkpoint.completed)}/{total} chunks already transcribed"
+                )
+        resumed_segments = 0
+
         for i, (segment_path, start_time) in enumerate(segments, 1):
-            logger.info(f"Processing segment {i}/{total}...")
-            if progress_callback:
-                progress_callback("transcribing", i, total)
             chunk_metrics: dict[str, Any] = {
                 'index': i,
                 'file': segment_path.name,
                 'offset_seconds': round(float(start_time), 6),
                 'timings': {},
             }
+            if checkpoint is not None and i in checkpoint.completed:
+                saved = checkpoint.completed[i]
+                chunk_segments = list(saved['segments'])
+                all_segments.extend(chunk_segments)
+                chunk_metrics['status'] = 'resumed'
+                chunk_metrics['timings'] = dict(saved.get('timings') or {})
+                chunk_metrics['result_segment_count'] = len(chunk_segments)
+                chunk_metrics['audio_seconds'] = chunk_metrics['timings'].get('audio_seconds')
+                transcription_metrics['chunks'].append(chunk_metrics)
+                resumed_segments += 1
+                if progress_callback:
+                    progress_callback("transcribing", i, total)
+                continue
+            logger.info(f"Processing segment {i}/{total}...")
+            if progress_callback:
+                progress_callback("transcribing", i, total)
             try:
                 chunk_segments = transcribe_segment(
                     segment_path,
@@ -337,6 +362,8 @@ def transcribe_audio_segments(
                 chunk_metrics['status'] = (
                     'processed' if chunk_segments else 'empty'
                 )
+                if checkpoint is not None:
+                    checkpoint.record(i, chunk_segments, chunk_metrics['timings'])
                 chunk_metrics['result_segment_count'] = len(chunk_segments)
                 chunk_metrics['text_characters'] = sum(
                     len(segment.get('text', '')) for segment in chunk_segments
@@ -353,8 +380,11 @@ def transcribe_audio_segments(
             transcription_metrics['chunks'].append(chunk_metrics)
 
         transcription_metrics['failed_chunk_count'] = failed_segments
+        transcription_metrics['resumed_chunk_count'] = resumed_segments
         transcription_metrics['raw_result_segment_count'] = len(all_segments)
         if total and failed_segments == total:
+            if checkpoint is not None:
+                checkpoint.close(remove=False)
             raise WhisperError(f"All {total} audio segments failed to transcribe")
 
         stage_started = time.perf_counter()
@@ -364,6 +394,10 @@ def transcribe_audio_segments(
                 _write_vtt(output_path, deduped)
                 transcription_metrics['written_vtt_cue_count'] = len(deduped)
                 logger.info(f"User transcript saved: {output_path.name}")
+            if checkpoint is not None:
+                # Keep the checkpoint while chunks failed so a rerun retries
+                # only those; remove it once every chunk succeeded.
+                checkpoint.close(remove=failed_segments == 0)
         finally:
             transcription_metrics['vtt_write_seconds'] = elapsed_seconds(
                 stage_started, time.perf_counter()

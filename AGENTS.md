@@ -38,7 +38,8 @@ The standard pipeline: `tools/process_batch.py` →
 - **Audio is normalized once.** `src.audio_utils.convert_to_wav` normalizes to
   `[-1, 1]`. Don't re-normalize downstream.
 - **Mapping JSON is written once.** `src.vad.process_audio` is the only writer.
-  `src.transcribe.transcribe_audio` trusts it and reads it back.
+  `src.transcribe.transcribe_audio` and the VAD-cached path in
+  `tools/process_single_file.py` trust it and read it back.
 - **Only one `transcribe_audio` public function.** It lives in
   `src.transcribe`. `src.whisper.transcribe_file_direct` is the one-shot
   (no-VAD) variant and is internal to the regenerate-VTT flow.
@@ -89,6 +90,35 @@ Dropped on purpose: `convert-audio` (wrote a `_16khz` layout nothing consumed),
 `create-test-files` (conftest does it), `process-vad`, `transcribe-segments`,
 and the old `clean`, which `make test` used to call and which deleted every
 session's transcripts.
+
+## Resume Semantics
+
+`src/pipeline_cache.py` keeps one manifest per input file with a record per
+stage: `conversion`, `vad`, `inference`, `vtt`. Each stage's fingerprint is
+chained from the previous one over that stage's own settings
+(`src.config.get_stage_fingerprint_settings`), so a change re-runs that stage
+and everything after it, nothing before it:
+
+| Changed | Re-runs |
+|---|---|
+| source file, `SAMPLE_RATE` | everything |
+| `VAD_*`, `PADDING_SECONDS` | VAD, inference, VTT |
+| `WHISPER_*`, model file size/mtime | inference, VTT |
+| `DEDUPE_*` | VTT only, rewritten from the saved JSON with no inference |
+
+A record is trusted only if its fingerprint matches and every artifact it
+names exists. Recording a stage drops every later record; a non-forced run
+drops the `vtt` (completion) record before any work so an interrupted run
+never looks complete. `force=1` deletes the manifest and the checkpoint.
+
+Transcription checkpoints per chunk to `<stem>_progress.jsonl` (header line
+with the inference fingerprint, then one JSON line per completed chunk). A
+rerun with the same fingerprint reuses those chunks (`status: resumed`) and
+transcribes only the missing ones; a truncated last line is ignored and that
+chunk redone. The file is removed when every chunk succeeded and kept when
+any failed, so `FAIL_ON_PARTIAL_TRANSCRIPTION` reruns retry only the failed
+chunks. Verified by killing a real 2.9 h track mid-transcription and
+resuming: output identical to the uninterrupted run.
 
 ## Batch Run Behaviour
 
