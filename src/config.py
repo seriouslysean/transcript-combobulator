@@ -137,6 +137,13 @@ WHISPER_SAMPLE_RATE = 16000
 # Silero processes 512-sample frames one at a time; thread fan-out costs more
 # than it saves (1 thread measured ~2x faster than 4 on Apple Silicon).
 VAD_THREADS = get_int_env('VAD_THREADS', 1)
+# Silero ships the same weights as a TorchScript (jit) and an ONNX model. The
+# ONNX build runs on onnxruntime with a bounded footprint (236 MB peak on a
+# 2.9 h track); the jit build's peak swung between 0.9 and 3.9 GB run to run
+# for identical output. Regions were identical between the two on that track.
+VAD_BACKEND = os.getenv('VAD_BACKEND', 'onnx').strip().strip('"').lower()
+if VAD_BACKEND not in ('onnx', 'jit'):
+    raise ValueError(f"VAD_BACKEND must be onnx or jit; got {VAD_BACKEND!r}")
 
 
 def _validate_sample_rate(sample_rate: int) -> int:

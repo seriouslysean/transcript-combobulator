@@ -20,6 +20,9 @@ dependencies = [
     "torch==2.11.0",
     "torchaudio==2.11.0",
     "silero-vad==6.2.1",
+    # silero-vad does not declare onnxruntime; VAD_BACKEND=onnx (default) needs it.
+    # 1.23.2 is the last release with cp310 wheels; 1.24+ requires Python 3.11.
+    "onnxruntime==1.23.2",
     "rich==15.0.0",
 ]
 classifiers = [
