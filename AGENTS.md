@@ -54,7 +54,8 @@ Always use the Makefile:
 
 | Command | Purpose |
 |---------|---------|
-| `make setup` | Create venv, install deps, download whisper model |
+| `make check-deps` | Verify Python 3.10+, `venv` module, and `ffmpeg` on the host |
+| `make setup` | Check deps, create venv from `$(PYTHON)` (default `python3`), install deps, download whisper model |
 | `make run folder=path/` | Run the full parallel pipeline |
 | `make run-single file=path.wav` | Pipeline for one file (no combine) |
 | `make process-vad file=path.wav` | VAD step only |
@@ -123,7 +124,8 @@ fails loudly.
 ## Testing
 
 - `tests/conftest.py` session fixture creates `tmp/input/test_jfk*.wav` from
-  `samples/jfk.wav`. You must have a real `samples/jfk.wav` file present.
+  the committed `samples/jfk.wav`. It is autouse, so every test needs working
+  audio decoding (ffmpeg) even the pure-logic ones.
 - `tests/test_batch.py` is fast (mocks + dir fixtures). Safe to run on every
   change.
 - `tests/test_combine.py` is fast (pure Python over synthetic VTTs).
@@ -137,9 +139,14 @@ fails loudly.
 
 ## Dependencies (gotchas)
 
-- `torchaudio>=2.10` requires `torchcodec`. Both are pinned in `pyproject.toml`.
-- `silero-vad` is pulled in; VAD model is downloaded on first `load_silero_vad()`
-  call and cached.
+- `torchaudio>=2.10` requires `torchcodec`, and torchcodec is ABI-locked to a
+  specific torch release (0.10 ↔ 2.10, 0.11+ ↔ 2.11). Bump all three pins
+  together; a loose torchcodec pin installs a mismatched build that fails at
+  import. torchcodec 0.11+ is also the first line with Linux aarch64 wheels.
+- `silero-vad` bundles its model inside the wheel; `load_silero_vad()` needs no
+  network access.
+- `ffmpeg` must be on `PATH`. Makefile recipes run under `/bin/sh` (dash on
+  Debian), so keep them POSIX: `>/dev/null 2>&1`, never `&>`.
 
 ## Error Handling Style
 

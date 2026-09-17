@@ -113,8 +113,8 @@ tmp/
 
 ## Dependencies
 
-- **Python 3.10+** - Core runtime
-- **pyenv** - Python version management
+- **Python 3.10+** - Core runtime (distro `python3` on Linux; any CPython on macOS)
+- **ffmpeg** - Audio decoding for torchaudio/torchcodec and Whisper's file loader
 - **OpenAI Whisper** - Speech recognition
 - **Silero VAD** - Voice activity detection
 - **PyTorch** - Neural network backend

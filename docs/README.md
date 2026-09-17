@@ -13,14 +13,40 @@ Processes separate audio files and creates organized transcripts:
 
 ## Setup
 
+### Prerequisites
+
+| Requirement | Debian / Raspberry Pi OS | macOS |
+|---|---|---|
+| Python 3.10+ with `venv` | `sudo apt install python3 python3-venv` | `brew install python` (or pyenv, python.org) |
+| ffmpeg (audio decoding) | `sudo apt install ffmpeg` | `brew install ffmpeg` |
+
+Debian bookworm ships Python 3.11 and trixie ships 3.13; both work. No
+version manager is required. `make check-deps` reports what is missing.
+
+### Install
+
 ```sh
-# Clone and setup
 git clone https://github.com/seriouslysean/transcript-combobulator.git
 cd transcript-combobulator
 make setup
 ```
 
-Requires Python 3.10+ and pyenv.
+`make setup` verifies prerequisites, creates `.venv` from `python3` on your
+`PATH`, installs pinned dependencies, and downloads the Whisper model
+(`WHISPER_MODEL`, ~1.6 GB for the default `large-v3-turbo`). To use a specific
+interpreter:
+
+```sh
+make setup PYTHON=/usr/bin/python3.12
+```
+
+pyenv users: the committed `.python-version` still selects 3.10 through the
+pyenv shim, so `make setup` behaves as before.
+
+Low-memory hosts (for example an 8 GB Raspberry Pi) should set
+`PARALLEL_JOBS=1` and a smaller `WHISPER_MODEL` in `.env`; each worker holds a
+full copy of the model in RAM. `models/` can be pre-seeded by copying the `.pt`
+file from another machine instead of downloading.
 
 ## Quick Start
 
@@ -85,6 +111,7 @@ ENV_FILE=.env.example make combine-transcripts session=example
 
 ```sh
 # Setup
+make check-deps                         # Verify Python 3.10+, venv, and ffmpeg
 make setup                              # Install dependencies and download Whisper model
 
 # Processing

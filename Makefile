@@ -1,8 +1,13 @@
-.PHONY: setup run run-single clean clean-all test setup-whisper install lint \
+.PHONY: setup check-deps run run-single clean clean-all test setup-whisper install lint \
         create-sample-files test-segment regenerate-vtt process-vad \
         transcribe-segments create-test-files combine-transcripts convert-audio
 
 ROOT_DIR := $(shell pwd)
+
+# Interpreter used to create the virtualenv. Any CPython >= 3.10 works: the
+# distro python3 on Linux, or Homebrew/pyenv/python.org on macOS. Override with
+# `make setup PYTHON=/path/to/python3.12`.
+PYTHON ?= python3
 
 # Run commands inside the virtualenv with our src/ on sys.path
 VENV_CMD = cd $(ROOT_DIR) && . .venv/bin/activate && PYTHONPATH=$(ROOT_DIR)
@@ -11,16 +16,35 @@ PY = $(VENV_CMD) ENV_FILE=$(ENV_FILE) python
 .SILENT:
 
 # ── Setup ──
-setup:
-	if ! command -v pyenv &> /dev/null; then \
-		echo "pyenv is not installed. Please install it first."; \
-		exit 1; \
-	fi
-	cd $(ROOT_DIR) && pyenv install --skip-existing 3.10
-	cd $(ROOT_DIR) && python3.10 -m venv .venv
+setup: check-deps
+	cd $(ROOT_DIR) && $(PYTHON) -m venv .venv
 	$(VENV_CMD) pip install --upgrade pip
 	$(VENV_CMD) pip install -e ".[dev]"
 	$(MAKE) setup-whisper
+
+# Verify host prerequisites without touching the venv. Recipes run under
+# /bin/sh, so keep this POSIX (no bashisms like `&>`).
+check-deps:
+	if ! command -v $(PYTHON) >/dev/null 2>&1; then \
+		echo "$(PYTHON) not found. Install Python 3.10+ (Debian: apt install python3 python3-venv;" \
+		     "macOS: brew install python) or point at one: make setup PYTHON=/path/to/python3"; \
+		exit 1; \
+	fi
+	if ! $(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then \
+		echo "Python 3.10+ required; $(PYTHON) is $$($(PYTHON) --version 2>&1)." \
+		     "Point at a newer one: make setup PYTHON=/path/to/python3"; \
+		exit 1; \
+	fi
+	if ! $(PYTHON) -c 'import venv, ensurepip' >/dev/null 2>&1; then \
+		echo "The venv module is incomplete for $(PYTHON). Debian/Ubuntu: apt install python3-venv"; \
+		exit 1; \
+	fi
+	if ! command -v ffmpeg >/dev/null 2>&1; then \
+		echo "ffmpeg not found; it is required for audio decoding." \
+		     "Debian/Raspberry Pi OS: apt install ffmpeg; macOS: brew install ffmpeg"; \
+		exit 1; \
+	fi
+	echo "Prerequisites OK: $$($(PYTHON) --version 2>&1) at $$(command -v $(PYTHON)); $$(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f1-3)"
 
 install:
 	$(VENV_CMD) pip install -e ".[dev]"
@@ -34,7 +58,7 @@ run:
 	if [ -n "$(file)" ]; then \
 		if [ ! -f "$(file)" ]; then echo "File not found: $(file)"; exit 1; fi; \
 		echo "Processing single file: $$(basename $(file))..."; \
-		$(MAKE) run-single file=$(file) force=$(force); \
+		$(MAKE) run-single file=$(file) force=$(force) && \
 		$(MAKE) combine-transcripts ENV_FILE=$(ENV_FILE); \
 	elif [ -n "$(folder)" ]; then \
 		if [ ! -d "$(folder)" ]; then echo "Directory not found: $(folder)"; exit 1; fi; \
