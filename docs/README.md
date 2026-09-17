@@ -17,11 +17,11 @@ Processes separate audio files and creates organized transcripts:
 
 | Requirement | Debian / Raspberry Pi OS | macOS |
 |---|---|---|
-| Python 3.10+ with `venv` | `sudo apt install python3 python3-venv` | `brew install python` (or pyenv, python.org) |
+| Python 3.11+ with `venv` | `sudo apt install python3 python3-venv` | `brew install python` (or pyenv, python.org) |
 | ffmpeg (audio decoding) | `sudo apt install ffmpeg` | `brew install ffmpeg` |
 
-Debian bookworm ships Python 3.11 and trixie ships 3.13; both work. No
-version manager is required. `make check-deps` reports what is missing.
+Debian bookworm ships Python 3.11 and trixie ships 3.13; both work. The Mac
+uses 3.14 through pyenv (`.python-version`). No version manager is required. `make check-deps` reports what is missing.
 
 ### Install
 
@@ -40,8 +40,8 @@ interpreter:
 make setup PYTHON=/usr/bin/python3.12
 ```
 
-pyenv users: the committed `.python-version` still selects 3.10 through the
-pyenv shim, so `make setup` behaves as before.
+pyenv users: the committed `.python-version` selects 3.14.3 through the
+pyenv shim (`pyenv install 3.14.3` once).
 
 Low-memory hosts (for example an 8 GB Raspberry Pi) should set
 `PARALLEL_JOBS=1` and a smaller `WHISPER_MODEL` in `.env`; each worker holds a
@@ -108,7 +108,7 @@ VAD_MIN_SPEECH_DURATION=0.25
 make help                               # Every target with a one-line description
 
 # Setup
-make check-deps                         # Verify Python 3.10+, venv, and ffmpeg
+make check-deps                         # Verify Python 3.11+, venv, and ffmpeg
 make setup                              # Create .venv, install, download the Whisper model
 make install EXTRAS=dev,mac             # Reinstall with extras (mac adds mlx-whisper)
 

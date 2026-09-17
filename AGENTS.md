@@ -75,7 +75,7 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 
 | Command | Purpose |
 |---------|---------|
-| `make check-deps` | Verify Python 3.10+, `venv` module, and `ffmpeg` on the host |
+| `make check-deps` | Verify Python 3.11+, `venv` module, and `ffmpeg` on the host |
 | `make setup` | Check deps, create venv from `$(PYTHON)`, `make install`, download whisper model |
 | `make install [EXTRAS=dev,mac]` | `pip install -e ".[EXTRAS]"` into `.venv` |
 | `make setup-whisper` | Download `WHISPER_MODEL` into `models/` (checksum-verified, no model load) |

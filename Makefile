@@ -4,7 +4,7 @@
 
 ROOT_DIR := $(shell pwd)
 
-# Interpreter used to create the virtualenv. Any CPython >= 3.10 works: the
+# Interpreter used to create the virtualenv. Any CPython >= 3.11 works: the
 # distro python3 on Linux, or Homebrew/pyenv/python.org on macOS. Override with
 # `make setup PYTHON=/path/to/python3.12`.
 PYTHON ?= python3
@@ -33,14 +33,14 @@ setup: check-deps ## Create .venv from $(PYTHON), install [$(EXTRAS)], download 
 
 # Verify host prerequisites without touching the venv. Recipes run under
 # /bin/sh, so keep this POSIX (no bashisms like `&>`).
-check-deps: ## Verify Python 3.10+, the venv module, and ffmpeg
+check-deps: ## Verify Python 3.11+, the venv module, and ffmpeg
 	if ! command -v $(PYTHON) >/dev/null 2>&1; then \
-		echo "$(PYTHON) not found. Install Python 3.10+ (Debian: apt install python3 python3-venv;" \
+		echo "$(PYTHON) not found. Install Python 3.11+ (Debian: apt install python3 python3-venv;" \
 		     "macOS: brew install python) or point at one: make setup PYTHON=/path/to/python3"; \
 		exit 1; \
 	fi
-	if ! $(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then \
-		echo "Python 3.10+ required; $(PYTHON) is $$($(PYTHON) --version 2>&1)." \
+	if ! $(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then \
+		echo "Python 3.11+ required; $(PYTHON) is $$($(PYTHON) --version 2>&1)." \
 		     "Point at a newer one: make setup PYTHON=/path/to/python3"; \
 		exit 1; \
 	fi

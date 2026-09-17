@@ -3,7 +3,7 @@ name = "transcript-combobulator"
 version = "0.4.1"
 description = "Pre-processes audio files for better Whisper transcription"
 readme = "docs/README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 keywords = []
 authors = [
@@ -21,17 +21,16 @@ dependencies = [
     "torchaudio==2.11.0",
     "silero-vad==6.2.1",
     # silero-vad does not declare onnxruntime; its ONNX build needs it.
-    # 1.23.2 is the last release with cp310 wheels; 1.24+ requires Python 3.11.
-    "onnxruntime==1.23.2",
+    "onnxruntime==1.30.0",
     "rich==15.0.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 
@@ -70,7 +69,8 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+# No python_version pin: numpy's stubs use PEP 695 syntax, so checking as 3.11
+# fails to parse them. mypy checks against the venv interpreter instead.
 strict = true
 warn_unreachable = true
 # whisper, silero_vad, torchaudio, and soundfile ship no type information.
@@ -78,7 +78,7 @@ ignore_missing_imports = true
 
 [tool.black]
 line-length = 88
-target-version = ['py310']
+target-version = ['py311']
 
 [tool.isort]
 profile = "black"
