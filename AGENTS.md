@@ -215,10 +215,19 @@ fails loudly.
   stock whisper, slow and correct, rather than patching the model or adding
   a second one. Do not reintroduce packing, encoder-context patches, or a
   detect-and-retry shim.
-- **Temperature fallback is available.** `WHISPER_TEMPERATURE=0.0,0.2,0.4`
-  enables whisper's re-decode when the compression-ratio or logprob guard
-  trips; with the default scalar those guards never fire. Costs CPU only on
-  segments that trip it. Not yet A/B'd on a session.
+- **Temperature fallback stays off, by measurement.** `WHISPER_TEMPERATURE=
+  0.0,0.2,0.4` enables whisper's re-decode when its compression-ratio or
+  logprob guard trips; with the default scalar those guards never fire.
+  A/B on a real 11.5 h session (five speakers): the fallback re-decoded 131
+  of 2075 segments (6.3%), cost 1.29x inference on the track timed in both
+  runs, left text similarity at 0.97 to 0.99 per speaker and the count of
+  suspicious cues unchanged, and the segments it changed were short
+  ambiguous fragments where the temperature-0.4 sample was a different
+  guess, not a better one ("laughs," became "laughs, laughs, laughs,
+  laughs."). Sampling also makes output non-deterministic across runs.
+  Every segment now records the temperature whisper settled on, and
+  telemetry carries `fallback_segment_count`, so a future A/B is one env
+  change.
 
 - Whisper's `word_timestamps=True` hangs on some segments. Keep the default
   `WHISPER_WORD_TIMESTAMPS=false`.

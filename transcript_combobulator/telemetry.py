@@ -61,6 +61,7 @@ _TRANSCRIPTION_NUMBER_KEYS = (
     'model_load_seconds',
     'vtt_write_seconds',
     'total_seconds',
+    'fallback_segment_count',
 )
 _CHUNK_NUMBER_KEYS = (
     'index',
