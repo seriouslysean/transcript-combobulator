@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from src.combine import (
+    CombineError,
+    validate_speaker_mapping,
     TranscriptConfig,
     _normalize_for_dedup,
     combine_transcripts,
@@ -183,3 +185,43 @@ class TestWhisperRepetitionCollapse:
 
         # Below threshold; keep as-is.
         assert collapse_repetition("no no no") == "no no no"
+
+
+def _set_mapping(monkeypatch, usernames: list[str]) -> None:
+    """Point TRANSCRIPT_N_* at the given usernames and terminate the sequence."""
+    for i, username in enumerate(usernames, start=1):
+        monkeypatch.setenv(f"TRANSCRIPT_{i}_USERNAME", username)
+        monkeypatch.setenv(f"TRANSCRIPT_{i}_NAME", f"Name {i}")
+        monkeypatch.setenv(f"TRANSCRIPT_{i}_LABEL", f"Label {i}")
+        monkeypatch.setenv(f"TRANSCRIPT_{i}_DESCRIPTION", f"Desc {i}")
+    monkeypatch.setenv(f"TRANSCRIPT_{len(usernames) + 1}_USERNAME", "")
+
+
+class TestValidateSpeakerMapping:
+    """Up-front TRANSCRIPT_N_* validation shared with the combine step."""
+
+    def test_every_dir_mapped_once_returns_mapping(self, monkeypatch):
+        _set_mapping(monkeypatch, ["nilbits", "dezfrost"])
+        mapping = validate_speaker_mapping(["1-nilbits", "2-dezfrost"])
+        assert set(mapping) == {"nilbits", "dezfrost"}
+
+    def test_no_mapping_configured(self, monkeypatch):
+        _set_mapping(monkeypatch, [])
+        with pytest.raises(CombineError, match="No transcript mappings found"):
+            validate_speaker_mapping(["1-nilbits"])
+
+    def test_unmapped_dir_names_all_reported(self, monkeypatch):
+        _set_mapping(monkeypatch, ["nilbits"])
+        with pytest.raises(CombineError, match="2-dezfrost.*3-hereticjd"):
+            validate_speaker_mapping(["1-nilbits", "2-dezfrost", "3-hereticjd"])
+
+    def test_ambiguous_substring_match(self, monkeypatch):
+        _set_mapping(monkeypatch, ["dez", "dezfrost"])
+        with pytest.raises(CombineError, match="Ambiguous username match"):
+            validate_speaker_mapping(["2-dezfrost"])
+
+    def test_incomplete_entry_is_skipped_and_leaves_dir_unmapped(self, monkeypatch):
+        _set_mapping(monkeypatch, ["nilbits"])
+        monkeypatch.setenv("TRANSCRIPT_1_DESCRIPTION", "")
+        with pytest.raises(CombineError, match="No transcript mappings found"):
+            validate_speaker_mapping(["1-nilbits"])

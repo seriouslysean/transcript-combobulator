@@ -12,9 +12,12 @@ from tools.process_batch import (
     _build_file_metrics_table,
     _build_run_metrics_table,
     _calculate_torch_threads,
+    _estimate_worker_bytes,
     _format_duration,
     _initialize_worker,
+    _memory_capped_workers,
     _publish_metrics_report,
+    _resolve_log_file,
     _status_display,
     find_audio_files,
 )
@@ -509,3 +512,65 @@ class TestMetricsPublication:
 
         assert published_path is None
         assert error == "disk full"
+
+
+GIB = 1 << 30
+
+
+class TestMemoryGuard:
+    """Worker cap derived from model size and physical RAM."""
+
+    def test_unknown_ram_or_model_leaves_request_alone(self):
+        assert _memory_capped_workers(2, 0, 8 * GIB, 0.85) == (2, None)
+        assert _memory_capped_workers(2, GIB, None, 0.85) == (2, None)
+
+    def test_enough_ram_keeps_requested_workers(self):
+        # large-v3-turbo (~1.6 GB) x2 on a 32 GB machine fits with room to spare.
+        workers, warning = _memory_capped_workers(2, int(1.6 * GIB), 32 * GIB, 0.85)
+        assert workers == 2
+        assert warning is None
+
+    def test_eight_gb_pi_is_capped_to_one_worker(self):
+        workers, warning = _memory_capped_workers(2, int(1.6 * GIB), 8 * GIB, 0.85)
+        assert workers == 1
+        assert warning is not None
+        assert "running 1" in warning
+        assert "MEMORY_GUARD=false" in warning
+
+    def test_single_worker_that_cannot_fit_still_runs_with_warning(self):
+        workers, warning = _memory_capped_workers(1, 4 * GIB, 8 * GIB, 0.85)
+        assert workers == 1
+        assert warning is not None
+        assert "one worker" in warning
+
+    def test_never_raises_the_requested_count(self):
+        workers, _ = _memory_capped_workers(1, int(0.1 * GIB), 64 * GIB, 0.85)
+        assert workers == 1
+
+    def test_estimate_scales_with_model_size(self):
+        small = _estimate_worker_bytes(100 * 1024 * 1024)
+        large = _estimate_worker_bytes(1600 * 1024 * 1024)
+        assert large > small
+        assert small > 100 * 1024 * 1024
+
+
+class TestResolveLogFile:
+    """LOG_FILE mapping for batch runs."""
+
+    def test_empty_defaults_to_session_log_under_output(self, tmp_path):
+        assert _resolve_log_file("", tmp_path, "night-one") == (
+            tmp_path / "night-one" / "night-one.log"
+        )
+
+    @pytest.mark.parametrize("value", ["none", "NONE", "off", "false", "0"])
+    def test_disable_keywords_return_none(self, tmp_path, value):
+        assert _resolve_log_file(value, tmp_path, "s") is None
+
+    def test_absolute_path_is_used_as_is(self, tmp_path):
+        target = tmp_path / "custom.log"
+        assert _resolve_log_file(str(target), tmp_path, "s") == target
+
+    def test_relative_path_resolves_against_project_root(self, tmp_path):
+        from src.config import ROOT_DIR
+
+        assert _resolve_log_file("logs/run.log", tmp_path, "s") == ROOT_DIR / "logs" / "run.log"

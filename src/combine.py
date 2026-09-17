@@ -9,7 +9,7 @@ import re
 import string
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from src.config import OUTPUT_DIR
 from src.logging_config import get_logger
@@ -229,6 +229,45 @@ def _load_username_mapping() -> dict[str, dict[str, str]]:
     return mapping
 
 
+def _match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
+    """Usernames whose value appears as a substring of a per-speaker dir name."""
+    return [u for u in mapping if u in dir_name]
+
+
+def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, str]]:
+    """Check TRANSCRIPT_N_* covers every per-speaker directory name exactly once.
+
+    Raises CombineError with the same messages the combine step would produce.
+    Batch runs call this before transcription so a config typo fails in
+    seconds rather than after hours of inference. Returns the loaded mapping.
+    """
+    username_mapping = _load_username_mapping()
+    if not username_mapping:
+        raise CombineError(
+            "No transcript mappings found. Define TRANSCRIPT_N_USERNAME, "
+            "TRANSCRIPT_N_NAME, TRANSCRIPT_N_LABEL, TRANSCRIPT_N_DESCRIPTION."
+        )
+
+    unmapped_dirs: list[str] = []
+    for dir_name in dir_names:
+        matches = _match_usernames(dir_name, username_mapping)
+        if not matches:
+            unmapped_dirs.append(dir_name)
+            continue
+        if len(matches) > 1:
+            raise CombineError(
+                f"Ambiguous username match for directory '{dir_name}': {matches}. "
+                "Make TRANSCRIPT_*_USERNAME values more specific."
+            )
+
+    if unmapped_dirs:
+        raise CombineError(
+            f"No mapping found for directories: {unmapped_dirs}. "
+            "Update TRANSCRIPT_*_USERNAME environment variables."
+        )
+    return username_mapping
+
+
 def combine_transcripts_from_env(
     base_dir: Path,
     session_subdir: Optional[str] = None,
@@ -241,26 +280,13 @@ def combine_transcripts_from_env(
     if not vtt_files:
         raise CombineError(f"No VTT files found in {search_dir}")
 
-    username_mapping = _load_username_mapping()
-    if not username_mapping:
-        raise CombineError(
-            "No transcript mappings found. Define TRANSCRIPT_N_USERNAME, "
-            "TRANSCRIPT_N_NAME, TRANSCRIPT_N_LABEL, TRANSCRIPT_N_DESCRIPTION."
-        )
+    username_mapping = validate_speaker_mapping(
+        vtt_file.parent.name for vtt_file in vtt_files
+    )
 
     transcript_configs: list[TranscriptConfig] = []
-    unmapped_dirs: list[str] = []
     for vtt_file in vtt_files:
-        parent_dir = vtt_file.parent.name
-        matches = [u for u in username_mapping if u in parent_dir]
-        if not matches:
-            unmapped_dirs.append(parent_dir)
-            continue
-        if len(matches) > 1:
-            raise CombineError(
-                f"Ambiguous username match for directory '{parent_dir}': {matches}. "
-                "Make TRANSCRIPT_*_USERNAME values more specific."
-            )
+        matches = _match_usernames(vtt_file.parent.name, username_mapping)
         m = username_mapping[matches[0]]
         transcript_configs.append(
             TranscriptConfig(
@@ -271,11 +297,6 @@ def combine_transcripts_from_env(
             )
         )
 
-    if unmapped_dirs:
-        raise CombineError(
-            f"No mapping found for directories: {unmapped_dirs}. "
-            "Update TRANSCRIPT_*_USERNAME environment variables."
-        )
     if not transcript_configs:
         raise CombineError("No transcript configurations created.")
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import whisper
 
-from src.config import WHISPER_DEVICE, WHISPER_FP16, WHISPER_MODEL
+from src.config import WHISPER_DEVICE, WHISPER_FP16, WHISPER_MODEL, WHISPER_MODELS_DIR
 
 
 def setup_whisper(model_name: str, models_dir: Path) -> bool:
@@ -39,7 +39,7 @@ def main() -> None:
     if not model:
         print("Error: WHISPER_MODEL is not set")
         sys.exit(1)
-    models_dir = Path('models')
+    models_dir = WHISPER_MODELS_DIR
     print(f"Checking for {model} model in {models_dir}...")
     if setup_whisper(model, models_dir):
         print("Setup completed successfully!")

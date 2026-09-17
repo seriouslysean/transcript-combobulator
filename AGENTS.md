@@ -68,6 +68,24 @@ Always use the Makefile:
 | `make test` | Run pytest |
 | `make lint` | Run mypy (advisory; annotation coverage not enforced) |
 
+## Batch Run Behaviour
+
+`tools/process_batch.py` is what automation calls, so it fails fast and leaves
+a trail:
+
+- `MAPPING_PRECHECK` (default on) runs `src.combine.validate_speaker_mapping`
+  against the input stems before any worker starts. Same errors as the combine
+  step, minutes earlier.
+- `LOG_FILE` (default empty) persists worker and parent logs to
+  `tmp/output/<session>/<session>.log`; workers tag lines with their audio
+  file. `LOG_FILE=none` restores the old drop-everything behaviour. The rich
+  table still owns the terminal either way.
+- SIGINT and SIGTERM both kill the workers and the Manager and exit
+  `128 + signal`, so a systemd stop does not orphan spawned processes.
+- All paths derive from `src.config.ROOT_DIR`, which is the repo (from
+  `__file__`, or `PROJECT_ROOT` in the shell env), not the cwd. A relative
+  `ENV_FILE` resolves against the cwd first, then the repo.
+
 ## Environment Files
 
 - `.env` — production config (default).
@@ -107,9 +125,14 @@ fails loudly.
   `WHISPER_WORD_TIMESTAMPS=false`.
 - `beam_size=1` and `condition_on_previous_text=false` are intentional for
   VAD-segment transcription (each segment is already a speech island).
-- Each parallel worker loads its own whisper model. Keep `PARALLEL_JOBS` small
-  on low-RAM machines (default 2). `TORCH_THREADS=0` auto-splits threads
-  across workers.
+- Each parallel worker loads its own whisper model (~3x the checkpoint size at
+  load: fp16 file plus fp32 params). `MEMORY_GUARD` (default on) lowers the
+  active worker count so `PARALLEL_JOBS` workers fit in
+  `MEMORY_GUARD_FRACTION` of physical RAM; it never raises the count. An 8 GB
+  Pi with `large-v3-turbo` lands on 1 worker. `TORCH_THREADS=0` auto-splits
+  threads across the active workers.
+- `src.whisper.load_whisper_model` loads by file path on purpose. Loading by
+  name makes whisper sha256 the whole checkpoint per worker per run.
 - On macOS, `multiprocessing.set_start_method("spawn")` is mandatory for torch.
   `tools/process_batch.py` handles this at import time.
 

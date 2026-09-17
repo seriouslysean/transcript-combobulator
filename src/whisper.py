@@ -89,12 +89,15 @@ def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
         raise WhisperError(
             f"Model file not found: {model_path}. Run `make setup-whisper` first."
         )
-    os.environ['WHISPER_MODELS_DIR'] = str(WHISPER_MODELS_DIR)
-    return whisper.load_model(
-        model_name,
-        device=get_whisper_device(),
-        download_root=str(WHISPER_MODELS_DIR),
-    )
+    # Load by path: whisper.load_model(name) re-reads and sha256s the whole
+    # checkpoint on every call (1.6 GB for large-v3-turbo, once per worker per
+    # run). A path skips that but also skips the alignment heads that word
+    # timestamps need, so restore them for known model names.
+    model = whisper.load_model(str(model_path), device=get_whisper_device())
+    alignment_heads = whisper._ALIGNMENT_HEADS.get(model_name)
+    if alignment_heads is not None:
+        model.set_alignment_heads(alignment_heads)
+    return model
 
 
 def _segments_from_result(

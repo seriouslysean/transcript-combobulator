@@ -128,6 +128,24 @@ make clean                              # Clean temporary files
 make test                               # Run test suite
 ```
 
+### Running unattended
+
+Batch runs validate the speaker mapping before transcribing, cap the worker
+count to what fits in RAM, write a session log, and exit non-zero on any
+failure, so a cron job or systemd unit can call `make run folder=...` directly.
+Defaults in `.env`:
+
+```sh
+MEMORY_GUARD=true            # lower PARALLEL_JOBS if the model won't fit in RAM
+MEMORY_GUARD_FRACTION=0.85   # share of physical RAM the workers may use
+MAPPING_PRECHECK=true        # fail on a TRANSCRIPT_N_* typo before any inference
+LOG_FILE=                    # empty = tmp/output/<session>/<session>.log; none = off
+```
+
+Paths are anchored to the repository, not the working directory, so the tools
+behave the same when invoked from elsewhere. Set `PROJECT_ROOT` in the shell
+environment to override.
+
 ### Run telemetry
 
 Every batch run ends with per-file and session timing tables and writes a

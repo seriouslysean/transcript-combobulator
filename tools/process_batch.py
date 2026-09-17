@@ -16,6 +16,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from src.logging_config import add_file_handler, remove_file_handler
 from src.telemetry import (
     TELEMETRY_SCHEMA_VERSION,
     build_run_summary,
@@ -42,6 +43,71 @@ def _calculate_torch_threads(
     return max(1, (detected_cpus or 4) // max(1, max_workers))
 
 
+# whisper checkpoints are fp16; load_model promotes them to fp32 while the fp16
+# copy is still alive, so peak per worker is roughly 3x the file plus runtime.
+_MODEL_MEMORY_MULTIPLIER = 3.0
+_WORKER_BASELINE_BYTES = 1 << 30
+_GIB = float(1 << 30)
+
+
+def _total_memory_bytes() -> int | None:
+    """Physical RAM via sysconf (Linux and macOS); None if unavailable."""
+    try:
+        return int(os.sysconf('SC_PAGE_SIZE')) * int(os.sysconf('SC_PHYS_PAGES'))
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _estimate_worker_bytes(model_bytes: int) -> int:
+    return int(model_bytes * _MODEL_MEMORY_MULTIPLIER) + _WORKER_BASELINE_BYTES
+
+
+def _memory_capped_workers(
+    requested: int,
+    model_bytes: int,
+    total_bytes: int | None,
+    fraction: float,
+) -> tuple[int, str | None]:
+    """Lower the worker count until the estimated footprint fits in RAM.
+
+    Returns (workers, warning). Never returns fewer than 1 and never raises
+    the count; with unknown RAM or model size it returns ``requested``.
+    """
+    if total_bytes is None or total_bytes <= 0 or model_bytes <= 0:
+        return requested, None
+    per_worker = _estimate_worker_bytes(model_bytes)
+    budget = total_bytes * fraction
+    fits = int(budget // per_worker)
+    if fits < 1:
+        return 1, (
+            f"Memory guard: one worker needs ~{per_worker / _GIB:.1f} GiB but "
+            f"{fraction:.0%} of {total_bytes / _GIB:.1f} GiB RAM is "
+            f"{budget / _GIB:.1f} GiB. Expect the OOM killer; use a smaller "
+            "WHISPER_MODEL or set MEMORY_GUARD=false to silence this."
+        )
+    if fits >= requested:
+        return requested, None
+    return fits, (
+        f"Memory guard: {requested} workers need ~{requested * per_worker / _GIB:.1f} GiB "
+        f"but {fraction:.0%} of {total_bytes / _GIB:.1f} GiB RAM is "
+        f"{budget / _GIB:.1f} GiB; running {fits}. "
+        "Set MEMORY_GUARD=false to override."
+    )
+
+
+def _resolve_log_file(configured: str, output_dir: Path, session_name: str) -> Path | None:
+    """Map LOG_FILE to a path: default under the session output, 'none' disables."""
+    if configured.lower() in ('none', 'off', 'false', '0'):
+        return None
+    if not configured:
+        return output_dir / session_name / f"{session_name}.log"
+    path = Path(configured)
+    if not path.is_absolute():
+        from src.config import ROOT_DIR
+        path = ROOT_DIR / path
+    return path
+
+
 def find_audio_files(target_dir: Path) -> list[Path]:
     """Find audio files in target directory, excluding converted files."""
     files = []
@@ -56,16 +122,24 @@ def _worker(
     status_dict: "MutableMapping[str, str]",
     status_key: str,
     force: bool,
+    log_file: str | None = None,
 ) -> tuple[str, str, str, dict[str, Any]]:
     """Worker function that runs in a subprocess.
 
     Returns:
         (filename, status, error_message_or_empty, per_file_metrics)
     """
-    # Suppress all logging output — the rich table is the UI
-    logging.disable(logging.CRITICAL)
+    # The rich table owns the terminal. Logs go to the session log file when
+    # one is configured; otherwise they are dropped as before. Attaching the
+    # handler first also makes the later setup_logging() basicConfig a no-op,
+    # so no stream handler is ever added in a worker.
+    log_handler = None
+    if log_file:
+        log_handler = add_file_handler(Path(log_file), context={'audio_file': status_key})
+    else:
+        logging.disable(logging.CRITICAL)
 
-    # Also suppress stdout/stderr from submodules
+    # Also suppress stdout/stderr from submodules (tqdm, whisper prints)
     devnull = open(os.devnull, "w")
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -94,7 +168,10 @@ def _worker(
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         devnull.close()
-        logging.disable(logging.NOTSET)
+        if log_handler is not None:
+            remove_file_handler(log_handler)
+        else:
+            logging.disable(logging.NOTSET)
 
 
 def _initialize_worker(torch_threads: int, worker_nice: int) -> None:
@@ -293,6 +370,10 @@ def main() -> None:
 
     # Load config (imports dotenv and captures the run profile once).
     from src.config import (
+        LOG_FILE,
+        MAPPING_PRECHECK,
+        MEMORY_GUARD,
+        MEMORY_GUARD_FRACTION,
         OUTPUT_DIR,
         PADDING_SECONDS,
         PARALLEL_JOBS,
@@ -310,6 +391,7 @@ def main() -> None:
         WHISPER_LANGUAGE,
         WHISPER_LOGPROB_THRESHOLD,
         WHISPER_MODEL,
+        WHISPER_MODELS_DIR,
         WHISPER_NO_SPEECH_THRESHOLD,
         WHISPER_PROMPT,
         WHISPER_TEMPERATURE,
@@ -317,7 +399,32 @@ def main() -> None:
         WORKER_NICE,
     )
 
+    session_name = args.session or target_dir.name
+    log_file = _resolve_log_file(LOG_FILE, OUTPUT_DIR, session_name)
+    parent_log_handler = add_file_handler(log_file) if log_file else None
+    run_logger = logging.getLogger("process_batch")
+
+    # Fail on a speaker-mapping typo now, not after hours of transcription.
+    if MAPPING_PRECHECK:
+        from src.combine import CombineError, validate_speaker_mapping
+
+        try:
+            validate_speaker_mapping(f.stem for f in files)
+        except CombineError as e:
+            print(f"Speaker mapping error: {e}")
+            run_logger.error("Speaker mapping error: %s", e)
+            sys.exit(1)
+
     max_workers = min(max(1, PARALLEL_JOBS), len(files))
+    if MEMORY_GUARD:
+        model_file = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+        model_bytes = model_file.stat().st_size if model_file.exists() else 0
+        max_workers, memory_warning = _memory_capped_workers(
+            max_workers, model_bytes, _total_memory_bytes(), MEMORY_GUARD_FRACTION
+        )
+        if memory_warning:
+            print(memory_warning)
+            run_logger.warning(memory_warning)
     torch_threads = _calculate_torch_threads(max_workers, TORCH_THREADS)
 
     file_names = [f.name for f in files]
@@ -327,6 +434,12 @@ def main() -> None:
     status_dict = manager.dict({name: "waiting" for name in file_names})
 
     print(f"Processing {len(files)} audio files in {target_dir}")
+    if log_file:
+        print(f"Log file: {log_file}")
+    run_logger.info(
+        "Run start: %d files in %s, %d workers, %d torch threads each",
+        len(files), target_dir, max_workers, torch_threads,
+    )
     started_at = utc_now_iso()
     run_started = time.perf_counter()
     processing_started = time.perf_counter()
@@ -334,12 +447,15 @@ def main() -> None:
     errors: list[tuple[str, str]] = []
     completed_file_metrics: list[dict[str, Any]] = []
 
-    # Install a SIGINT handler that forcefully kills child processes.
-    # Without this, ProcessPoolExecutor and Manager ignore the first Ctrl+C.
+    # Install SIGINT/SIGTERM handlers that forcefully kill child processes.
+    # Without this, ProcessPoolExecutor and Manager ignore the first Ctrl+C,
+    # and a systemd/cron SIGTERM would orphan the spawned workers.
     executor_ref: ProcessPoolExecutor | None = None
 
-    def _sigint_handler(signum, frame):
-        print("\nCancelled.")
+    def _shutdown_handler(signum, frame):
+        label = "Cancelled." if signum == signal.SIGINT else f"Terminated (signal {signum})."
+        print(f"\n{label}")
+        run_logger.warning(label)
         if executor_ref is not None:
             for pid in executor_ref._processes:
                 try:
@@ -347,9 +463,12 @@ def main() -> None:
                 except OSError:
                     pass
         manager.shutdown()
-        sys.exit(130)
+        sys.exit(128 + signum)
 
-    old_handler = signal.signal(signal.SIGINT, _sigint_handler)
+    old_handlers = {
+        sig: signal.signal(sig, _shutdown_handler)
+        for sig in (signal.SIGINT, signal.SIGTERM)
+    }
 
     try:
         with Live(_build_table(file_names, status_dict, max_workers), refresh_per_second=4) as live:
@@ -367,6 +486,7 @@ def main() -> None:
                         status_dict,
                         f.name,
                         args.force,
+                        str(log_file) if log_file else None,
                     )
                     futures[fut] = f.name
 
@@ -382,6 +502,9 @@ def main() -> None:
                             if status == "error":
                                 status_dict[name] = "error"
                                 errors.append((name, err_msg))
+                                run_logger.error("%s failed: %s", name, err_msg)
+                            else:
+                                run_logger.info("%s %s", name, status)
                             del futures[fut]
 
                     if not futures:
@@ -392,12 +515,12 @@ def main() -> None:
                 # Final refresh
                 live.update(_build_table(file_names, status_dict, max_workers))
     finally:
-        signal.signal(signal.SIGINT, old_handler)
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
 
     processing_seconds = elapsed_seconds(processing_started, time.perf_counter())
     print(f"Processed {len(files)} files in {_format_duration(processing_seconds)}")
 
-    session_name = args.session or target_dir.name
     metrics_path = OUTPUT_DIR / session_name / f"{session_name}-metrics.json"
     combine_metrics: dict[str, Any] = {
         'status': 'skipped' if errors else 'running',
@@ -422,6 +545,7 @@ def main() -> None:
             combine_metrics['status'] = 'error'
             combine_metrics['error_type'] = type(e).__name__
             combine_metrics['error'] = combine_error
+            run_logger.error("Combine failed: %s", combine_error)
         finally:
             combine_metrics['seconds'] = elapsed_seconds(
                 combine_started, time.perf_counter()
@@ -435,11 +559,12 @@ def main() -> None:
         wall_seconds=wall_seconds,
         max_workers=max_workers,
     )
+    run_status = 'failed' if errors or combine_error else 'completed'
     report = {
         'schema_version': TELEMETRY_SCHEMA_VERSION,
         'run': {
             'session': session_name,
-            'status': 'failed' if errors or combine_error else 'completed',
+            'status': run_status,
             'started_at': started_at,
             'finished_at': utc_now_iso(),
             'target_dir': str(target_dir),
@@ -491,6 +616,13 @@ def main() -> None:
     console = Console()
     console.print(_build_file_metrics_table(completed_file_metrics))
     console.print(_build_run_metrics_table(summary, published_metrics_path))
+
+    run_logger.info(
+        "Run end: status=%s wall=%.1fs metrics=%s",
+        run_status, wall_seconds, published_metrics_path or 'not written',
+    )
+    if parent_log_handler is not None:
+        remove_file_handler(parent_log_handler)
 
     if errors:
         print("\nErrors:")

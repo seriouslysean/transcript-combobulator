@@ -10,7 +10,23 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-_env_file = os.environ.get('ENV_FILE') or '.env'
+# Anchor every path to the repository, not the caller's cwd, so the tools behave
+# the same from cron, systemd, or another directory. PROJECT_ROOT (shell env,
+# not .env) overrides for unusual layouts.
+ROOT_DIR = Path(
+    os.environ.get('PROJECT_ROOT') or Path(__file__).resolve().parents[1]
+).resolve()
+
+
+def _resolve_env_file(value: str) -> Path:
+    """Relative ENV_FILE resolves against cwd if present there, else ROOT_DIR."""
+    candidate = Path(value)
+    if candidate.is_absolute() or candidate.exists():
+        return candidate
+    return ROOT_DIR / candidate
+
+
+_env_file = _resolve_env_file(os.environ.get('ENV_FILE') or '.env')
 load_dotenv(dotenv_path=_env_file, override=True)
 
 
@@ -40,7 +56,6 @@ def require_env(key: str) -> str:
 
 
 # ── Paths ──
-ROOT_DIR = Path(os.getcwd()).resolve()
 TMP_DIR = ROOT_DIR / 'tmp'
 INPUT_DIR = TMP_DIR / 'input'
 OUTPUT_DIR = TMP_DIR / 'output'
@@ -61,6 +76,19 @@ def get_output_path_for_input(input_path: Path) -> Path:
 PARALLEL_JOBS = get_int_env('PARALLEL_JOBS', 2)
 TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
 WORKER_NICE = get_int_env('WORKER_NICE', 10)  # niceness increment; 0 = unchanged
+
+# ── Batch Run Guards ──
+# MEMORY_GUARD caps active workers so the estimated per-worker footprint
+# (roughly 3x the whisper checkpoint size plus runtime) fits within
+# MEMORY_GUARD_FRACTION of physical RAM. It only ever lowers PARALLEL_JOBS.
+MEMORY_GUARD = get_bool_env('MEMORY_GUARD', True)
+MEMORY_GUARD_FRACTION = get_float_env('MEMORY_GUARD_FRACTION', 0.85)
+# MAPPING_PRECHECK validates TRANSCRIPT_N_* against the input files before any
+# transcription starts, instead of failing at the combine step hours later.
+MAPPING_PRECHECK = get_bool_env('MAPPING_PRECHECK', True)
+# LOG_FILE: where batch runs persist worker logs. Empty = <output>/<session>/
+# <session>.log; 'none' disables file logging (the pre-guard behaviour).
+LOG_FILE = os.getenv('LOG_FILE', '').strip().strip('"')
 
 # ── Audio Processing ──
 WHISPER_SAMPLE_RATE = 16000
