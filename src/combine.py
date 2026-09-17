@@ -11,7 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-from src.config import DEDUPE_STRATEGY, DEDUPE_WINDOW_SECONDS, OUTPUT_DIR
+from src.config import (
+    CHUNKS,
+    DEDUPE_STRATEGY,
+    DEDUPE_WINDOW_SECONDS,
+    INCLUDE_TIMESTAMPS,
+    OUTPUT_DIR,
+    SKIP_FILTERS,
+)
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -349,14 +356,9 @@ def combine_transcripts_from_env(
     if not transcript_configs:
         raise CombineError("No transcript configurations created.")
 
-    include_timestamps = (
-        os.getenv('INCLUDE_TIMESTAMPS', 'false').strip('"').lower() == 'true'
-    )
-    skip_filters_str = os.getenv(
-        'SKIP_FILTERS', '[AUDIO OUT],[BLANK_AUDIO]'
-    ).strip('"')
-    skip_filters = [f.strip() for f in skip_filters_str.split(',') if f.strip()]
-    chunks = int(os.getenv('CHUNKS', '1').strip('"'))
+    include_timestamps = INCLUDE_TIMESTAMPS
+    skip_filters = list(SKIP_FILTERS)
+    chunks = CHUNKS
 
     output_filename = (
         f"{session_subdir}-combined.txt" if session_subdir

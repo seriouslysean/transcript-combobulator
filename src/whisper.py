@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import numpy as np
+import numpy.typing as npt
 import soundfile as sf
 import whisper
 
@@ -41,10 +42,9 @@ class WhisperError(Exception):
 
 
 def get_whisper_device() -> str:
-    device = os.getenv('WHISPER_DEVICE', WHISPER_DEVICE)
-    if device not in ('cpu', 'cuda', 'mps'):
-        raise ValueError(f"Invalid WHISPER_DEVICE: {device}. Must be cpu, cuda, or mps.")
-    return device
+    if WHISPER_DEVICE not in ('cpu', 'cuda', 'mps'):
+        raise ValueError(f"Invalid WHISPER_DEVICE: {WHISPER_DEVICE}. Must be cpu, cuda, or mps.")
+    return WHISPER_DEVICE
 
 
 def format_timestamp(seconds: float) -> str:
@@ -77,14 +77,19 @@ def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> st
     return text
 
 
-@lru_cache(maxsize=None)
 def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
-    """Load a whisper model from the local models dir.
+    """Load a whisper model from the local models dir, once per worker process.
 
-    The model is cached for the lifetime of the worker process. Raises
-    WhisperError if the model file is missing — run `make setup-whisper`.
+    The name is resolved here so ``load_whisper_model()`` and
+    ``load_whisper_model('large-v3-turbo')`` share one cache entry instead of
+    holding two 1.6 GB models. Raises WhisperError if the file is missing;
+    run `make setup-whisper`.
     """
-    model_name = model_name or os.getenv('WHISPER_MODEL', WHISPER_MODEL)
+    return _load_whisper_model(model_name or WHISPER_MODEL)
+
+
+@lru_cache(maxsize=None)
+def _load_whisper_model(model_name: str) -> whisper.Whisper:
     model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
     if not model_path.exists():
         raise WhisperError(
@@ -171,7 +176,7 @@ def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
             )
 
 
-def _load_segment_audio(audio_path: Path) -> np.ndarray:
+def _load_segment_audio(audio_path: Path) -> npt.NDArray[np.float32]:
     """Decode a normalized pipeline WAV without spawning FFmpeg."""
     audio, sample_rate = sf.read(str(audio_path), dtype='float32', always_2d=False)
     if sample_rate != SAMPLE_RATE:
@@ -255,7 +260,7 @@ def transcribe_segment(
 
 
 def _whisper_model_cache_hits() -> Optional[int]:
-    cache_info = getattr(load_whisper_model, 'cache_info', None)
+    cache_info = getattr(_load_whisper_model, 'cache_info', None)
     if not callable(cache_info):
         return None
     try:

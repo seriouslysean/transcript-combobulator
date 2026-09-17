@@ -9,29 +9,37 @@ keywords = []
 authors = [
     { name = "Sean Kennedy", email = "sean@codeserious.com" }
 ]
+# torch and torchaudio are an exact pair (torchaudio's wheel declares no
+# dependencies, so pip will not enforce it). torchaudio 2.11.0 is its final
+# maintenance line, which caps torch. Nothing here calls torchaudio I/O, so
+# torchcodec (ABI-locked to torch, no aarch64 wheel before 0.11) is not needed.
 dependencies = [
     "openai-whisper==20250625",
-    "python-dotenv==1.2.1",
-    "soundfile==0.13.1",
+    "python-dotenv==1.2.3",
+    "soundfile==0.14.0",
     "torch==2.11.0",
     "torchaudio==2.11.0",
-    "webvtt-py==0.5.1",
-    "silero-vad==6.2.0",
-    "torchcodec==0.12.0",
-    "rich>=13.0",
+    "silero-vad==6.2.1",
+    "rich==15.0.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "mypy==1.19.1",
-    "pytest==9.0.2",
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+]
+# Apple Silicon only; inert until a WHISPER_RUNTIME seam exists.
+mac = [
+    "mlx-whisper==0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [project.urls]
@@ -57,16 +65,9 @@ markers = [
 
 [tool.mypy]
 python_version = "3.10"
-# Annotation coverage is not enforced — mypy runs advisory and catches obvious
-# bugs (undefined names, return type mismatches on annotated funcs) without
-# blocking on every untyped function.
-warn_return_any = true
-warn_unused_configs = true
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_no_return = true
+strict = true
 warn_unreachable = true
+# whisper, silero_vad, torchaudio, and soundfile ship no type information.
 ignore_missing_imports = true
 
 [tool.black]

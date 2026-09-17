@@ -146,12 +146,12 @@ fails loudly.
 
 ## Performance Notes
 
-- **Conversion streams through ffmpeg** (`AUDIO_CONVERTER=ffmpeg`, default).
-  Measured on a 2.9 h Craig track: 5.4 s at 41 MB peak RSS versus 13.7 s at
-  8.8 GB for the legacy in-memory `torchaudio` path, with sample-identical
-  length and a mean absolute difference of 2e-5. The torchaudio path alone
-  exceeds an 8 GB Pi. Peak normalisation is preserved by a two-pass streaming
-  scan, so the "normalized once" invariant still holds.
+- **Conversion streams through ffmpeg.** Measured on a 2.9 h Craig track:
+  5.4 s at 41 MB peak RSS versus 13.7 s at 8.8 GB for the old in-memory
+  torchaudio path (removed), with sample-identical length and a mean absolute
+  difference of 2e-5. Peak normalisation is a two-pass streaming scan, so the
+  "normalized once" invariant still holds. ffmpeg gets a timeout of
+  max(600 s, 10x the audio duration) so a corrupt file cannot wedge a worker.
 - **Silero VAD runs on one thread** (`VAD_THREADS=1`). It processes 512-sample
   frames one at a time; 1 thread measured 2.2x faster than 4 and 3.7x faster
   than 8 on Apple Silicon. The worker's whisper thread count is restored after.
@@ -202,10 +202,13 @@ fails loudly.
 
 ## Dependencies (gotchas)
 
-- `torchaudio>=2.10` requires `torchcodec`, and torchcodec is ABI-locked to a
-  specific torch release (0.10 ↔ 2.10, 0.11+ ↔ 2.11). Bump all three pins
-  together; a loose torchcodec pin installs a mismatched build that fails at
-  import. torchcodec 0.11+ is also the first line with Linux aarch64 wheels.
+- `torch` and `torchaudio` are an exact pair; torchaudio's wheel declares no
+  dependencies so pip will not enforce it. torchaudio 2.11.0 is the final
+  maintenance line and caps torch. `torchaudio` must stay importable for
+  `silero-vad`, but nothing calls its I/O: audio goes through `soundfile` and
+  `ffmpeg`, so `torchcodec` (ABI-locked to torch, no aarch64 wheel before
+  0.11) is deliberately not a dependency. Do not reintroduce
+  `torchaudio.load`/`save`.
 - `silero-vad` bundles its model inside the wheel; `load_silero_vad()` needs no
   network access.
 - `ffmpeg` must be on `PATH`. Makefile recipes run under `/bin/sh` (dash on
@@ -228,7 +231,8 @@ fails loudly.
 1. Check this file for existing patterns first.
 2. Use a Makefile target. Add one if the operation should be reproducible.
 3. Put shared logic in `src/`, glue code in `tools/`.
-4. Load config only through `src.config`. Never call `load_dotenv` directly.
+4. Load config only through `src.config`. Never call `load_dotenv` or
+   `os.getenv` for a setting anywhere else; add the constant to config.
 5. Add a test in `tests/test_<module>.py` using synthetic fixtures where
    possible. Only use the slow whisper tests when actually testing whisper
    behavior.

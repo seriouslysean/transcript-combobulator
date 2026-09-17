@@ -13,7 +13,6 @@ from typing import Any
 
 import soundfile as sf
 import torch
-import torchaudio
 from silero_vad import get_speech_timestamps, load_silero_vad
 
 from src.audio_utils import AudioValidationError, validate_audio_file
@@ -71,17 +70,15 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
 
     try:
         model = load_vad_model()
-        wav, sr = torchaudio.load(input_path)
-
-        if sr != SAMPLE_RATE:
-            logger.warning(
-                f"Audio sample rate {sr}Hz differs from expected {SAMPLE_RATE}Hz "
-                "— resampling (pipeline should have converted upstream)"
+        # The pipeline converts upstream; anything else is a wiring bug, and
+        # silently resampling here would hide it from the cache fingerprint.
+        if audio_info['sample_rate'] != SAMPLE_RATE or audio_info['channels'] != 1:
+            raise VADError(
+                f"Expected {SAMPLE_RATE}Hz mono, got {audio_info['sample_rate']}Hz "
+                f"{audio_info['channels']}ch: run convert_to_wav first"
             )
-            wav = torchaudio.transforms.Resample(sr, SAMPLE_RATE)(wav)
-
-        if wav.shape[0] > 1:
-            wav = wav.mean(dim=0, keepdim=True)
+        samples, _ = sf.read(str(input_path), dtype='float32', always_2d=False)
+        wav = torch.from_numpy(samples).unsqueeze(0)
 
         # Silero runs frame by frame; intra-op threading only adds overhead.
         # Restore the worker's whisper thread count afterwards, even on error.

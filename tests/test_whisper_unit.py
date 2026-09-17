@@ -9,6 +9,7 @@ import pytest
 from src.config import get_whisper_options
 from src.whisper import (
     WhisperError,
+    _load_whisper_model,
     dedupe_segments,
     regenerate_vtt_with_confidence,
     load_whisper_model,
@@ -26,7 +27,7 @@ def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:
     model_name = 'test-model'
     (tmp_path / f'{model_name}.pt').touch()
     expected_model = object()
-    load_whisper_model.cache_clear()
+    _load_whisper_model.cache_clear()
 
     try:
         with patch('src.whisper.WHISPER_MODELS_DIR', tmp_path), patch(
@@ -39,7 +40,7 @@ def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:
         assert second is expected_model
         load.assert_called_once()
     finally:
-        load_whisper_model.cache_clear()
+        _load_whisper_model.cache_clear()
 
 
 def test_transcribe_segment_passes_wav_array_to_model(tmp_path: Path) -> None:

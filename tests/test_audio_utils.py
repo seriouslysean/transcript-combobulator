@@ -29,8 +29,7 @@ def test_ffmpeg_conversion_yields_16k_mono_peak_normalized(tmp_path: Path) -> No
     out = tmp_path / "out.wav"
     assert needs_conversion(src)
 
-    with patch("src.audio_utils.AUDIO_CONVERTER", "ffmpeg"):
-        convert_to_wav(src, out)
+    convert_to_wav(src, out)
 
     info = validate_audio_file(out)
     assert info["sample_rate"] == 16000
@@ -42,28 +41,10 @@ def test_ffmpeg_conversion_yields_16k_mono_peak_normalized(tmp_path: Path) -> No
     assert not list(tmp_path.glob("*.unnormalized.wav"))
 
 
-def test_torchaudio_path_matches_ffmpeg_within_tolerance(tmp_path: Path) -> None:
-    src = tmp_path / "in.wav"
-    _stereo_44k(src)
-    via_ffmpeg = tmp_path / "ffmpeg.wav"
-    via_torch = tmp_path / "torch.wav"
-    with patch("src.audio_utils.AUDIO_CONVERTER", "ffmpeg"):
-        convert_to_wav(src, via_ffmpeg)
-    with patch("src.audio_utils.AUDIO_CONVERTER", "torchaudio"):
-        convert_to_wav(src, via_torch)
-    a, _ = sf.read(str(via_ffmpeg), dtype="float32")
-    b, _ = sf.read(str(via_torch), dtype="float32")
-    n = min(len(a), len(b))
-    assert abs(len(a) - len(b)) <= 32
-    # Different resamplers; the waveforms should agree closely after the ramp-in.
-    assert np.abs(a[1000:n - 1000] - b[1000:n - 1000]).mean() < 0.02
-
-
 def test_missing_ffmpeg_is_a_clear_error(tmp_path: Path) -> None:
     src = tmp_path / "in.wav"
     _stereo_44k(src)
-    with patch("src.audio_utils.AUDIO_CONVERTER", "ffmpeg"), \
-         patch("src.audio_utils.shutil.which", return_value=None), \
+    with patch("src.audio_utils.shutil.which", return_value=None), \
          pytest.raises(AudioValidationError, match="ffmpeg not found"):
         convert_to_wav(src, tmp_path / "out.wav")
 
@@ -74,3 +55,16 @@ def test_existing_correct_output_is_reused(tmp_path: Path) -> None:
     with patch("src.audio_utils.subprocess.run") as run:
         convert_to_wav(tmp_path / "missing-input.wav", out)
     run.assert_not_called()
+
+
+def test_ffmpeg_timeout_is_a_clear_error(tmp_path: Path) -> None:
+    import subprocess
+
+    src = tmp_path / "in.wav"
+    _stereo_44k(src)
+    with patch(
+        "src.audio_utils.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1),
+    ), pytest.raises(AudioValidationError, match="ffmpeg exceeded"):
+        convert_to_wav(src, tmp_path / "out.wav")
+    assert not list(tmp_path.glob("*.unnormalized.wav"))

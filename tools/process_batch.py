@@ -8,8 +8,10 @@ import signal
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
-from typing import Any, MutableMapping, Optional
+from types import FrameType
+from typing import Any, MutableMapping, NoReturn, Optional
 
 from rich.console import Console
 from rich.live import Live
@@ -112,7 +114,7 @@ def find_audio_files(target_dir: Path) -> list[Path]:
     """Find audio files in target directory, excluding converted files."""
     files = []
     for f in sorted(target_dir.iterdir()):
-        if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS and "_converted" not in f.stem:
+        if f.is_file() and f.suffix.lower() in AUDIO_EXTENSIONS:
             files.append(f)
     return files
 
@@ -452,7 +454,7 @@ def main() -> None:
     # and a systemd/cron SIGTERM would orphan the spawned workers.
     executor_ref: ProcessPoolExecutor | None = None
 
-    def _shutdown_handler(signum, frame):
+    def _shutdown_handler(signum: int, frame: FrameType | None) -> NoReturn:
         label = "Cancelled." if signum == signal.SIGINT else f"Terminated (signal {signum})."
         print(f"\n{label}")
         run_logger.warning(label)
@@ -497,7 +499,24 @@ def main() -> None:
                     done_futures = [f for f in futures if f.done()]
                     for fut in done_futures:
                         if fut in futures:
-                            name, status, err_msg, file_metrics = fut.result()
+                            try:
+                                name, status, err_msg, file_metrics = fut.result()
+                            except BrokenProcessPool as e:
+                                # A worker died outside Python (the OOM killer
+                                # on a Pi). Record every unfinished file and
+                                # still write the metrics report and log.
+                                for pending in list(futures.values()):
+                                    completed_file_metrics.append({
+                                        'file': pending,
+                                        'status': 'error',
+                                        'error_type': type(e).__name__,
+                                        'error': str(e),
+                                    })
+                                    status_dict[pending] = "error"
+                                    errors.append((pending, f"worker died: {e}"))
+                                    run_logger.error("%s failed: worker died: %s", pending, e)
+                                futures.clear()
+                                break
                             completed_file_metrics.append(file_metrics)
                             if status == "error":
                                 status_dict[name] = "error"

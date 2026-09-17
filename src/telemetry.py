@@ -75,7 +75,6 @@ _TIMING_NUMBER_KEYS = (
     'inference_seconds',
     'result_processing_seconds',
     'vtt_write_seconds',
-    'status',
     'result_segment_count',
     'text_characters',
     'total_seconds',

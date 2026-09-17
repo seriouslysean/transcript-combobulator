@@ -45,15 +45,6 @@ class TestFindAudioFiles:
         assert len(files) == 1
         assert files[0].name == "speaker.wav"
 
-    def test_excludes_converted_files(self, tmp_path):
-        """Skips files with _converted in the stem."""
-        (tmp_path / "speaker.wav").touch()
-        (tmp_path / "speaker_converted.wav").touch()
-
-        files = find_audio_files(tmp_path)
-        assert len(files) == 1
-        assert files[0].name == "speaker.wav"
-
     def test_returns_sorted(self, tmp_path):
         """Returns files in sorted order."""
         (tmp_path / "3-charlie.flac").touch()

@@ -23,8 +23,6 @@ class TranscriptionError(Exception):
     """Base exception for transcription errors."""
 
 
-_extract_username_vtt_name = vtt_name_for_stem
-
 
 def transcribe_segments(
     audio_path: Path,
@@ -65,7 +63,7 @@ def transcribe_segments(
         )
 
         return {
-            'vtt_file': str(output_dir / _extract_username_vtt_name(audio_path.stem)),
+            'vtt_file': str(output_dir / vtt_name_for_stem(audio_path.stem)),
             'json_file': str(output_dir / f"{audio_path.stem}_transcription.json"),
             'mapping_file': str(mapping_path),
             'segments': result['segments'],
@@ -109,7 +107,7 @@ def transcribe_audio(
             mapping = pre_processed_mapping
 
         mapping_file = output_dir / f"{audio_path.stem}_mapping.json"
-        output_vtt = output_dir / _extract_username_vtt_name(audio_path.stem)
+        output_vtt = output_dir / vtt_name_for_stem(audio_path.stem)
 
         segments_to_transcribe: list[tuple[Path, float]] = []
         for segment in mapping:

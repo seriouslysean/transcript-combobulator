@@ -55,18 +55,10 @@ def get_int_env(key: str, default: int) -> int:
         return default
 
 
-def require_env(key: str) -> str:
-    value = os.getenv(key)
-    if not value:
-        raise ValueError(f"{key} must be set in .env file")
-    return value
-
-
 # ── Paths ──
 TMP_DIR = ROOT_DIR / 'tmp'
 INPUT_DIR = TMP_DIR / 'input'
 OUTPUT_DIR = TMP_DIR / 'output'
-TRANSCRIPTIONS_DIR = TMP_DIR / 'transcriptions'
 WHISPER_MODELS_DIR = ROOT_DIR / 'models'
 
 
@@ -111,6 +103,15 @@ MAPPING_PRECHECK = get_bool_env('MAPPING_PRECHECK', True)
 # <session>.log; 'none' disables file logging (the pre-guard behaviour).
 LOG_FILE = os.getenv('LOG_FILE', '').strip().strip('"')
 
+# ── Combine Output ──
+INCLUDE_TIMESTAMPS = get_bool_env('INCLUDE_TIMESTAMPS', False)
+SKIP_FILTERS = [
+    f.strip()
+    for f in os.getenv('SKIP_FILTERS', '[AUDIO OUT],[BLANK_AUDIO]').strip('"').split(',')
+    if f.strip()
+]
+CHUNKS = max(1, get_int_env('CHUNKS', 1))
+
 # ── Transcript Fidelity ──
 # DEDUPE_STRATEGY applies to both the per-speaker VTT and the combined
 # transcript. 'consecutive' drops a cue only when it repeats the previous kept
@@ -133,11 +134,6 @@ ALLOW_SILENT_TRACKS = get_bool_env('ALLOW_SILENT_TRACKS', True)
 
 # ── Audio Processing ──
 WHISPER_SAMPLE_RATE = 16000
-# ffmpeg streams the conversion (tens of MB peak); torchaudio materialises the
-# whole file as float32 tensors (several GB for a 3 h stereo recording).
-AUDIO_CONVERTER = os.getenv('AUDIO_CONVERTER', 'ffmpeg').strip().strip('"').lower()
-if AUDIO_CONVERTER not in ('ffmpeg', 'torchaudio'):
-    raise ValueError(f"AUDIO_CONVERTER must be ffmpeg or torchaudio; got {AUDIO_CONVERTER!r}")
 # Silero processes 512-sample frames one at a time; thread fan-out costs more
 # than it saves (1 thread measured ~2x faster than 4 on Apple Silicon).
 VAD_THREADS = get_int_env('VAD_THREADS', 1)
@@ -153,7 +149,6 @@ def _validate_sample_rate(sample_rate: int) -> int:
 
 
 SAMPLE_RATE = _validate_sample_rate(get_int_env('SAMPLE_RATE', WHISPER_SAMPLE_RATE))
-TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 
 # ── VAD ──
 VAD_THRESHOLD = get_float_env('VAD_THRESHOLD', 0.5)
@@ -203,11 +198,21 @@ def get_whisper_options() -> dict[str, Any]:
     }
 
 
+def _model_file_identity() -> dict[str, int] | None:
+    """Size and mtime of the checkpoint, so swapping the .pt under the same
+    name invalidates cached results instead of being a silent hit."""
+    model_path = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+    try:
+        stat = model_path.stat()
+    except OSError:
+        return None
+    return {'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns}
+
+
 def get_pipeline_fingerprint_settings() -> dict[str, Any]:
     """Return output-affecting settings used by the per-file resume cache."""
     return {
         'sample_rate': SAMPLE_RATE,
-        'transcription_mode': TRANSCRIPTION_MODE,
         'vad': {
             'threshold': VAD_THRESHOLD,
             'min_speech_duration': VAD_MIN_SPEECH_DURATION,
@@ -215,6 +220,7 @@ def get_pipeline_fingerprint_settings() -> dict[str, Any]:
             'padding_seconds': PADDING_SECONDS,
         },
         'whisper_model': WHISPER_MODEL,
+        'whisper_model_file': _model_file_identity(),
         'whisper_device': WHISPER_DEVICE,
         'whisper_options': get_whisper_options(),
         'dedupe': {
