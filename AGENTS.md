@@ -20,10 +20,9 @@ src/
 tools/
 ├── process_batch.py         # Parallel batch processor with rich progress UI
 ├── process_single_file.py   # One-file pipeline (convert → VAD → transcribe)
-├── convert_audio.py         # CLI: one file or all of tmp/input/
+├── filter_vtt.py            # Re-emit a speaker VTT from saved JSON above a confidence
 ├── create_sample_files.py   # Build sample/test audio from samples/
-├── setup_whisper.py         # Download whisper model into models/
-└── test_whisper.py          # Smoke-test whisper on an audio file
+└── setup_whisper.py         # Download whisper model into models/ (no load)
 ```
 
 The standard pipeline: `tools/process_batch.py` →
@@ -66,23 +65,30 @@ The standard pipeline: `tools/process_batch.py` →
 
 ## Makefile Usage
 
-Always use the Makefile:
+Always use the Makefile. `make help` lists every target; this is the full set:
 
 | Command | Purpose |
 |---------|---------|
 | `make check-deps` | Verify Python 3.10+, `venv` module, and `ffmpeg` on the host |
-| `make setup` | Check deps, create venv from `$(PYTHON)` (default `python3`), install deps, download whisper model |
-| `make run folder=path/` | Run the full parallel pipeline |
-| `make run-single file=path.wav` | Pipeline for one file (no combine) |
-| `make process-vad file=path.wav` | VAD step only |
-| `make transcribe-segments file=path.wav` | Transcription step only (needs mapping) |
-| `make combine-transcripts [session=...]` | Combine step only |
-| `make convert-audio [input=path]` | Convert to 16kHz mono WAV |
-| `make regenerate-vtt file=path [threshold=50]` | Re-run whisper with confidence filter |
+| `make setup` | Check deps, create venv from `$(PYTHON)`, `make install`, download whisper model |
+| `make install [EXTRAS=dev,mac]` | `pip install -e ".[EXTRAS]"` into `.venv` |
+| `make setup-whisper` | Download `WHISPER_MODEL` into `models/` (checksum-verified, no model load) |
+| `make run folder=path/ [force=1]` | Full parallel pipeline for one session; the only thing automation calls |
+| `make run-single file=path [force=1]` | Convert → VAD → transcribe one file, no combine |
+| `make combine-transcripts session=name` | Re-merge a session's per-speaker VTTs |
+| `make filter-vtt file=path [threshold=50]` | Re-emit a speaker VTT from its saved JSON above a confidence; no inference |
 | `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
-| `make create-test-files` | Populate `tmp/input/test_jfk*.wav` for pytest |
-| `make test` | Run pytest |
-| `make lint` | Run mypy (advisory; annotation coverage not enforced) |
+| `make test-fast` | pytest without the `slow` (real inference) tests |
+| `make test` | Whole suite; never touches `tmp/output` |
+| `make lint` | `mypy --strict` |
+| `make clean-output` | Delete every session's outputs under `tmp/output` |
+| `make clean-tmp` | Also delete `tmp/input` and local caches |
+
+Dropped on purpose: `convert-audio` (wrote a `_16khz` layout nothing consumed),
+`regenerate-vtt` (re-transcribed the whole file without VAD), `test-segment`,
+`create-test-files` (conftest does it), `process-vad`, `transcribe-segments`,
+and the old `clean`, which `make test` used to call and which deleted every
+session's transcripts.
 
 ## Batch Run Behaviour
 
@@ -129,12 +135,14 @@ fails loudly.
 
 ## File Naming Conventions
 
-- **Input audio**: `3-nilbits.flac` (number-username pattern from Discord Craig)
-- **Converted**: `3-nilbits_16khz.wav`
-- **Per-user output dir**: `3-nilbits_16khz/`
-- **Per-user combined VTT**: `nilbits_combined.vtt` (username extracted from stem)
-- **Session combined**: `<session>-combined.txt`, or chunked:
-  `<session>-combined-1.txt`, `<session>-combined-2.txt`
+- **Input audio**: `tmp/input/<session>/3-nilbits.flac` (number-username from Craig)
+- **Per-speaker output dir**: `tmp/output/<session>/3-nilbits/` (input stem)
+- **Converted**: `3-nilbits.wav` inside it (16 kHz mono PCM_16, peak-normalised)
+- **Per-speaker VTT + JSON**: `3-nilbits.vtt`, `3-nilbits_transcription.json`,
+  `3-nilbits_mapping.json`, `3-nilbits_segment_NNN.wav`
+  (`src.config.vtt_path_for_input` is the one source of truth for the VTT path)
+- **Session outputs**: `<session>-combined.txt` (or `-1.txt`, `-2.txt` when
+  `CHUNKS>1`), `<session>-metrics.json`, `<session>.log`
 
 ## Performance Notes
 
@@ -170,8 +178,9 @@ fails loudly.
 - **Repetition hallucination** on laughs/silence: whisper emits one word
   hundreds of times (e.g. `"laughs laughs laughs…"`). `src.whisper.collapse_repetition`
   collapses these to a single occurrence before they reach the VTT.
-- **Confidence drift** on quiet or ambiguous audio: `make regenerate-vtt
-  threshold=50` re-emits a filtered VTT from the saved segment JSON.
+- **Confidence drift** on quiet or ambiguous audio: `make filter-vtt
+  file=<input> threshold=50` re-emits a filtered VTT from the saved
+  `_transcription.json`. No inference; seconds, not hours.
 
 ## Testing
 
@@ -182,8 +191,10 @@ fails loudly.
   change.
 - `tests/test_combine.py` is fast (pure Python over synthetic VTTs).
 - `tests/test_vad.py`, `tests/test_transcription.py`, `tests/test_whisper.py`
-  do real whisper inference and are slow. Run only when changing the audio
-  pipeline.
+  are marked `slow` (real inference). `make test-fast` skips them; run
+  `make test` when changing the audio pipeline.
+- `make test` never cleans `tmp/output`. Slow tests write under
+  `tmp/output/test_jfk*/`; `make clean-output` removes everything.
 - Whisper segment count is nondeterministic — use range assertions, not exact
   counts.
 - For similarity checks, use `difflib.SequenceMatcher`, not `set` intersection
@@ -205,8 +216,12 @@ fails loudly.
 - Custom exceptions: `AudioValidationError`, `VADError`, `WhisperError`,
   `TranscriptionError`, `CombineError`. Wrap underlying errors via `raise ... from`.
 - Log warnings for skippable problems (missing segment file). Raise for
-  structural problems (no speech detected, missing mapping).
-- Individual segment failures do NOT fail the whole pipeline.
+  structural problems (missing mapping, missing model, unmapped speaker).
+- A track with no detected speech is an empty transcript, not an error
+  (`ALLOW_SILENT_TRACKS`).
+- Individual chunk failures are logged and skipped inside whisper, but a file
+  with any failed chunk raises before its manifest is written
+  (`FAIL_ON_PARTIAL_TRANSCRIPTION`) so the cache cannot hide gaps.
 
 ## Adding a New Feature
 

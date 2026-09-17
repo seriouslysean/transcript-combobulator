@@ -97,11 +97,6 @@ WHISPER_CARRY_INITIAL_PROMPT=true
 VAD_MIN_SPEECH_DURATION=0.25
 ```
 
-Test with examples:
-```sh
-ENV_FILE=.env.example make combine-transcripts session=example
-```
-
 ## Supported Audio Formats
 
 - **FLAC** (Craig Discord bot default)
@@ -110,22 +105,27 @@ ENV_FILE=.env.example make combine-transcripts session=example
 ## Commands
 
 ```sh
+make help                               # Every target with a one-line description
+
 # Setup
 make check-deps                         # Verify Python 3.10+, venv, and ffmpeg
-make setup                              # Install dependencies and download Whisper model
+make setup                              # Create .venv, install, download the Whisper model
+make install EXTRAS=dev,mac             # Reinstall with extras (mac adds mlx-whisper)
 
 # Processing
-make run                                # Process all files in tmp/input/
-make run folder=tmp/input/session-name  # Process specific session
-make run-single file=path/to/file.flac  # Process single file
+make run folder=tmp/input/session-name  # Full pipeline for one session
 make run folder=path/to/session force=1 # Reprocess completed files
+make run-single file=path/to/file.flac  # One file, no combine
 
-# Combination (if needed separately)
-make combine-transcripts session=session-name
+# Post-processing
+make combine-transcripts session=name   # Re-merge per-speaker VTTs
+make filter-vtt file=path/to/file.flac threshold=60  # Re-emit a VTT above a confidence, no inference
 
-# Utilities
-make clean                              # Clean temporary files
-make test                               # Run test suite
+# Dev
+make test-fast                          # Suite without real inference (seconds)
+make test                               # Whole suite (minutes)
+make lint                               # mypy --strict
+make clean-output                       # Delete every session's outputs under tmp/output
 ```
 
 ### Running unattended

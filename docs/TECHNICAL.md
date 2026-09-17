@@ -22,7 +22,6 @@ Implementation details for developers and advanced users.
 
 ### Audio Processing
 - `SAMPLE_RATE=16000` - Whisper optimal sample rate
-- `TRANSCRIPTION_MODE=vad` - Use VAD for segmentation
 - `VAD_THRESHOLD=0.5` - Speech detection sensitivity (0.0-1.0)
 - `VAD_MIN_SPEECH_DURATION=0.25` - Preserve short replies and spoken numbers
 - `VAD_MIN_SILENCE_DURATION=3.0` - Minimum silence to split; longer islands reduce Whisper encoder calls
@@ -55,13 +54,13 @@ Handles dynamic user positions (Discord Craig bot assigns numbers by join order)
 
 ```bash
 # Audio file: 3-nilbits.flac
-# Directory: 3-nilbits_16khz/
+# Directory: 3-nilbits/
 # Username extraction: nilbits
 # Environment mapping: TRANSCRIPT_2_USERNAME="nilbits"
 ```
 
 Patterns supported:
-- `{number}-{username}_16khz` (e.g., "3-nilbits_16khz")
+- `{number}-{username}` (e.g., "3-nilbits", the input stem)
 - Direct username match (directory name in username mapping)
 
 ## Performance Optimizations
@@ -83,8 +82,8 @@ tmp/
 │       └── {number}-{username}.{ext}
 ├── output/                    # Generated files
 │   └── session-name/
-│       ├── {number}-{username}_16khz/      # User-specific
-│       │   ├── {username}_combined.vtt     # User transcript
+│       ├── {number}-{username}/            # Per-speaker (input stem)
+│       │   ├── {number}-{username}.vtt     # Speaker transcript
 │       │   ├── *_segment_*.wav             # VAD segments
 │       │   └── *_mapping.json              # Segment metadata
 │       └── {session}-combined-*.txt        # Session transcripts
@@ -119,4 +118,3 @@ tmp/
 - **Silero VAD** - Voice activity detection
 - **PyTorch** - Neural network backend
 - **soundfile** - Audio file I/O
-- **webvtt-py** - VTT file handling

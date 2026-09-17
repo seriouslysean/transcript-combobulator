@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+pytestmark = pytest.mark.slow  # real whisper/VAD inference
 from src.vad import load_vad_model, process_audio, VADError
 from src.config import OUTPUT_DIR
 import json

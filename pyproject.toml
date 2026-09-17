@@ -51,6 +51,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v"
 pythonpath = ["."]
+markers = [
+    "slow: real whisper or VAD inference; needs models/ and minutes of CPU",
+]
 
 [tool.mypy]
 python_version = "3.10"

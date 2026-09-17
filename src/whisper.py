@@ -20,7 +20,6 @@ from src.config import (
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODELS_DIR,
-    WHISPER_PROMPT,
     SAMPLE_RATE,
     get_whisper_options,
 )
@@ -384,74 +383,31 @@ def filter_by_confidence(
     return out
 
 
-def transcribe_file_direct(
-    audio_path: Path,
-    output_path: Path,
-    prompt: str = "",
-) -> list[dict[str, Any]]:
-    """Transcribe a whole audio file in one pass (no VAD segmentation).
-
-    Used by ``regenerate_vtt_for_audio``. For the standard pipeline, use
-    ``src.transcribe.transcribe_audio`` which goes through VAD.
-    """
-    if not audio_path.exists():
-        raise WhisperError(f"Audio file not found: {audio_path}")
-
-    try:
-        model = load_whisper_model()
-        opts = get_whisper_options()
-        if prompt:
-            opts['initial_prompt'] = prompt
-        result = model.transcribe(str(audio_path), **opts)
-        segments = _segments_from_result(result)
-        for seg in segments:
-            if seg["text"]:
-                logger.info(
-                    f"  [{format_timestamp(seg['start'])} -> {format_timestamp(seg['end'])}] {seg['text']}"
-                )
-        _write_vtt(output_path, segments)
-        return segments
-    except Exception as e:
-        raise WhisperError(f"Failed to transcribe audio: {e}") from e
-
-
 def regenerate_vtt_with_confidence(
     json_path: Path,
     output_vtt: Path,
     confidence_threshold: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Rewrite a VTT from a saved segments JSON, optionally filtering by confidence."""
+    """Rewrite a VTT from the pipeline's saved JSON, optionally filtered by confidence.
+
+    Accepts the pipeline's ``<stem>_transcription.json`` (a dict with a
+    ``segments`` list) or a bare list of segments. Applies the same dedup rule
+    as the pipeline so the rewritten VTT matches what a fresh run would write.
+    No inference happens here.
+    """
     if not json_path.exists():
         raise WhisperError(f"JSON file not found: {json_path}")
 
     try:
-        with open(json_path) as f:
-            segments: list[dict[str, Any]] = json.load(f)
+        with open(json_path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        segments: list[dict[str, Any]] = (
+            loaded["segments"] if isinstance(loaded, dict) else loaded
+        )
         if confidence_threshold is not None:
             segments = filter_by_confidence(segments, confidence_threshold)
-        _write_vtt(output_vtt, segments)
-        return segments
+        deduped = dedupe_segments(segments)
+        _write_vtt(output_vtt, deduped)
+        return deduped
     except Exception as e:
         raise WhisperError(f"Failed to regenerate VTT: {e}") from e
-
-
-def regenerate_vtt_for_audio(
-    audio_path: Path,
-    confidence_threshold: Optional[float] = None,
-) -> list[dict[str, Any]]:
-    """Re-transcribe an audio file and rewrite its VTT, with optional confidence filter."""
-    if not audio_path.exists():
-        raise WhisperError(f"Audio file not found: {audio_path}")
-
-    json_path = audio_path.with_suffix(".json")
-    output_vtt = audio_path.with_suffix(".vtt")
-
-    segments = transcribe_file_direct(audio_path, output_vtt, prompt=WHISPER_PROMPT)
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(segments, f, indent=2)
-
-    if confidence_threshold is not None:
-        segments = regenerate_vtt_with_confidence(json_path, output_vtt, confidence_threshold)
-
-    return segments
