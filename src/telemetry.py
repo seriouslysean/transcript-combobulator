@@ -19,6 +19,7 @@ _STAGE_KEYS = (
     'vad_seconds',
     'transcription_seconds',
     'manifest_write_seconds',
+    'vtt_rewrite_seconds',
 )
 _RUNTIME_NUMBER_KEYS = (
     'parallel_jobs_configured',
@@ -118,9 +119,9 @@ _OFFICIAL_MODEL_NAMES = {
 _VALID_DEVICES = {'cpu', 'cuda', 'mps'}
 _RUN_STATUSES = {'completed', 'failed'}
 _FILE_STATUSES = {'processed', 'cached', 'error'}
-_CHUNK_STATUSES = {'processed', 'empty', 'error'}
+_CHUNK_STATUSES = {'processed', 'empty', 'error', 'resumed'}
 _COMBINE_STATUSES = {'completed', 'error', 'skipped'}
-_CONVERSION_ACTIONS = {'converted', 'copied'}
+_CONVERSION_ACTIONS = {'converted', 'copied', 'cached'}
 
 
 def utc_now_iso() -> str:
