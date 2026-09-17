@@ -120,7 +120,16 @@ def _segments_from_result(
         text = collapse_repetition(str(segment.get("text", "")).strip())
         avg_logprob = float(segment.get('avg_logprob', 0))
         confidence = min(100, max(0, (1 + avg_logprob) * 100))
-        out.append({"start": start, "end": end, "text": text, "confidence": confidence})
+        # whisper records the temperature it settled on; anything above the
+        # first value means its compression/logprob guard tripped and it
+        # re-decoded (only possible with a WHISPER_TEMPERATURE list).
+        out.append({
+            "start": start,
+            "end": end,
+            "text": text,
+            "confidence": confidence,
+            "temperature": float(segment.get("temperature", 0.0)),
+        })
     return out
 
 
@@ -381,6 +390,9 @@ def transcribe_audio_segments(
 
         transcription_metrics['failed_chunk_count'] = failed_segments
         transcription_metrics['resumed_chunk_count'] = resumed_segments
+        transcription_metrics['fallback_segment_count'] = sum(
+            1 for s in all_segments if float(s.get('temperature', 0.0)) > 0.0
+        )
         transcription_metrics['raw_result_segment_count'] = len(all_segments)
         if total and failed_segments == total:
             if checkpoint is not None:
