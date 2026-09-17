@@ -158,37 +158,13 @@ VAD_MIN_SPEECH_DURATION = get_float_env('VAD_MIN_SPEECH_DURATION', 0.25)
 # silence threshold avoids turning short pauses into separate encoder passes.
 VAD_MIN_SILENCE_DURATION = get_float_env('VAD_MIN_SILENCE_DURATION', 3.0)
 PADDING_SECONDS = get_float_env('PADDING_SECONDS', 0.3)
-# Pack consecutive islands into one clip of up to VAD_PACK_MAX_SECONDS so one
-# 30 s encoder pass covers several short replies instead of one. The silence
-# between islands is dropped from the clip (whisper never sees it) and
-# VAD_PACK_GAP_SECONDS of digital silence is inserted between islands so the
-# decoder still segments them. Positions are recorded per island so
-# timestamps map back exactly (src.timemap). Off until A/B'd on a session.
-VAD_PACK_ISLANDS = get_bool_env('VAD_PACK_ISLANDS', False)
-VAD_PACK_MAX_SECONDS = get_float_env('VAD_PACK_MAX_SECONDS', 28.0)
-VAD_PACK_GAP_SECONDS = get_float_env('VAD_PACK_GAP_SECONDS', 0.5)
 
 # ── Whisper (optimized for single-speaker channels) ──
 WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'large-v3-turbo')
 WHISPER_DEVICE = os.getenv('WHISPER_DEVICE', 'cpu')
 WHISPER_FP16 = get_bool_env('WHISPER_FP16', False)
 WHISPER_LANGUAGE = os.getenv('WHISPER_LANGUAGE', 'en')
-
-
-def _parse_temperature(raw: str) -> float | tuple[float, ...]:
-    """A scalar decodes once; a comma list enables whisper's own fallback, which
-    re-decodes at the next temperature when the compression-ratio or logprob
-    guard trips (that guard is inert with a scalar)."""
-    try:
-        values = tuple(float(p) for p in raw.replace(' ', '').split(',') if p)
-    except ValueError:
-        return 0.0
-    if not values:
-        return 0.0
-    return values[0] if len(values) == 1 else values
-
-
-WHISPER_TEMPERATURE = _parse_temperature(os.getenv('WHISPER_TEMPERATURE', '0.0'))
+WHISPER_TEMPERATURE = get_float_env('WHISPER_TEMPERATURE', 0.0)
 WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 1)
 WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', False)
 WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', False)
@@ -242,9 +218,6 @@ def get_pipeline_fingerprint_settings() -> dict[str, Any]:
             'min_speech_duration': VAD_MIN_SPEECH_DURATION,
             'min_silence_duration': VAD_MIN_SILENCE_DURATION,
             'padding_seconds': PADDING_SECONDS,
-            'pack_islands': VAD_PACK_ISLANDS,
-            'pack_max_seconds': VAD_PACK_MAX_SECONDS if VAD_PACK_ISLANDS else None,
-            'pack_gap_seconds': VAD_PACK_GAP_SECONDS if VAD_PACK_ISLANDS else None,
         },
         'whisper_model': WHISPER_MODEL,
         'whisper_model_file': _model_file_identity(),

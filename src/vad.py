@@ -22,9 +22,6 @@ from src.config import (
     SAMPLE_RATE,
     VAD_MIN_SILENCE_DURATION,
     VAD_MIN_SPEECH_DURATION,
-    VAD_PACK_GAP_SECONDS,
-    VAD_PACK_ISLANDS,
-    VAD_PACK_MAX_SECONDS,
     VAD_THREADS,
     VAD_THRESHOLD,
 )
@@ -44,34 +41,6 @@ def load_vad_model() -> Any:
         return load_silero_vad()
     except Exception as e:
         raise VADError(f"Failed to load VAD model: {e}") from e
-
-
-def pack_islands(
-    islands: list[tuple[int, int]],
-    max_samples: int,
-    gap_samples: int,
-) -> list[list[int]]:
-    """Greedily group consecutive islands so each clip stays within max_samples.
-
-    ``islands`` are (start, end) sample bounds already including padding. An
-    island longer than max_samples gets its own clip (whisper seeks through
-    it as it does today). Returns index groups in order.
-    """
-    groups: list[list[int]] = []
-    current: list[int] = []
-    current_len = 0
-    for idx, (start, end) in enumerate(islands):
-        length = end - start
-        extra = length if not current else gap_samples + length
-        if current and current_len + extra > max_samples:
-            groups.append(current)
-            current, current_len = [], 0
-            extra = length
-        current.append(idx)
-        current_len += extra
-    if current:
-        groups.append(current)
-    return groups
 
 
 def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
@@ -141,62 +110,26 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
         padding_samples = int(PADDING_SECONDS * SAMPLE_RATE)
         logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")
 
-        islands: list[dict[str, Any]] = [
-            {
-                'speech_start': float(ts['start']),
-                'speech_end': float(ts['end']),
-                'start': max(0, int(ts['start'] * SAMPLE_RATE) - padding_samples),
-                'end': min(wav.shape[1], int(ts['end'] * SAMPLE_RATE) + padding_samples),
-            }
-            for ts in speech_timestamps
-        ]
-        groups = pack_islands(
-            [(isl['start'], isl['end']) for isl in islands],
-            max_samples=int(VAD_PACK_MAX_SECONDS * SAMPLE_RATE),
-            gap_samples=int(VAD_PACK_GAP_SECONDS * SAMPLE_RATE),
-        ) if VAD_PACK_ISLANDS else [[i] for i in range(len(islands))]
-        if VAD_PACK_ISLANDS:
-            logger.info(f"Packed {len(islands)} islands into {len(groups)} clips")
-
-        gap = torch.zeros((1, int(VAD_PACK_GAP_SECONDS * SAMPLE_RATE)), dtype=wav.dtype)
         segments: list[dict[str, Any]] = []
-        for i, group in enumerate(groups):
-            first, last = islands[group[0]], islands[group[-1]]
+        for i, ts in enumerate(speech_timestamps):
+            start = max(0, int(ts['start'] * SAMPLE_RATE) - padding_samples)
+            end = min(wav.shape[1], int(ts['end'] * SAMPLE_RATE) + padding_samples)
+            segment = wav[:, start:end]
+
             segment_path = output_dir / f"{input_path.stem}_segment_{i:03d}.wav"
+            sf.write(str(segment_path), segment.T.numpy(), SAMPLE_RATE)
+
             # start/end are the detected speech bounds; clip_* are the bounds
-            # of the audio actually written, which include the padding. Whisper
+            # of the WAV actually written, which include the padding. Whisper
             # timestamps are relative to the clip, so the clip start is the
-            # offset to add back for a single island. Packed clips carry a
-            # piece list instead (see src.timemap).
-            entry: dict[str, Any] = {
-                'start_seconds': first['speech_start'],
-                'end_seconds': last['speech_end'],
-                'clip_start_seconds': first['start'] / SAMPLE_RATE,
-                'clip_end_seconds': last['end'] / SAMPLE_RATE,
+            # offset to add back.
+            segments.append({
+                'start_seconds': ts['start'],
+                'end_seconds': ts['end'],
+                'clip_start_seconds': start / SAMPLE_RATE,
+                'clip_end_seconds': end / SAMPLE_RATE,
                 'segment_file': str(segment_path),
-            }
-            if len(group) == 1 and not VAD_PACK_ISLANDS:
-                sf.write(str(segment_path), wav[:, first['start']:first['end']].T.numpy(), SAMPLE_RATE)
-            else:
-                parts: list[torch.Tensor] = []
-                pieces: list[dict[str, float]] = []
-                cursor = 0
-                for n, idx in enumerate(group):
-                    isl = islands[idx]
-                    if n:
-                        parts.append(gap)
-                        cursor += gap.shape[1]
-                    length = isl['end'] - isl['start']
-                    pieces.append({
-                        'clip_offset_seconds': cursor / SAMPLE_RATE,
-                        'source_start_seconds': isl['start'] / SAMPLE_RATE,
-                        'duration_seconds': length / SAMPLE_RATE,
-                    })
-                    parts.append(wav[:, isl['start']:isl['end']])
-                    cursor += length
-                sf.write(str(segment_path), torch.cat(parts, dim=1).T.numpy(), SAMPLE_RATE)
-                entry['pieces'] = pieces
-            segments.append(entry)
+            })
 
         mapping_path = output_dir / f"{input_path.stem}_mapping.json"
         with open(mapping_path, 'w') as f:
