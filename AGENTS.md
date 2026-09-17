@@ -157,6 +157,24 @@ fails loudly.
   than 8 on Apple Silicon. The worker's whisper thread count is restored after.
 - **`src/__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
+- **One encoder pass per VAD island is the floor on stock whisper, by
+  decision.** Whisper encodes a fixed 30 s window, so short islands pay full
+  price (utilisation ~24% on a real session). Packing islands into one clip
+  was measured at 2.45x on a 2.9 h track with identical words, but whisper
+  places segment boundaries from what it hears, never from splices: 56 of
+  128 islands (26 with a 2 s gap) were attributed to the previous island's
+  time, up to 509 s early. Stock `word_timestamps` doubles decode cost and
+  still misassigned 9 of 128. WhisperX and faster-whisper pack the same way
+  and fix time with a separate wav2vec2 forced-alignment model; whisper.cpp
+  shrinks the encoder per clip (`audio_ctx`, ~3x on short clips). Both are
+  outside stock openai-whisper and were ruled out: this project stays on
+  stock whisper, slow and correct, rather than patching the model or adding
+  a second one. Do not reintroduce packing, encoder-context patches, or a
+  detect-and-retry shim.
+- **Temperature fallback is available.** `WHISPER_TEMPERATURE=0.0,0.2,0.4`
+  enables whisper's re-decode when the compression-ratio or logprob guard
+  trips; with the default scalar those guards never fire. Costs CPU only on
+  segments that trip it. Not yet A/B'd on a session.
 
 - Whisper's `word_timestamps=True` hangs on some segments. Keep the default
   `WHISPER_WORD_TIMESTAMPS=false`.

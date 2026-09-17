@@ -142,6 +142,13 @@ MAPPING_PRECHECK=true        # fail on a TRANSCRIPT_N_* typo before any inferenc
 LOG_FILE=                    # empty = tmp/output/<session>/<session>.log; none = off
 ```
 
+Whisper's own hallucination guard is off with a scalar temperature. To enable
+its re-decode on suspicious segments, at some CPU cost on those segments:
+
+```sh
+WHISPER_TEMPERATURE=0.0,0.2,0.4
+```
+
 Transcript fidelity knobs, also with defaults shown:
 
 ```sh

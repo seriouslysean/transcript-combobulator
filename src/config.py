@@ -164,7 +164,22 @@ WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'large-v3-turbo')
 WHISPER_DEVICE = os.getenv('WHISPER_DEVICE', 'cpu')
 WHISPER_FP16 = get_bool_env('WHISPER_FP16', False)
 WHISPER_LANGUAGE = os.getenv('WHISPER_LANGUAGE', 'en')
-WHISPER_TEMPERATURE = get_float_env('WHISPER_TEMPERATURE', 0.0)
+
+
+def _parse_temperature(raw: str) -> float | tuple[float, ...]:
+    """A scalar decodes once; a comma list enables whisper's own fallback, which
+    re-decodes at the next temperature when the compression-ratio or logprob
+    guard trips (that guard is inert with a scalar)."""
+    try:
+        values = tuple(float(p) for p in raw.replace(' ', '').split(',') if p)
+    except ValueError:
+        return 0.0
+    if not values:
+        return 0.0
+    return values[0] if len(values) == 1 else values
+
+
+WHISPER_TEMPERATURE = _parse_temperature(os.getenv('WHISPER_TEMPERATURE', '0.0'))
 WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 1)
 WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', False)
 WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', False)

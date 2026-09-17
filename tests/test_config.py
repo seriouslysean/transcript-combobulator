@@ -69,3 +69,12 @@ def test_missing_env_file_is_an_error(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert "ENV_FILE='.env.anihilation' not found" in result.stderr
+
+
+def test_temperature_scalar_or_fallback_tuple() -> None:
+    from src.config import _parse_temperature
+
+    assert _parse_temperature("0.0") == 0.0
+    assert _parse_temperature("0.0, 0.2,0.4") == (0.0, 0.2, 0.4)
+    assert _parse_temperature("") == 0.0
+    assert _parse_temperature("warm") == 0.0
