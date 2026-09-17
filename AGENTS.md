@@ -185,6 +185,15 @@ fails loudly.
 - **Silero VAD runs on one thread** (`VAD_THREADS=1`). It processes 512-sample
   frames one at a time; 1 thread measured 2.2x faster than 4 and 3.7x faster
   than 8 on Apple Silicon. The worker's whisper thread count is restored after.
+- **VAD streams the WAV and uses Silero's ONNX build.** `src.vad.detect_speech`
+  collects frame probabilities over 60 s blocks with the detector's state
+  carried across boundaries, then applies a verbatim port of silero-vad
+  6.2.1's region logic; `tests/test_vad_streaming.py` asserts identity with
+  the installed `get_speech_timestamps`. Segments are written by seeking
+  into the WAV. Measured on a 2.9 h track, whole `process_audio` call:
+  256 MB peak RSS, regions identical to the whole-file result. The
+  TorchScript build (`VAD_BACKEND=jit`) gave the same regions but its peak
+  swung between 0.9 and 3.9 GB run to run, which is why onnx is the default.
 - **`src/__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
 - **One encoder pass per VAD island is the floor on stock whisper, by
@@ -257,8 +266,13 @@ fails loudly.
   `ffmpeg`, so `torchcodec` (ABI-locked to torch, no aarch64 wheel before
   0.11) is deliberately not a dependency. Do not reintroduce
   `torchaudio.load`/`save`.
-- `silero-vad` bundles its model inside the wheel; `load_silero_vad()` needs no
-  network access.
+- `silero-vad` bundles both its models inside the wheel; `load_silero_vad()`
+  needs no network access. It does not declare `onnxruntime`, which the
+  default `VAD_BACKEND=onnx` needs, so `pyproject.toml` pins it.
+- `src.vad._speech_regions_from_probs` is a verbatim port of silero's region
+  logic because silero only accepts a whole-file tensor. Bumping `silero-vad`
+  must keep `tests/test_vad_streaming.py` green; if silero changes the
+  algorithm, port the change, do not paper over the diff.
 - `ffmpeg` must be on `PATH`. Makefile recipes run under `/bin/sh` (dash on
   Debian), so keep them POSIX: `>/dev/null 2>&1`, never `&>`.
 

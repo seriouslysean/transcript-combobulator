@@ -163,6 +163,9 @@ the whole session, so every repeated short line from a speaker was dropped,
 and every cue was 0.3 s late. The resume cache version was bumped, so the next
 `make run` on an old session reprocesses it.
 
+VAD streams the audio from disk (256 MB peak on a 2.9 h track) using Silero's
+ONNX build; `VAD_BACKEND=jit` selects the TorchScript build, same regions.
+
 Interrupted runs resume. Conversion, VAD, and transcription each record their
 own completion, and transcription checkpoints every chunk, so a run killed at
 chunk 300 of 346 continues from chunk 301 on the next `make run`. Changing a
