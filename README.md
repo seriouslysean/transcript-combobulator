@@ -6,7 +6,7 @@ Audio transcription tool for multi-speaker recordings with separate audio files 
 
 ## Quick Start
 
-Prerequisites: Python 3.10+ with the `venv` module, and `ffmpeg` on `PATH`.
+Prerequisites: Python 3.11+ with the `venv` module, and `ffmpeg` on `PATH`.
 On Debian/Raspberry Pi OS: `sudo apt install python3 python3-venv ffmpeg`.
 On macOS: `brew install python ffmpeg`. `make check-deps` verifies both.
 
