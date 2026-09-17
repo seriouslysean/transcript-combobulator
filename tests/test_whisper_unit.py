@@ -9,6 +9,9 @@ import pytest
 from src.config import get_whisper_options
 from src.whisper import (
     WhisperError,
+    _load_whisper_model,
+    dedupe_segments,
+    regenerate_vtt_with_confidence,
     load_whisper_model,
     transcribe_audio_segments,
     transcribe_segment,
@@ -24,7 +27,7 @@ def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:
     model_name = 'test-model'
     (tmp_path / f'{model_name}.pt').touch()
     expected_model = object()
-    load_whisper_model.cache_clear()
+    _load_whisper_model.cache_clear()
 
     try:
         with patch('src.whisper.WHISPER_MODELS_DIR', tmp_path), patch(
@@ -37,7 +40,7 @@ def test_load_whisper_model_is_cached_per_process(tmp_path: Path) -> None:
         assert second is expected_model
         load.assert_called_once()
     finally:
-        load_whisper_model.cache_clear()
+        _load_whisper_model.cache_clear()
 
 
 def test_transcribe_segment_passes_wav_array_to_model(tmp_path: Path) -> None:
@@ -154,3 +157,57 @@ def test_all_segment_failures_fail_the_transcription(tmp_path: Path) -> None:
     assert metrics['failed_chunk_count'] == 2
     assert [chunk['status'] for chunk in metrics['chunks']] == ['error', 'error']
     assert metrics['total_seconds'] >= 0
+
+
+
+def _seg(start: float, end: float, text: str) -> dict:
+    return {'start': start, 'end': end, 'text': text}
+
+
+def test_dedupe_consecutive_drops_adjacent_repeat_only() -> None:
+    segments = [
+        _seg(0.0, 1.0, 'Yeah.'),
+        _seg(1.2, 2.0, 'Yeah.'),      # hallucinated repeat, 0.2 s later
+        _seg(600.0, 601.0, 'Yeah.'),  # genuine, ten minutes later
+        _seg(601.5, 602.0, '   '),    # blank
+    ]
+    kept = dedupe_segments(segments, strategy='consecutive', window_seconds=2.0)
+    assert [s['start'] for s in kept] == [0.0, 600.0]
+
+
+def test_dedupe_global_matches_legacy_behaviour() -> None:
+    segments = [_seg(0.0, 1.0, 'Yeah.'), _seg(600.0, 601.0, 'Yeah.')]
+    assert len(dedupe_segments(segments, strategy='global')) == 1
+    assert len(dedupe_segments(segments, strategy='none')) == 2
+
+
+def test_dedupe_sorts_by_start_before_comparing() -> None:
+    segments = [_seg(5.0, 6.0, 'B'), _seg(0.0, 1.0, 'A'), _seg(1.1, 2.0, 'A')]
+    kept = dedupe_segments(segments, strategy='consecutive', window_seconds=2.0)
+    assert [s['text'] for s in kept] == ['A', 'B']
+
+
+def test_regenerate_vtt_reads_pipeline_json_and_filters(tmp_path: Path) -> None:
+    import json
+
+    json_path = tmp_path / "3-nilbits_transcription.json"
+    json_path.write_text(json.dumps({
+        "audio_path": "x.wav",
+        "mapping_file": "m.json",
+        "segments": [
+            {"start": 0.0, "end": 1.0, "text": "Keep me", "confidence": 90.0},
+            {"start": 2.0, "end": 3.0, "text": "Drop me", "confidence": 20.0},
+            {"start": 3.1, "end": 4.0, "text": "Keep me", "confidence": 95.0},
+            {"start": 60.0, "end": 61.0, "text": "Keep me", "confidence": 95.0},
+        ],
+    }), encoding="utf-8")
+    vtt = tmp_path / "3-nilbits.vtt"
+
+    kept = regenerate_vtt_with_confidence(json_path, vtt, 50.0)
+
+    text = vtt.read_text(encoding="utf-8")
+    assert "Drop me" not in text
+    # 0.0 and 3.1 "Keep me" are not consecutive within the 2 s window once
+    # "Drop me" is filtered? They are: 3.1 - 1.0 = 2.1 > 2.0, so both stay.
+    assert text.count("Keep me") == 3
+    assert [s["start"] for s in kept] == [0.0, 3.1, 60.0]

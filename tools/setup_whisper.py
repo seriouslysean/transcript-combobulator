@@ -1,33 +1,35 @@
 #!/usr/bin/env python3
-"""Download a whisper model into the local models/ directory."""
+"""Download the configured whisper model into models/ without loading it.
 
-import os
+whisper.load_model would also instantiate the fp32 model (about 3x the file
+size in RAM); on a Pi that is most of the memory for a step that only needs
+the bytes on disk. This uses whisper's own downloader, which also verifies
+the checksum and skips the download when the file already matches.
+"""
+
 import sys
 from pathlib import Path
 
 import whisper
 
-from src.config import WHISPER_DEVICE, WHISPER_FP16, WHISPER_MODEL
+from src.config import WHISPER_MODEL, WHISPER_MODELS_DIR
 
 
 def setup_whisper(model_name: str, models_dir: Path) -> bool:
-    """Download model_name to models_dir if not already present."""
+    """Ensure models_dir/<model_name>.pt exists and matches whisper's checksum."""
+    url = whisper._MODELS.get(model_name)
+    if url is None:
+        print(f"Unknown whisper model {model_name!r}. Available: {', '.join(whisper.available_models())}")
+        return False
     try:
         models_dir.mkdir(parents=True, exist_ok=True)
-        os.environ['WHISPER_MODELS_DIR'] = str(models_dir)
-
-        device = WHISPER_DEVICE
-        if device == 'cpu' and WHISPER_FP16:
-            print("Warning: FP16 not supported on CPU, forcing FP32")
-
         model_path = models_dir / f"{model_name}.pt"
         if model_path.exists():
-            print(f"Model {model_name} already exists at {model_path}")
-            return True
-
-        print(f"Downloading {model_name} model to {models_dir}...")
-        whisper.load_model(model_name, device=device, download_root=str(models_dir))
-        print(f"Successfully downloaded {model_name} model")
+            print(f"Verifying {model_path}...")
+        else:
+            print(f"Downloading {model_name} to {models_dir}...")
+        whisper._download(url, str(models_dir), in_memory=False)
+        print(f"Model ready: {model_path} ({model_path.stat().st_size / 2**20:.0f} MiB)")
         return True
     except Exception as e:
         print(f"Error setting up whisper: {e}")
@@ -35,16 +37,10 @@ def setup_whisper(model_name: str, models_dir: Path) -> bool:
 
 
 def main() -> None:
-    model = WHISPER_MODEL
-    if not model:
+    if not WHISPER_MODEL:
         print("Error: WHISPER_MODEL is not set")
         sys.exit(1)
-    models_dir = Path('models')
-    print(f"Checking for {model} model in {models_dir}...")
-    if setup_whisper(model, models_dir):
-        print("Setup completed successfully!")
-    else:
-        print("Setup failed!")
+    if not setup_whisper(WHISPER_MODEL, WHISPER_MODELS_DIR):
         sys.exit(1)
 
 

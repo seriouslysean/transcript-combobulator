@@ -7,8 +7,7 @@ import sys
 from pathlib import Path
 
 import soundfile as sf
-import torch
-import torchaudio
+import numpy as np
 
 
 def create_copies(
@@ -51,15 +50,16 @@ def create_padded_audio(
         print(f"Error: Input file {input_path} not found")
         return
 
-    wav, sr = torchaudio.load(str(input_path))
-    silence = torch.zeros((wav.shape[0], int(silence_duration * sr)))
+    wav, sr = sf.read(str(input_path), dtype='float32', always_2d=True)
+    silence = np.zeros((int(silence_duration * sr), wav.shape[1]), dtype=np.float32)
 
-    padded_wav = wav
+    parts = [wav]
     for _ in range(num_copies - 1):
-        padded_wav = torch.cat([padded_wav, silence, wav], dim=1)
+        parts.extend((silence, wav))
+    padded_wav = np.concatenate(parts, axis=0)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(output_path), padded_wav.T.numpy(), sr)
+    sf.write(str(output_path), padded_wav, sr)
     print(f"Created padded version: {output_path}")
 
 

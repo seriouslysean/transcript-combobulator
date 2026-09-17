@@ -14,14 +14,14 @@ from src.audio_utils import (
     needs_conversion,
     validate_audio_file,
 )
-from src.config import get_output_path_for_input
+from src.config import FAIL_ON_PARTIAL_TRANSCRIPTION, get_output_path_for_input
 from src.logging_config import setup_logging
 from src.pipeline_cache import (
     get_manifest_path,
     is_pipeline_complete,
     write_pipeline_manifest,
 )
-from src.transcribe import transcribe_segments
+from src.transcribe import TranscriptionError, transcribe_segments
 from src.telemetry import elapsed_seconds, utc_now_iso
 from src.vad import process_audio
 
@@ -154,6 +154,18 @@ def main(
         file_metrics['transcription'] = transcription.get(
             'metrics', transcription_metrics
         )
+
+        # Per-chunk failures are logged and skipped inside whisper so one bad
+        # segment does not lose the file, but a file with gaps must not be
+        # recorded as complete: the cache would then block the retry.
+        failed_chunks = int(file_metrics['transcription'].get('failed_chunk_count', 0) or 0)
+        if failed_chunks and FAIL_ON_PARTIAL_TRANSCRIPTION:
+            total_chunks = file_metrics['transcription'].get('chunk_count', '?')
+            raise TranscriptionError(
+                f"{failed_chunks} of {total_chunks} segments failed to transcribe for "
+                f"{input_file.name}; rerun to retry "
+                "(FAIL_ON_PARTIAL_TRANSCRIPTION=false accepts partial output)"
+            )
 
         artifacts = [
             output_file,

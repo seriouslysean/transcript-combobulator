@@ -20,10 +20,9 @@ src/
 tools/
 ├── process_batch.py         # Parallel batch processor with rich progress UI
 ├── process_single_file.py   # One-file pipeline (convert → VAD → transcribe)
-├── convert_audio.py         # CLI: one file or all of tmp/input/
+├── filter_vtt.py            # Re-emit a speaker VTT from saved JSON above a confidence
 ├── create_sample_files.py   # Build sample/test audio from samples/
-├── setup_whisper.py         # Download whisper model into models/
-└── test_whisper.py          # Smoke-test whisper on an audio file
+└── setup_whisper.py         # Download whisper model into models/ (no load)
 ```
 
 The standard pipeline: `tools/process_batch.py` →
@@ -45,27 +44,70 @@ The standard pipeline: `tools/process_batch.py` →
   (no-VAD) variant and is internal to the regenerate-VTT flow.
 - **Combine preserves original text.** `_normalize_for_dedup` is used ONLY for
   dedup keys, never for the text written to the output file.
+- **Dedup is consecutive, not global.** `DEDUPE_STRATEGY=consecutive` (default)
+  drops a cue only when it repeats the previous kept cue for that speaker
+  within `DEDUPE_WINDOW_SECONDS`. That is whisper's repeated-line
+  hallucination; a genuine "Yeah." ten minutes later must survive. The same
+  rule runs in `src.whisper.dedupe_segments` (per-speaker VTT) and
+  `src.combine._dedupe_entries` (session). `global` is the legacy lossy mode.
+- **Cue offsets use the padded clip start.** VAD writes `start_seconds` (speech)
+  and `clip_start_seconds` (what the WAV actually contains); whisper's
+  timestamps are relative to the clip, so `clip_start_seconds` is the offset.
+- **Partial transcription is a failure.** Any failed chunk raises before the
+  manifest is written (`FAIL_ON_PARTIAL_TRANSCRIPTION`), so the cache cannot
+  hide a transcript with gaps. A track with no speech at all is an empty
+  transcript, not an error (`ALLOW_SILENT_TRACKS`).
+- **Usernames match as whole tokens** in per-speaker dir names, so `dez`
+  never claims `5-dezfrost`. Batch runs hand combine the exact VTTs they
+  produced; stale sibling dirs are ignored.
 - **Skip filters match raw text**, not normalized text. So `[BLANK_AUDIO]` in a
   VTT line is filtered by the literal `[BLANK_AUDIO]` filter.
 
 ## Makefile Usage
 
-Always use the Makefile:
+Always use the Makefile. `make help` lists every target; this is the full set:
 
 | Command | Purpose |
 |---------|---------|
-| `make setup` | Create venv, install deps, download whisper model |
-| `make run folder=path/` | Run the full parallel pipeline |
-| `make run-single file=path.wav` | Pipeline for one file (no combine) |
-| `make process-vad file=path.wav` | VAD step only |
-| `make transcribe-segments file=path.wav` | Transcription step only (needs mapping) |
-| `make combine-transcripts [session=...]` | Combine step only |
-| `make convert-audio [input=path]` | Convert to 16kHz mono WAV |
-| `make regenerate-vtt file=path [threshold=50]` | Re-run whisper with confidence filter |
+| `make check-deps` | Verify Python 3.10+, `venv` module, and `ffmpeg` on the host |
+| `make setup` | Check deps, create venv from `$(PYTHON)`, `make install`, download whisper model |
+| `make install [EXTRAS=dev,mac]` | `pip install -e ".[EXTRAS]"` into `.venv` |
+| `make setup-whisper` | Download `WHISPER_MODEL` into `models/` (checksum-verified, no model load) |
+| `make run folder=path/ [force=1]` | Full parallel pipeline for one session; the only thing automation calls |
+| `make run-single file=path [force=1]` | Convert → VAD → transcribe one file, no combine |
+| `make combine-transcripts session=name` | Re-merge a session's per-speaker VTTs |
+| `make filter-vtt file=path [threshold=50]` | Re-emit a speaker VTT from its saved JSON above a confidence; no inference |
 | `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
-| `make create-test-files` | Populate `tmp/input/test_jfk*.wav` for pytest |
-| `make test` | Run pytest |
-| `make lint` | Run mypy (advisory; annotation coverage not enforced) |
+| `make test-fast` | pytest without the `slow` (real inference) tests |
+| `make test` | Whole suite; never touches `tmp/output` |
+| `make lint` | `mypy --strict` |
+| `make clean-output` | Delete every session's outputs under `tmp/output` |
+| `make clean-tmp` | Also delete `tmp/input` and local caches |
+
+Dropped on purpose: `convert-audio` (wrote a `_16khz` layout nothing consumed),
+`regenerate-vtt` (re-transcribed the whole file without VAD), `test-segment`,
+`create-test-files` (conftest does it), `process-vad`, `transcribe-segments`,
+and the old `clean`, which `make test` used to call and which deleted every
+session's transcripts.
+
+## Batch Run Behaviour
+
+`tools/process_batch.py` is what automation calls, so it fails fast and leaves
+a trail:
+
+- `MAPPING_PRECHECK` (default on) runs `src.combine.validate_speaker_mapping`
+  against the input stems before any worker starts. Same errors as the combine
+  step, minutes earlier.
+- A missing `ENV_FILE` raises at import instead of silently loading nothing.
+- `LOG_FILE` (default empty) persists worker and parent logs to
+  `tmp/output/<session>/<session>.log`; workers tag lines with their audio
+  file. `LOG_FILE=none` restores the old drop-everything behaviour. The rich
+  table still owns the terminal either way.
+- SIGINT and SIGTERM both kill the workers and the Manager and exit
+  `128 + signal`, so a systemd stop does not orphan spawned processes.
+- All paths derive from `src.config.ROOT_DIR`, which is the repo (from
+  `__file__`, or `PROJECT_ROOT` in the shell env), not the cwd. A relative
+  `ENV_FILE` resolves against the cwd first, then the repo.
 
 ## Environment Files
 
@@ -93,22 +135,59 @@ fails loudly.
 
 ## File Naming Conventions
 
-- **Input audio**: `3-nilbits.flac` (number-username pattern from Discord Craig)
-- **Converted**: `3-nilbits_16khz.wav`
-- **Per-user output dir**: `3-nilbits_16khz/`
-- **Per-user combined VTT**: `nilbits_combined.vtt` (username extracted from stem)
-- **Session combined**: `<session>-combined.txt`, or chunked:
-  `<session>-combined-1.txt`, `<session>-combined-2.txt`
+- **Input audio**: `tmp/input/<session>/3-nilbits.flac` (number-username from Craig)
+- **Per-speaker output dir**: `tmp/output/<session>/3-nilbits/` (input stem)
+- **Converted**: `3-nilbits.wav` inside it (16 kHz mono PCM_16, peak-normalised)
+- **Per-speaker VTT + JSON**: `3-nilbits.vtt`, `3-nilbits_transcription.json`,
+  `3-nilbits_mapping.json`, `3-nilbits_segment_NNN.wav`
+  (`src.config.vtt_path_for_input` is the one source of truth for the VTT path)
+- **Session outputs**: `<session>-combined.txt` (or `-1.txt`, `-2.txt` when
+  `CHUNKS>1`), `<session>-metrics.json`, `<session>.log`
 
 ## Performance Notes
+
+- **Conversion streams through ffmpeg.** Measured on a 2.9 h Craig track:
+  5.4 s at 41 MB peak RSS versus 13.7 s at 8.8 GB for the old in-memory
+  torchaudio path (removed), with sample-identical length and a mean absolute
+  difference of 2e-5. Peak normalisation is a two-pass streaming scan, so the
+  "normalized once" invariant still holds. ffmpeg gets a timeout of
+  max(600 s, 10x the audio duration) so a corrupt file cannot wedge a worker.
+- **Silero VAD runs on one thread** (`VAD_THREADS=1`). It processes 512-sample
+  frames one at a time; 1 thread measured 2.2x faster than 4 and 3.7x faster
+  than 8 on Apple Silicon. The worker's whisper thread count is restored after.
+- **`src/__init__.py` imports nothing.** The batch parent only needs config,
+  combine, and telemetry; importing the package must not load torch.
+- **One encoder pass per VAD island is the floor on stock whisper, by
+  decision.** Whisper encodes a fixed 30 s window, so short islands pay full
+  price (utilisation ~24% on a real session). Packing islands into one clip
+  was measured at 2.45x on a 2.9 h track with identical words, but whisper
+  places segment boundaries from what it hears, never from splices: 56 of
+  128 islands (26 with a 2 s gap) were attributed to the previous island's
+  time, up to 509 s early. Stock `word_timestamps` doubles decode cost and
+  still misassigned 9 of 128. WhisperX and faster-whisper pack the same way
+  and fix time with a separate wav2vec2 forced-alignment model; whisper.cpp
+  shrinks the encoder per clip (`audio_ctx`, ~3x on short clips). Both are
+  outside stock openai-whisper and were ruled out: this project stays on
+  stock whisper, slow and correct, rather than patching the model or adding
+  a second one. Do not reintroduce packing, encoder-context patches, or a
+  detect-and-retry shim.
+- **Temperature fallback is available.** `WHISPER_TEMPERATURE=0.0,0.2,0.4`
+  enables whisper's re-decode when the compression-ratio or logprob guard
+  trips; with the default scalar those guards never fire. Costs CPU only on
+  segments that trip it. Not yet A/B'd on a session.
 
 - Whisper's `word_timestamps=True` hangs on some segments. Keep the default
   `WHISPER_WORD_TIMESTAMPS=false`.
 - `beam_size=1` and `condition_on_previous_text=false` are intentional for
   VAD-segment transcription (each segment is already a speech island).
-- Each parallel worker loads its own whisper model. Keep `PARALLEL_JOBS` small
-  on low-RAM machines (default 2). `TORCH_THREADS=0` auto-splits threads
-  across workers.
+- Each parallel worker loads its own whisper model (~3x the checkpoint size at
+  load: fp16 file plus fp32 params). `MEMORY_GUARD` (default on) lowers the
+  active worker count so `PARALLEL_JOBS` workers fit in
+  `MEMORY_GUARD_FRACTION` of physical RAM; it never raises the count. An 8 GB
+  Pi with `large-v3-turbo` lands on 1 worker. `TORCH_THREADS=0` auto-splits
+  threads across the active workers.
+- `src.whisper.load_whisper_model` loads by file path on purpose. Loading by
+  name makes whisper sha256 the whole checkpoint per worker per run.
 - On macOS, `multiprocessing.set_start_method("spawn")` is mandatory for torch.
   `tools/process_batch.py` handles this at import time.
 
@@ -117,19 +196,23 @@ fails loudly.
 - **Repetition hallucination** on laughs/silence: whisper emits one word
   hundreds of times (e.g. `"laughs laughs laughs…"`). `src.whisper.collapse_repetition`
   collapses these to a single occurrence before they reach the VTT.
-- **Confidence drift** on quiet or ambiguous audio: `make regenerate-vtt
-  threshold=50` re-emits a filtered VTT from the saved segment JSON.
+- **Confidence drift** on quiet or ambiguous audio: `make filter-vtt
+  file=<input> threshold=50` re-emits a filtered VTT from the saved
+  `_transcription.json`. No inference; seconds, not hours.
 
 ## Testing
 
 - `tests/conftest.py` session fixture creates `tmp/input/test_jfk*.wav` from
-  `samples/jfk.wav`. You must have a real `samples/jfk.wav` file present.
+  the committed `samples/jfk.wav`. It is autouse, so every test needs working
+  audio decoding (ffmpeg) even the pure-logic ones.
 - `tests/test_batch.py` is fast (mocks + dir fixtures). Safe to run on every
   change.
 - `tests/test_combine.py` is fast (pure Python over synthetic VTTs).
 - `tests/test_vad.py`, `tests/test_transcription.py`, `tests/test_whisper.py`
-  do real whisper inference and are slow. Run only when changing the audio
-  pipeline.
+  are marked `slow` (real inference). `make test-fast` skips them; run
+  `make test` when changing the audio pipeline.
+- `make test` never cleans `tmp/output`. Slow tests write under
+  `tmp/output/test_jfk*/`; `make clean-output` removes everything.
 - Whisper segment count is nondeterministic — use range assertions, not exact
   counts.
 - For similarity checks, use `difflib.SequenceMatcher`, not `set` intersection
@@ -137,24 +220,37 @@ fails loudly.
 
 ## Dependencies (gotchas)
 
-- `torchaudio>=2.10` requires `torchcodec`. Both are pinned in `pyproject.toml`.
-- `silero-vad` is pulled in; VAD model is downloaded on first `load_silero_vad()`
-  call and cached.
+- `torch` and `torchaudio` are an exact pair; torchaudio's wheel declares no
+  dependencies so pip will not enforce it. torchaudio 2.11.0 is the final
+  maintenance line and caps torch. `torchaudio` must stay importable for
+  `silero-vad`, but nothing calls its I/O: audio goes through `soundfile` and
+  `ffmpeg`, so `torchcodec` (ABI-locked to torch, no aarch64 wheel before
+  0.11) is deliberately not a dependency. Do not reintroduce
+  `torchaudio.load`/`save`.
+- `silero-vad` bundles its model inside the wheel; `load_silero_vad()` needs no
+  network access.
+- `ffmpeg` must be on `PATH`. Makefile recipes run under `/bin/sh` (dash on
+  Debian), so keep them POSIX: `>/dev/null 2>&1`, never `&>`.
 
 ## Error Handling Style
 
 - Custom exceptions: `AudioValidationError`, `VADError`, `WhisperError`,
   `TranscriptionError`, `CombineError`. Wrap underlying errors via `raise ... from`.
 - Log warnings for skippable problems (missing segment file). Raise for
-  structural problems (no speech detected, missing mapping).
-- Individual segment failures do NOT fail the whole pipeline.
+  structural problems (missing mapping, missing model, unmapped speaker).
+- A track with no detected speech is an empty transcript, not an error
+  (`ALLOW_SILENT_TRACKS`).
+- Individual chunk failures are logged and skipped inside whisper, but a file
+  with any failed chunk raises before its manifest is written
+  (`FAIL_ON_PARTIAL_TRANSCRIPTION`) so the cache cannot hide gaps.
 
 ## Adding a New Feature
 
 1. Check this file for existing patterns first.
 2. Use a Makefile target. Add one if the operation should be reproducible.
 3. Put shared logic in `src/`, glue code in `tools/`.
-4. Load config only through `src.config`. Never call `load_dotenv` directly.
+4. Load config only through `src.config`. Never call `load_dotenv` or
+   `os.getenv` for a setting anywhere else; add the constant to config.
 5. Add a test in `tests/test_<module>.py` using synthetic fixtures where
    possible. Only use the slow whisper tests when actually testing whisper
    behavior.

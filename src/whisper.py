@@ -10,15 +10,17 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import numpy as np
+import numpy.typing as npt
 import soundfile as sf
 import whisper
 
 from src.config import (
+    DEDUPE_STRATEGY,
+    DEDUPE_WINDOW_SECONDS,
     WHISPER_CONFIDENCE_THRESHOLD,
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODELS_DIR,
-    WHISPER_PROMPT,
     SAMPLE_RATE,
     get_whisper_options,
 )
@@ -40,10 +42,9 @@ class WhisperError(Exception):
 
 
 def get_whisper_device() -> str:
-    device = os.getenv('WHISPER_DEVICE', WHISPER_DEVICE)
-    if device not in ('cpu', 'cuda', 'mps'):
-        raise ValueError(f"Invalid WHISPER_DEVICE: {device}. Must be cpu, cuda, or mps.")
-    return device
+    if WHISPER_DEVICE not in ('cpu', 'cuda', 'mps'):
+        raise ValueError(f"Invalid WHISPER_DEVICE: {WHISPER_DEVICE}. Must be cpu, cuda, or mps.")
+    return WHISPER_DEVICE
 
 
 def format_timestamp(seconds: float) -> str:
@@ -76,25 +77,33 @@ def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> st
     return text
 
 
-@lru_cache(maxsize=None)
 def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
-    """Load a whisper model from the local models dir.
+    """Load a whisper model from the local models dir, once per worker process.
 
-    The model is cached for the lifetime of the worker process. Raises
-    WhisperError if the model file is missing — run `make setup-whisper`.
+    The name is resolved here so ``load_whisper_model()`` and
+    ``load_whisper_model('large-v3-turbo')`` share one cache entry instead of
+    holding two 1.6 GB models. Raises WhisperError if the file is missing;
+    run `make setup-whisper`.
     """
-    model_name = model_name or os.getenv('WHISPER_MODEL', WHISPER_MODEL)
+    return _load_whisper_model(model_name or WHISPER_MODEL)
+
+
+@lru_cache(maxsize=None)
+def _load_whisper_model(model_name: str) -> whisper.Whisper:
     model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
     if not model_path.exists():
         raise WhisperError(
             f"Model file not found: {model_path}. Run `make setup-whisper` first."
         )
-    os.environ['WHISPER_MODELS_DIR'] = str(WHISPER_MODELS_DIR)
-    return whisper.load_model(
-        model_name,
-        device=get_whisper_device(),
-        download_root=str(WHISPER_MODELS_DIR),
-    )
+    # Load by path: whisper.load_model(name) re-reads and sha256s the whole
+    # checkpoint on every call (1.6 GB for large-v3-turbo, once per worker per
+    # run). A path skips that but also skips the alignment heads that word
+    # timestamps need, so restore them for known model names.
+    model = whisper.load_model(str(model_path), device=get_whisper_device())
+    alignment_heads = whisper._ALIGNMENT_HEADS.get(model_name)
+    if alignment_heads is not None:
+        model.set_alignment_heads(alignment_heads)
+    return model
 
 
 def _segments_from_result(
@@ -114,6 +123,45 @@ def _segments_from_result(
     return out
 
 
+def dedupe_segments(
+    segments: list[dict[str, Any]],
+    strategy: str = DEDUPE_STRATEGY,
+    window_seconds: float = DEDUPE_WINDOW_SECONDS,
+) -> list[dict[str, Any]]:
+    """Drop repeated cues per DEDUPE_STRATEGY; blank cues are always dropped.
+
+    'consecutive' only removes a cue whose text matches the previously kept
+    cue and starts within window_seconds of its end. That is the shape of
+    whisper's repeated-line hallucination; a genuine "Yeah." ten minutes later
+    survives. 'global' is the legacy exact-text set across the whole file.
+    """
+    ordered = sorted(segments, key=lambda s: float(s.get("start", 0.0)))
+    kept: list[dict[str, Any]] = []
+    if strategy == 'global':
+        seen: set[str] = set()
+        for seg in ordered:
+            line = seg["text"].strip()
+            if line and line not in seen:
+                kept.append(seg)
+                seen.add(line)
+        return kept
+    prev: Optional[dict[str, Any]] = None
+    for seg in ordered:
+        line = seg["text"].strip()
+        if not line:
+            continue
+        if (
+            strategy == 'consecutive'
+            and prev is not None
+            and line == prev["text"].strip()
+            and float(seg["start"]) - float(prev["end"]) <= window_seconds
+        ):
+            continue
+        kept.append(seg)
+        prev = seg
+    return kept
+
+
 def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -128,7 +176,7 @@ def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
             )
 
 
-def _load_segment_audio(audio_path: Path) -> np.ndarray:
+def _load_segment_audio(audio_path: Path) -> npt.NDArray[np.float32]:
     """Decode a normalized pipeline WAV without spawning FFmpeg."""
     audio, sample_rate = sf.read(str(audio_path), dtype='float32', always_2d=False)
     if sample_rate != SAMPLE_RATE:
@@ -212,7 +260,7 @@ def transcribe_segment(
 
 
 def _whisper_model_cache_hits() -> Optional[int]:
-    cache_info = getattr(load_whisper_model, 'cache_info', None)
+    cache_info = getattr(_load_whisper_model, 'cache_info', None)
     if not callable(cache_info):
         return None
     try:
@@ -312,13 +360,7 @@ def transcribe_audio_segments(
         stage_started = time.perf_counter()
         try:
             if output_path:
-                seen: set[str] = set()
-                deduped: list[dict[str, Any]] = []
-                for seg in all_segments:
-                    line = seg["text"].strip()
-                    if line and line not in seen:
-                        deduped.append(seg)
-                        seen.add(line)
+                deduped = dedupe_segments(all_segments)
                 _write_vtt(output_path, deduped)
                 transcription_metrics['written_vtt_cue_count'] = len(deduped)
                 logger.info(f"User transcript saved: {output_path.name}")
@@ -346,74 +388,31 @@ def filter_by_confidence(
     return out
 
 
-def transcribe_file_direct(
-    audio_path: Path,
-    output_path: Path,
-    prompt: str = "",
-) -> list[dict[str, Any]]:
-    """Transcribe a whole audio file in one pass (no VAD segmentation).
-
-    Used by ``regenerate_vtt_for_audio``. For the standard pipeline, use
-    ``src.transcribe.transcribe_audio`` which goes through VAD.
-    """
-    if not audio_path.exists():
-        raise WhisperError(f"Audio file not found: {audio_path}")
-
-    try:
-        model = load_whisper_model()
-        opts = get_whisper_options()
-        if prompt:
-            opts['initial_prompt'] = prompt
-        result = model.transcribe(str(audio_path), **opts)
-        segments = _segments_from_result(result)
-        for seg in segments:
-            if seg["text"]:
-                logger.info(
-                    f"  [{format_timestamp(seg['start'])} -> {format_timestamp(seg['end'])}] {seg['text']}"
-                )
-        _write_vtt(output_path, segments)
-        return segments
-    except Exception as e:
-        raise WhisperError(f"Failed to transcribe audio: {e}") from e
-
-
 def regenerate_vtt_with_confidence(
     json_path: Path,
     output_vtt: Path,
     confidence_threshold: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """Rewrite a VTT from a saved segments JSON, optionally filtering by confidence."""
+    """Rewrite a VTT from the pipeline's saved JSON, optionally filtered by confidence.
+
+    Accepts the pipeline's ``<stem>_transcription.json`` (a dict with a
+    ``segments`` list) or a bare list of segments. Applies the same dedup rule
+    as the pipeline so the rewritten VTT matches what a fresh run would write.
+    No inference happens here.
+    """
     if not json_path.exists():
         raise WhisperError(f"JSON file not found: {json_path}")
 
     try:
-        with open(json_path) as f:
-            segments: list[dict[str, Any]] = json.load(f)
+        with open(json_path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        segments: list[dict[str, Any]] = (
+            loaded["segments"] if isinstance(loaded, dict) else loaded
+        )
         if confidence_threshold is not None:
             segments = filter_by_confidence(segments, confidence_threshold)
-        _write_vtt(output_vtt, segments)
-        return segments
+        deduped = dedupe_segments(segments)
+        _write_vtt(output_vtt, deduped)
+        return deduped
     except Exception as e:
         raise WhisperError(f"Failed to regenerate VTT: {e}") from e
-
-
-def regenerate_vtt_for_audio(
-    audio_path: Path,
-    confidence_threshold: Optional[float] = None,
-) -> list[dict[str, Any]]:
-    """Re-transcribe an audio file and rewrite its VTT, with optional confidence filter."""
-    if not audio_path.exists():
-        raise WhisperError(f"Audio file not found: {audio_path}")
-
-    json_path = audio_path.with_suffix(".json")
-    output_vtt = audio_path.with_suffix(".vtt")
-
-    segments = transcribe_file_direct(audio_path, output_vtt, prompt=WHISPER_PROMPT)
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(segments, f, indent=2)
-
-    if confidence_threshold is not None:
-        segments = regenerate_vtt_with_confidence(json_path, output_vtt, confidence_threshold)
-
-    return segments

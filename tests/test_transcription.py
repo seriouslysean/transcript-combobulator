@@ -3,6 +3,8 @@
 
 from pathlib import Path
 import pytest
+
+pytestmark = pytest.mark.slow  # real whisper/VAD inference
 from src.transcribe import transcribe_audio
 from src.config import OUTPUT_DIR
 import json

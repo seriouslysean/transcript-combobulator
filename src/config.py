@@ -5,12 +5,35 @@ by every other module — do not add imports from src.* here.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-_env_file = os.environ.get('ENV_FILE') or '.env'
+# Anchor every path to the repository, not the caller's cwd, so the tools behave
+# the same from cron, systemd, or another directory. PROJECT_ROOT (shell env,
+# not .env) overrides for unusual layouts.
+ROOT_DIR = Path(
+    os.environ.get('PROJECT_ROOT') or Path(__file__).resolve().parents[1]
+).resolve()
+
+
+def _resolve_env_file(value: str) -> Path:
+    """Relative ENV_FILE resolves against cwd if present there, else ROOT_DIR."""
+    candidate = Path(value)
+    if candidate.is_absolute() or candidate.exists():
+        return candidate
+    return ROOT_DIR / candidate
+
+
+_env_file = _resolve_env_file(os.environ.get('ENV_FILE') or '.env')
+if os.environ.get('ENV_FILE') and not _env_file.is_file():
+    # load_dotenv silently loads nothing for a missing file, which would run
+    # the whole pipeline on defaults with no speaker mapping.
+    raise FileNotFoundError(
+        f"ENV_FILE={os.environ['ENV_FILE']!r} not found (looked at {_env_file})"
+    )
 load_dotenv(dotenv_path=_env_file, override=True)
 
 
@@ -32,19 +55,10 @@ def get_int_env(key: str, default: int) -> int:
         return default
 
 
-def require_env(key: str) -> str:
-    value = os.getenv(key)
-    if not value:
-        raise ValueError(f"{key} must be set in .env file")
-    return value
-
-
 # ── Paths ──
-ROOT_DIR = Path(os.getcwd()).resolve()
 TMP_DIR = ROOT_DIR / 'tmp'
 INPUT_DIR = TMP_DIR / 'input'
 OUTPUT_DIR = TMP_DIR / 'output'
-TRANSCRIPTIONS_DIR = TMP_DIR / 'transcriptions'
 WHISPER_MODELS_DIR = ROOT_DIR / 'models'
 
 
@@ -57,13 +71,72 @@ def get_output_path_for_input(input_path: Path) -> Path:
         return OUTPUT_DIR / input_path.stem
 
 
+_USERNAME_VTT_PATTERN = re.compile(r'\d+-(.+)_16khz')
+
+
+def vtt_name_for_stem(stem: str) -> str:
+    """'3-username_16khz' -> 'username_combined.vtt'; anything else -> '<stem>.vtt'."""
+    m = _USERNAME_VTT_PATTERN.match(stem)
+    return f"{m.group(1)}_combined.vtt" if m else f"{stem}.vtt"
+
+
+def vtt_path_for_input(input_path: Path) -> Path:
+    """Where the pipeline writes the per-speaker VTT for a given input file."""
+    return get_output_path_for_input(input_path) / vtt_name_for_stem(input_path.stem)
+
+
 # ── Parallel Processing ──
 PARALLEL_JOBS = get_int_env('PARALLEL_JOBS', 2)
 TORCH_THREADS = get_int_env('TORCH_THREADS', 0)  # 0 = auto-detect per worker
 WORKER_NICE = get_int_env('WORKER_NICE', 10)  # niceness increment; 0 = unchanged
 
+# ── Batch Run Guards ──
+# MEMORY_GUARD caps active workers so the estimated per-worker footprint
+# (roughly 3x the whisper checkpoint size plus runtime) fits within
+# MEMORY_GUARD_FRACTION of physical RAM. It only ever lowers PARALLEL_JOBS.
+MEMORY_GUARD = get_bool_env('MEMORY_GUARD', True)
+MEMORY_GUARD_FRACTION = get_float_env('MEMORY_GUARD_FRACTION', 0.85)
+# MAPPING_PRECHECK validates TRANSCRIPT_N_* against the input files before any
+# transcription starts, instead of failing at the combine step hours later.
+MAPPING_PRECHECK = get_bool_env('MAPPING_PRECHECK', True)
+# LOG_FILE: where batch runs persist worker logs. Empty = <output>/<session>/
+# <session>.log; 'none' disables file logging (the pre-guard behaviour).
+LOG_FILE = os.getenv('LOG_FILE', '').strip().strip('"')
+
+# ── Combine Output ──
+INCLUDE_TIMESTAMPS = get_bool_env('INCLUDE_TIMESTAMPS', False)
+SKIP_FILTERS = [
+    f.strip()
+    for f in os.getenv('SKIP_FILTERS', '[AUDIO OUT],[BLANK_AUDIO]').strip('"').split(',')
+    if f.strip()
+]
+CHUNKS = max(1, get_int_env('CHUNKS', 1))
+
+# ── Transcript Fidelity ──
+# DEDUPE_STRATEGY applies to both the per-speaker VTT and the combined
+# transcript. 'consecutive' drops a cue only when it repeats the previous kept
+# cue for that speaker within DEDUPE_WINDOW_SECONDS, which is what whisper's
+# repeated-line hallucination looks like. 'global' is the legacy whole-session
+# dedup that also removed genuine repeats such as every second "Yeah.".
+# 'none' keeps everything.
+DEDUPE_STRATEGY = os.getenv('DEDUPE_STRATEGY', 'consecutive').strip().strip('"').lower()
+if DEDUPE_STRATEGY not in ('consecutive', 'global', 'none'):
+    raise ValueError(
+        f"DEDUPE_STRATEGY must be consecutive, global, or none; got {DEDUPE_STRATEGY!r}"
+    )
+DEDUPE_WINDOW_SECONDS = get_float_env('DEDUPE_WINDOW_SECONDS', 2.0)
+# A file with any failed chunks is an error so a rerun retries it; the
+# alternative is a transcript silently missing minutes of speech.
+FAIL_ON_PARTIAL_TRANSCRIPTION = get_bool_env('FAIL_ON_PARTIAL_TRANSCRIPTION', True)
+# A track with no detected speech (muted participant) yields an empty
+# transcript instead of failing the whole session.
+ALLOW_SILENT_TRACKS = get_bool_env('ALLOW_SILENT_TRACKS', True)
+
 # ── Audio Processing ──
 WHISPER_SAMPLE_RATE = 16000
+# Silero processes 512-sample frames one at a time; thread fan-out costs more
+# than it saves (1 thread measured ~2x faster than 4 on Apple Silicon).
+VAD_THREADS = get_int_env('VAD_THREADS', 1)
 
 
 def _validate_sample_rate(sample_rate: int) -> int:
@@ -76,7 +149,6 @@ def _validate_sample_rate(sample_rate: int) -> int:
 
 
 SAMPLE_RATE = _validate_sample_rate(get_int_env('SAMPLE_RATE', WHISPER_SAMPLE_RATE))
-TRANSCRIPTION_MODE = os.getenv('TRANSCRIPTION_MODE', 'vad')
 
 # ── VAD ──
 VAD_THRESHOLD = get_float_env('VAD_THRESHOLD', 0.5)
@@ -92,7 +164,22 @@ WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'large-v3-turbo')
 WHISPER_DEVICE = os.getenv('WHISPER_DEVICE', 'cpu')
 WHISPER_FP16 = get_bool_env('WHISPER_FP16', False)
 WHISPER_LANGUAGE = os.getenv('WHISPER_LANGUAGE', 'en')
-WHISPER_TEMPERATURE = get_float_env('WHISPER_TEMPERATURE', 0.0)
+
+
+def _parse_temperature(raw: str) -> float | tuple[float, ...]:
+    """A scalar decodes once; a comma list enables whisper's own fallback, which
+    re-decodes at the next temperature when the compression-ratio or logprob
+    guard trips (that guard is inert with a scalar)."""
+    try:
+        values = tuple(float(p) for p in raw.replace(' ', '').split(',') if p)
+    except ValueError:
+        return 0.0
+    if not values:
+        return 0.0
+    return values[0] if len(values) == 1 else values
+
+
+WHISPER_TEMPERATURE = _parse_temperature(os.getenv('WHISPER_TEMPERATURE', '0.0'))
 WHISPER_BEAM_SIZE = get_int_env('WHISPER_BEAM_SIZE', 1)
 WHISPER_WORD_TIMESTAMPS = get_bool_env('WHISPER_WORD_TIMESTAMPS', False)
 WHISPER_CONDITION_ON_PREVIOUS = get_bool_env('WHISPER_CONDITION_ON_PREVIOUS', False)
@@ -126,11 +213,21 @@ def get_whisper_options() -> dict[str, Any]:
     }
 
 
+def _model_file_identity() -> dict[str, int] | None:
+    """Size and mtime of the checkpoint, so swapping the .pt under the same
+    name invalidates cached results instead of being a silent hit."""
+    model_path = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+    try:
+        stat = model_path.stat()
+    except OSError:
+        return None
+    return {'size': stat.st_size, 'mtime_ns': stat.st_mtime_ns}
+
+
 def get_pipeline_fingerprint_settings() -> dict[str, Any]:
     """Return output-affecting settings used by the per-file resume cache."""
     return {
         'sample_rate': SAMPLE_RATE,
-        'transcription_mode': TRANSCRIPTION_MODE,
         'vad': {
             'threshold': VAD_THRESHOLD,
             'min_speech_duration': VAD_MIN_SPEECH_DURATION,
@@ -138,6 +235,11 @@ def get_pipeline_fingerprint_settings() -> dict[str, Any]:
             'padding_seconds': PADDING_SECONDS,
         },
         'whisper_model': WHISPER_MODEL,
+        'whisper_model_file': _model_file_identity(),
         'whisper_device': WHISPER_DEVICE,
         'whisper_options': get_whisper_options(),
+        'dedupe': {
+            'strategy': DEDUPE_STRATEGY,
+            'window_seconds': DEDUPE_WINDOW_SECONDS,
+        },
     }

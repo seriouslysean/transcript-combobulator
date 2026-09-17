@@ -12,15 +12,17 @@ from pathlib import Path
 from typing import Any
 
 import soundfile as sf
-import torchaudio
+import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 
 from src.audio_utils import AudioValidationError, validate_audio_file
 from src.config import (
+    ALLOW_SILENT_TRACKS,
     PADDING_SECONDS,
     SAMPLE_RATE,
     VAD_MIN_SILENCE_DURATION,
     VAD_MIN_SPEECH_DURATION,
+    VAD_THREADS,
     VAD_THRESHOLD,
 )
 from src.logging_config import get_logger
@@ -68,30 +70,42 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
 
     try:
         model = load_vad_model()
-        wav, sr = torchaudio.load(input_path)
-
-        if sr != SAMPLE_RATE:
-            logger.warning(
-                f"Audio sample rate {sr}Hz differs from expected {SAMPLE_RATE}Hz "
-                "— resampling (pipeline should have converted upstream)"
+        # The pipeline converts upstream; anything else is a wiring bug, and
+        # silently resampling here would hide it from the cache fingerprint.
+        if audio_info['sample_rate'] != SAMPLE_RATE or audio_info['channels'] != 1:
+            raise VADError(
+                f"Expected {SAMPLE_RATE}Hz mono, got {audio_info['sample_rate']}Hz "
+                f"{audio_info['channels']}ch: run convert_to_wav first"
             )
-            wav = torchaudio.transforms.Resample(sr, SAMPLE_RATE)(wav)
+        samples, _ = sf.read(str(input_path), dtype='float32', always_2d=False)
+        wav = torch.from_numpy(samples).unsqueeze(0)
 
-        if wav.shape[0] > 1:
-            wav = wav.mean(dim=0, keepdim=True)
-
-        speech_timestamps = get_speech_timestamps(
-            wav,
-            model,
-            return_seconds=True,
-            sampling_rate=SAMPLE_RATE,
-            threshold=VAD_THRESHOLD,
-            min_speech_duration_ms=int(VAD_MIN_SPEECH_DURATION * 1000),
-            min_silence_duration_ms=int(VAD_MIN_SILENCE_DURATION * 1000),
-        )
+        # Silero runs frame by frame; intra-op threading only adds overhead.
+        # Restore the worker's whisper thread count afterwards, even on error.
+        previous_threads = torch.get_num_threads()
+        if VAD_THREADS > 0:
+            torch.set_num_threads(VAD_THREADS)
+        try:
+            speech_timestamps = get_speech_timestamps(
+                wav,
+                model,
+                return_seconds=True,
+                sampling_rate=SAMPLE_RATE,
+                threshold=VAD_THRESHOLD,
+                min_speech_duration_ms=int(VAD_MIN_SPEECH_DURATION * 1000),
+                min_silence_duration_ms=int(VAD_MIN_SILENCE_DURATION * 1000),
+            )
+        finally:
+            if VAD_THREADS > 0:
+                torch.set_num_threads(previous_threads)
 
         if not speech_timestamps:
-            raise VADError("No speech segments detected in audio")
+            if not ALLOW_SILENT_TRACKS:
+                raise VADError("No speech segments detected in audio")
+            logger.warning(
+                f"No speech detected in {input_path.name}; writing an empty mapping "
+                "(ALLOW_SILENT_TRACKS=false to treat this as an error)"
+            )
 
         padding_samples = int(PADDING_SECONDS * SAMPLE_RATE)
         logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")
@@ -105,9 +119,15 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
             segment_path = output_dir / f"{input_path.stem}_segment_{i:03d}.wav"
             sf.write(str(segment_path), segment.T.numpy(), SAMPLE_RATE)
 
+            # start/end are the detected speech bounds; clip_* are the bounds
+            # of the WAV actually written, which include the padding. Whisper
+            # timestamps are relative to the clip, so the clip start is the
+            # offset to add back.
             segments.append({
                 'start_seconds': ts['start'],
                 'end_seconds': ts['end'],
+                'clip_start_seconds': start / SAMPLE_RATE,
+                'clip_end_seconds': end / SAMPLE_RATE,
                 'segment_file': str(segment_path),
             })
 

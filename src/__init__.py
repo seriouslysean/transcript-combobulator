@@ -1,6 +1,7 @@
-"""Utility modules for audio processing and transcription."""
+"""Audio processing and transcription pipeline.
 
-from .transcribe import transcribe_audio
-from .vad import process_audio
-
-__all__ = ['process_audio', 'transcribe_audio']
+Import submodules directly (``from src.vad import process_audio``). This
+package init deliberately imports nothing: the batch parent process only needs
+config, combine, and telemetry, and must not pull torch and whisper into
+memory just to render a progress table.
+"""

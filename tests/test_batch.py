@@ -12,9 +12,12 @@ from tools.process_batch import (
     _build_file_metrics_table,
     _build_run_metrics_table,
     _calculate_torch_threads,
+    _estimate_worker_bytes,
     _format_duration,
     _initialize_worker,
+    _memory_capped_workers,
     _publish_metrics_report,
+    _resolve_log_file,
     _status_display,
     find_audio_files,
 )
@@ -37,15 +40,6 @@ class TestFindAudioFiles:
         (tmp_path / "notes.txt").touch()
         (tmp_path / "data.json").touch()
         (tmp_path / "speaker.wav").touch()
-
-        files = find_audio_files(tmp_path)
-        assert len(files) == 1
-        assert files[0].name == "speaker.wav"
-
-    def test_excludes_converted_files(self, tmp_path):
-        """Skips files with _converted in the stem."""
-        (tmp_path / "speaker.wav").touch()
-        (tmp_path / "speaker_converted.wav").touch()
 
         files = find_audio_files(tmp_path)
         assert len(files) == 1
@@ -509,3 +503,106 @@ class TestMetricsPublication:
 
         assert published_path is None
         assert error == "disk full"
+
+
+GIB = 1 << 30
+
+
+class TestMemoryGuard:
+    """Worker cap derived from model size and physical RAM."""
+
+    def test_unknown_ram_or_model_leaves_request_alone(self):
+        assert _memory_capped_workers(2, 0, 8 * GIB, 0.85) == (2, None)
+        assert _memory_capped_workers(2, GIB, None, 0.85) == (2, None)
+
+    def test_enough_ram_keeps_requested_workers(self):
+        # large-v3-turbo (~1.6 GB) x2 on a 32 GB machine fits with room to spare.
+        workers, warning = _memory_capped_workers(2, int(1.6 * GIB), 32 * GIB, 0.85)
+        assert workers == 2
+        assert warning is None
+
+    def test_eight_gb_pi_is_capped_to_one_worker(self):
+        workers, warning = _memory_capped_workers(2, int(1.6 * GIB), 8 * GIB, 0.85)
+        assert workers == 1
+        assert warning is not None
+        assert "running 1" in warning
+        assert "MEMORY_GUARD=false" in warning
+
+    def test_single_worker_that_cannot_fit_still_runs_with_warning(self):
+        workers, warning = _memory_capped_workers(1, 4 * GIB, 8 * GIB, 0.85)
+        assert workers == 1
+        assert warning is not None
+        assert "one worker" in warning
+
+    def test_never_raises_the_requested_count(self):
+        workers, _ = _memory_capped_workers(1, int(0.1 * GIB), 64 * GIB, 0.85)
+        assert workers == 1
+
+    def test_estimate_scales_with_model_size(self):
+        small = _estimate_worker_bytes(100 * 1024 * 1024)
+        large = _estimate_worker_bytes(1600 * 1024 * 1024)
+        assert large > small
+        assert small > 100 * 1024 * 1024
+
+
+class TestResolveLogFile:
+    """LOG_FILE mapping for batch runs."""
+
+    def test_empty_defaults_to_session_log_under_output(self, tmp_path):
+        assert _resolve_log_file("", tmp_path, "night-one") == (
+            tmp_path / "night-one" / "night-one.log"
+        )
+
+    @pytest.mark.parametrize("value", ["none", "NONE", "off", "false", "0"])
+    def test_disable_keywords_return_none(self, tmp_path, value):
+        assert _resolve_log_file(value, tmp_path, "s") is None
+
+    def test_absolute_path_is_used_as_is(self, tmp_path):
+        target = tmp_path / "custom.log"
+        assert _resolve_log_file(str(target), tmp_path, "s") == target
+
+    def test_relative_path_resolves_against_project_root(self, tmp_path):
+        from src.config import ROOT_DIR
+
+        assert _resolve_log_file("logs/run.log", tmp_path, "s") == ROOT_DIR / "logs" / "run.log"
+
+
+class TestPartialTranscriptionFailsFile:
+    """A file with failed chunks must not be recorded as complete."""
+
+    def _run(self, tmp_path, failed, allow_partial):
+        from tools.process_single_file import main
+
+        input_file = tmp_path / "speaker.wav"
+        input_file.touch()
+        transcription = {
+            "vtt_file": str(tmp_path / "speaker.vtt"),
+            "json_file": str(tmp_path / "speaker.json"),
+            "mapping_file": str(tmp_path / "speaker_mapping.json"),
+            "metrics": {"chunk_count": 200, "failed_chunk_count": failed, "chunks": []},
+        }
+        with patch("tools.process_single_file.get_output_path_for_input", return_value=tmp_path), \
+             patch("tools.process_single_file.is_pipeline_complete", return_value=False), \
+             patch("tools.process_single_file.needs_conversion", return_value=False), \
+             patch("tools.process_single_file.process_audio", return_value=(tmp_path, [])), \
+             patch("tools.process_single_file.transcribe_segments", return_value=transcription), \
+             patch("tools.process_single_file.FAIL_ON_PARTIAL_TRANSCRIPTION", not allow_partial), \
+             patch("tools.process_single_file.write_pipeline_manifest") as manifest:
+            metrics = main(str(input_file))
+        return metrics, manifest
+
+    def test_failed_chunks_raise_and_skip_manifest(self, tmp_path):
+        from src.transcribe import TranscriptionError
+
+        with pytest.raises(TranscriptionError, match="30 of 200 segments failed"):
+            self._run(tmp_path, failed=30, allow_partial=False)
+
+    def test_failed_chunks_accepted_when_configured(self, tmp_path):
+        metrics, manifest = self._run(tmp_path, failed=30, allow_partial=True)
+        assert metrics["status"] == "processed"
+        manifest.assert_called_once()
+
+    def test_clean_file_still_completes(self, tmp_path):
+        metrics, manifest = self._run(tmp_path, failed=0, allow_partial=False)
+        assert metrics["status"] == "processed"
+        manifest.assert_called_once()
