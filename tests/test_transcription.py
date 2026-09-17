@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 pytestmark = pytest.mark.slow  # real whisper/VAD inference
-from src.transcribe import transcribe_audio
-from src.config import OUTPUT_DIR
+from transcript_combobulator.transcribe import transcribe_audio
+from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
 import json
 from difflib import SequenceMatcher
 
@@ -17,8 +17,8 @@ def similar(a: str, b: str) -> float:
 def test_segmented_transcription():
     """Test that transcribing a padded file produces similar content to the original."""
     # Get paths to test files
-    original_file = Path('tmp/input/test_jfk.wav')
-    padded_file = Path('tmp/input/test_jfk_padded.wav')
+    original_file = INPUT_DIR / 'test_jfk.wav'
+    padded_file = INPUT_DIR / 'test_jfk_padded.wav'
     assert original_file.exists(), "Original test file not found"
     assert padded_file.exists(), "Padded test file not found"
 

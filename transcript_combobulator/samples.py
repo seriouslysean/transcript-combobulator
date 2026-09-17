@@ -3,7 +3,6 @@
 
 import argparse
 import shutil
-import sys
 from pathlib import Path
 
 import soundfile as sf
@@ -104,19 +103,15 @@ def create_sample_files(
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Create sample files")
+    parser = argparse.ArgumentParser(prog="combobulator samples", description="Build sample and test audio from samples/")
     parser.add_argument('--prefix', default="", help='Prefix for output files (e.g. "test_")')
     parser.add_argument('--copies', type=int, default=5)
     parser.add_argument('--padded-copies', type=int, default=3)
     parser.add_argument('--session', default="jfk-sample")
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    args = parser.parse_args(argv)
     create_sample_files(
         prefix=args.prefix,
         copies=args.copies,
         padded_copies=args.padded_copies,
         session=args.session,
     )
-
-
-if __name__ == '__main__':
-    main()

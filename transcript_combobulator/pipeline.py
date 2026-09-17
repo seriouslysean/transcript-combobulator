@@ -1,6 +1,5 @@
-"""Process a single audio file: convert -> VAD -> transcribe."""
+"""Per-file pipeline: convert -> VAD -> transcribe, with stage-level resume."""
 
-import argparse
 import json
 import logging
 import shutil
@@ -9,19 +8,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, MutableMapping, Optional
 
-from src.audio_utils import (
+from transcript_combobulator.audio_utils import (
     AudioValidationError,
     convert_to_wav,
     needs_conversion,
     validate_audio_file,
 )
-from src.config import (
+from transcript_combobulator.config import (
     FAIL_ON_PARTIAL_TRANSCRIPTION,
     get_output_path_for_input,
     vtt_name_for_stem,
 )
-from src.logging_config import setup_logging
-from src.pipeline_cache import (
+from transcript_combobulator.logging_config import setup_logging
+from transcript_combobulator.pipeline_cache import (
     build_stage_fingerprints,
     get_manifest_path,
     get_progress_path,
@@ -32,10 +31,10 @@ from src.pipeline_cache import (
     stage_is_complete,
     write_pipeline_manifest,
 )
-from src.transcribe import TranscriptionError, transcribe_segments
-from src.telemetry import elapsed_seconds, utc_now_iso
-from src.vad import process_audio
-from src.whisper import regenerate_vtt_with_confidence
+from transcript_combobulator.transcribe import TranscriptionError, transcribe_segments
+from transcript_combobulator.telemetry import elapsed_seconds, utc_now_iso
+from transcript_combobulator.vad import process_audio
+from transcript_combobulator.whisper import regenerate_vtt_with_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +50,8 @@ def _timed_stage(metrics: dict[str, Any], stage: str) -> Iterator[None]:
         )
 
 
-def main(
-    input_path: str,
+def process_file(
+    input_path: str | Path,
     status_dict: Optional[MutableMapping[str, Any]] = None,
     status_key: Optional[str] = None,
     force: bool = False,
@@ -265,11 +264,3 @@ def main(
         file_metrics['total_seconds'] = elapsed_seconds(
             started, time.perf_counter()
         )
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input_file")
-    parser.add_argument("--force", action="store_true", help="Ignore completed output")
-    args = parser.parse_args()
-    main(args.input_file, force=args.force)

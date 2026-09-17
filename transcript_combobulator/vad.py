@@ -1,6 +1,6 @@
 """Voice Activity Detection using Silero VAD.
 
-Takes a 16kHz mono WAV (produced by src.audio_utils.convert_to_wav), runs
+Takes a 16kHz mono WAV (produced by transcript_combobulator.audio_utils.convert_to_wav), runs
 Silero VAD to find speech regions, writes each region as its own segment
 WAV, and writes a mapping JSON describing all segments.
 
@@ -25,8 +25,8 @@ import soundfile as sf
 import torch
 from silero_vad import load_silero_vad
 
-from src.audio_utils import AudioValidationError, validate_audio_file
-from src.config import (
+from transcript_combobulator.audio_utils import AudioValidationError, validate_audio_file
+from transcript_combobulator.config import (
     ALLOW_SILENT_TRACKS,
     PADDING_SECONDS,
     VAD_BACKEND,
@@ -36,7 +36,7 @@ from src.config import (
     VAD_THREADS,
     VAD_THRESHOLD,
 )
-from src.logging_config import get_logger
+from transcript_combobulator.logging_config import get_logger
 
 logger = get_logger(__name__)
 

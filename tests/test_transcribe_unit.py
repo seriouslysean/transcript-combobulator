@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.transcribe import TranscriptionError, transcribe_audio
+from transcript_combobulator.transcribe import TranscriptionError, transcribe_audio
 
 
 def test_offset_uses_padded_clip_start(tmp_path: Path) -> None:
@@ -27,8 +27,8 @@ def test_offset_uses_padded_clip_start(tmp_path: Path) -> None:
         captured["segments"] = segments
         return []
 
-    with patch("src.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("src.transcribe.transcribe_audio_segments", side_effect=fake_transcribe):
+    with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
+         patch("transcript_combobulator.transcribe.transcribe_audio_segments", side_effect=fake_transcribe):
         transcribe_audio(audio, pre_processed_mapping=mapping)
 
     assert captured["segments"] == [(clip, 9.7)]
@@ -45,8 +45,8 @@ def test_offset_falls_back_to_speech_start_for_old_mappings(tmp_path: Path) -> N
         captured["segments"] = segments
         return []
 
-    with patch("src.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("src.transcribe.transcribe_audio_segments", side_effect=fake_transcribe):
+    with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
+         patch("transcript_combobulator.transcribe.transcribe_audio_segments", side_effect=fake_transcribe):
         transcribe_audio(
             audio,
             pre_processed_mapping=[{"start_seconds": 10.0, "end_seconds": 12.0, "segment_file": str(clip)}],
@@ -59,9 +59,9 @@ def test_silent_track_writes_empty_transcript(tmp_path: Path) -> None:
     audio = tmp_path / "5-afk.wav"
     audio.touch()
     metrics = {}
-    with patch("src.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("src.transcribe.ALLOW_SILENT_TRACKS", True), \
-         patch("src.transcribe.transcribe_audio_segments") as whisper_call:
+    with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
+         patch("transcript_combobulator.transcribe.ALLOW_SILENT_TRACKS", True), \
+         patch("transcript_combobulator.transcribe.transcribe_audio_segments") as whisper_call:
         result = transcribe_audio(audio, pre_processed_mapping=[], metrics=metrics)
 
     whisper_call.assert_not_called()
@@ -75,8 +75,8 @@ def test_silent_track_writes_empty_transcript(tmp_path: Path) -> None:
 def test_silent_track_is_an_error_when_disallowed(tmp_path: Path) -> None:
     audio = tmp_path / "5-afk.wav"
     audio.touch()
-    with patch("src.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("src.transcribe.ALLOW_SILENT_TRACKS", False), \
+    with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
+         patch("transcript_combobulator.transcribe.ALLOW_SILENT_TRACKS", False), \
          pytest.raises(TranscriptionError, match="No valid segments"):
         transcribe_audio(audio, pre_processed_mapping=[])
 
@@ -84,8 +84,8 @@ def test_silent_track_is_an_error_when_disallowed(tmp_path: Path) -> None:
 def test_mapping_with_only_missing_files_is_still_an_error(tmp_path: Path) -> None:
     audio = tmp_path / "3-nilbits.wav"
     audio.touch()
-    with patch("src.transcribe.get_output_path_for_input", return_value=tmp_path), \
-         patch("src.transcribe.ALLOW_SILENT_TRACKS", True), \
+    with patch("transcript_combobulator.transcribe.get_output_path_for_input", return_value=tmp_path), \
+         patch("transcript_combobulator.transcribe.ALLOW_SILENT_TRACKS", True), \
          pytest.raises(TranscriptionError, match="No valid segments"):
         transcribe_audio(
             audio,

@@ -9,8 +9,8 @@ import soundfile as sf
 import torch
 from silero_vad import get_speech_timestamps
 
-from src.config import SAMPLE_RATE, VAD_MIN_SILENCE_DURATION, VAD_MIN_SPEECH_DURATION, VAD_THRESHOLD
-from src.vad import _stream_speech_probs, detect_speech, load_vad_model, process_audio
+from transcript_combobulator.config import SAMPLE_RATE, VAD_MIN_SILENCE_DURATION, VAD_MIN_SPEECH_DURATION, VAD_THRESHOLD
+from transcript_combobulator.vad import _stream_speech_probs, detect_speech, load_vad_model, process_audio
 
 pytestmark = pytest.mark.slow  # real silero inference on a few minutes of audio (seconds)
 

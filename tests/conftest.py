@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.config import INPUT_DIR, OUTPUT_DIR
-from tools.create_sample_files import create_sample_files
+from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
+from transcript_combobulator.samples import create_sample_files
 
 # Everything the suite creates is named test_jfk*; teardown removes only that.
 # tmp/output holds real session transcripts and must never be swept wholesale.

@@ -7,12 +7,13 @@ the bytes on disk. This uses whisper's own downloader, which also verifies
 the checksum and skips the download when the file already matches.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
 import whisper
 
-from src.config import WHISPER_MODEL, WHISPER_MODELS_DIR
+from transcript_combobulator.config import WHISPER_MODEL, WHISPER_MODELS_DIR
 
 
 def setup_whisper(model_name: str, models_dir: Path) -> bool:
@@ -36,13 +37,14 @@ def setup_whisper(model_name: str, models_dir: Path) -> bool:
         return False
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        prog="combobulator setup-model",
+        description="Download WHISPER_MODEL into models/ without loading it (checksum-verified).",
+    )
+    parser.parse_args(argv)
     if not WHISPER_MODEL:
         print("Error: WHISPER_MODEL is not set")
         sys.exit(1)
     if not setup_whisper(WHISPER_MODEL, WHISPER_MODELS_DIR):
         sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()

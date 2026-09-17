@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from src.audio_utils import (
+from transcript_combobulator.audio_utils import (
     AudioValidationError,
     convert_to_wav,
     needs_conversion,
@@ -44,7 +44,7 @@ def test_ffmpeg_conversion_yields_16k_mono_peak_normalized(tmp_path: Path) -> No
 def test_missing_ffmpeg_is_a_clear_error(tmp_path: Path) -> None:
     src = tmp_path / "in.wav"
     _stereo_44k(src)
-    with patch("src.audio_utils.shutil.which", return_value=None), \
+    with patch("transcript_combobulator.audio_utils.shutil.which", return_value=None), \
          pytest.raises(AudioValidationError, match="ffmpeg not found"):
         convert_to_wav(src, tmp_path / "out.wav")
 
@@ -52,7 +52,7 @@ def test_missing_ffmpeg_is_a_clear_error(tmp_path: Path) -> None:
 def test_existing_correct_output_is_reused(tmp_path: Path) -> None:
     out = tmp_path / "already.wav"
     sf.write(str(out), np.zeros(16000, dtype=np.float32), 16000)
-    with patch("src.audio_utils.subprocess.run") as run:
+    with patch("transcript_combobulator.audio_utils.subprocess.run") as run:
         convert_to_wav(tmp_path / "missing-input.wav", out)
     run.assert_not_called()
 
@@ -63,7 +63,7 @@ def test_ffmpeg_timeout_is_a_clear_error(tmp_path: Path) -> None:
     src = tmp_path / "in.wav"
     _stereo_44k(src)
     with patch(
-        "src.audio_utils.subprocess.run",
+        "transcript_combobulator.audio_utils.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1),
     ), pytest.raises(AudioValidationError, match="ffmpeg exceeded"):
         convert_to_wav(src, tmp_path / "out.wav")

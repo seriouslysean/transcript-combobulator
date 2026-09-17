@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from src.telemetry import (
+from transcript_combobulator.telemetry import (
     build_run_summary,
     sanitize_metrics_report,
     write_metrics_report,

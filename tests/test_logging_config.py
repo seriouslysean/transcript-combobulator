@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from src.logging_config import add_file_handler, remove_file_handler
+from transcript_combobulator.logging_config import add_file_handler, remove_file_handler
 
 
 def test_file_handler_persists_records_with_context(tmp_path: Path) -> None:
@@ -13,13 +13,13 @@ def test_file_handler_persists_records_with_context(tmp_path: Path) -> None:
 
     handler = add_file_handler(log_file, context={"audio_file": "3-nilbits.flac"})
     try:
-        logging.getLogger("src.vad").info("Found %d segments", 12)
+        logging.getLogger("transcript_combobulator.vad").info("Found %d segments", 12)
     finally:
         remove_file_handler(handler)
 
     text = log_file.read_text(encoding="utf-8")
     assert "[3-nilbits.flac]" in text
-    assert "src.vad - INFO - Found 12 segments" in text
+    assert "transcript_combobulator.vad - INFO - Found 12 segments" in text
     assert root.handlers == before
 
 

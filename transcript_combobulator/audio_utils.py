@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
-from src.logging_config import get_logger
+from transcript_combobulator.logging_config import get_logger
 
 logger = get_logger(__name__)
 

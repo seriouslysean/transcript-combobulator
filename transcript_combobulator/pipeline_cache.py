@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from src.config import get_stage_fingerprint_settings
-from src.logging_config import get_logger
+from transcript_combobulator.config import get_stage_fingerprint_settings
+from transcript_combobulator.logging_config import get_logger
 
 logger = get_logger(__name__)
 
