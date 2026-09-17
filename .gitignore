@@ -25,3 +25,6 @@ __pycache__/
 models/*
 !models/.gitkeep
 
+
+# Agent-local settings (per-machine permission allowlists)
+.claude/settings.local.json
