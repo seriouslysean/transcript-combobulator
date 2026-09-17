@@ -224,10 +224,15 @@ fails loudly.
   prompt echoes landed on the DM's track mid-narration, and the two PC
   names never appeared in their canonical spelling. Whisper's own guards
   (temperature fallback, no prompt carry) reduced echoes from 17 to 9 and
-  did not close the gap (20 to 28% of words still differ). Smaller models
-  are not an option for this audio; the pipeline is built for machines that
-  can run turbo. Turbo's own known artefact is the bare "Thank you."
-  silence filler (37 lines per session), which displaces nothing.
+  did not close the gap (20 to 28% of words still differ). medium.en was
+  worse still: 83 prompt echoes, 42 canned phrases, 56% of words different,
+  and 1.5x slower than turbo because its 24-layer decoder costs more per
+  chunk than turbo's 4. Loudness normalisation (EBU R128, -21 to -16 LUFS)
+  on the quietest track changed 1.7% of words and nothing else. Smaller
+  models and audio pre-treatment are not options for this audio; the
+  pipeline is built for machines that can run turbo. Turbo's own known
+  artefact is the bare "Thank you." silence filler (37 lines per session),
+  which displaces nothing.
 - **Temperature fallback stays off, by measurement.** `WHISPER_TEMPERATURE=
   0.0,0.2,0.4` enables whisper's re-decode when its compression-ratio or
   logprob guard trips; with the default scalar those guards never fire.
