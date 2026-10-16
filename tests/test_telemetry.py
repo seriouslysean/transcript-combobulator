@@ -278,3 +278,22 @@ def test_sanitized_combine_error_retains_type_without_message() -> None:
         "error_type": "CombineError",
         "output_file_count": 0,
     }
+
+
+def test_whisper_runtime_is_persisted_only_as_a_known_name() -> None:
+    known = sanitize_metrics_report(
+        {
+            "configuration": {
+                "whisper": {"runtime": "mlx", "device": "metal", "fp16": True}
+            }
+        }
+    )
+    assert known["configuration"]["whisper"] == {
+        "runtime": "mlx",
+        "device": "metal",
+        "fp16": True,
+    }
+    unknown = sanitize_metrics_report(
+        {"configuration": {"whisper": {"runtime": "/Users/private/runtime"}}}
+    )
+    assert "runtime" not in unknown["configuration"]["whisper"]

@@ -41,7 +41,7 @@ dev = [
     "pytest==9.1.1",
     "ruff==0.17.1",
 ]
-# Apple Silicon only; inert until a WHISPER_RUNTIME seam exists.
+# Apple Silicon only; used when WHISPER_RUNTIME=mlx (the Apple GPU instead of the CPU).
 mac = [
     "mlx-whisper==0.4.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
