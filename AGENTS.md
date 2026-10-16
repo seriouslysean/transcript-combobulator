@@ -239,7 +239,13 @@ fails loudly.
   on `mlx` took 4 m 12 s with `PARALLEL_JOBS=2` (3 m 41 s with 4) against
   1 h 06 m on the CPU: 0.9% of words different (WER 1.45%), 3 of 1813
   islands lost (1 to 5 words each), bare "Thank you" 35 to 42, single-threaded
-  VAD now 118 s of the 458 s of work. What mlx-whisper does not have:
+  VAD now 118 s of the 458 s of work. At the level of session notes (Rue's
+  notes from the whole transcript, instructions v5, cold, graded against
+  Sean's 28 bullets of session 11): CPU transcript 22 of 28, mlx transcript
+  22 of 28, inside the 0.77 to 0.80 spread between runs on one transcript;
+  the proper-noun variants in the two transcripts are the same (Nafir 14 and
+  14, Artis 4 and 4, Hu Tao 1 and 1). One run each, so a difference smaller
+  than that spread is not shown either way. What mlx-whisper does not have:
   `carry_initial_prompt` (the prompt reaches only the first 30 s window of an
   island; 59 of 1813 islands, 3.3%, are longer), beam search, and anything
   but fp16. Both GPU runtimes share the GPU: with a 90 GB llama.cpp model
