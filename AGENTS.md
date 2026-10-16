@@ -209,8 +209,8 @@ fails loudly.
   swung between 0.9 and 3.9 GB run to run, which is why only the ONNX build is used.
 - **The package `__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
-- **One encoder pass per VAD island is the floor on stock whisper, by
-  decision.** Whisper encodes a fixed 30 s window, so short islands pay full
+- **One encoder pass per VAD island is the floor, by decision.** Whisper
+  encodes a fixed 30 s window, so short islands pay full
   price (utilisation ~24% on a real session). Packing islands into one clip
   was measured at 2.45x on a 2.9 h track with identical words, but whisper
   places segment boundaries from what it hears, never from splices: 56 of
@@ -219,37 +219,40 @@ fails loudly.
   still misassigned 9 of 128. WhisperX and faster-whisper pack the same way
   and fix time with a separate wav2vec2 forced-alignment model; whisper.cpp
   shrinks the encoder per clip (`audio_ctx`, ~3x on short clips). Both are
-  outside stock openai-whisper and were ruled out: this project stays on
-  stock whisper, slow and correct, rather than patching the model or adding
-  a second one. Do not reintroduce packing, encoder-context patches, or a
-  detect-and-retry shim.
-- **`WHISPER_RUNTIME` picks the engine; `openai` stays the default.** Same model
-  (`large-v3-turbo`), same VAD islands, same decoding options, so the
-  one-encoder-pass-per-island decision above is unchanged. Measured on this Mac
-  (Mac Studio, M5 Max, 128 GiB, macOS 27.0.1) on 5 x 30 min of the 2026-10-04
-  session (379 islands, 40 min of island audio), against the stock CPU run
-  (whole pipeline 14 m 09 s with 2 workers, of which inference about 12 m 40 s):
-  `WHISPER_DEVICE=mps` on the same code, whole pipeline 3 m 08 s, text
-  identical (0 words differ); `WHISPER_RUNTIME=mlx`, inference 57 s with one
-  worker and 39 s with two (4 workers: 38 s, no gain), 1.5% of words different
-  from the CPU run (the PR #20 loudness-normalisation noise floor was 1.7%),
-  zero prompt echoes, zero islands lost, and the same 9 looping islands the
-  CPU run produces (collapsed by `collapse_repetition`). The whole 13 h 53 m
-  session through the mlx runtime took 4 m 12 s with `PARALLEL_JOBS=2` (3 m 41 s
-  with 4) against 1 h 06 m on the CPU; single-threaded VAD is then 118 s of the
-  458 s of cumulative work. Differences by design: mlx-whisper has no
-  `carry_initial_prompt` (the prompt applies to each island's first 30 s window
-  only; 59 of the 1813 islands, 3.3%, are longer than 30 s), no beam search,
-  and always runs fp16. Both GPU runtimes share the GPU with whatever else
-  runs on it: with a 90 GB llama.cpp model loaded, its generation speed fell
-  from 72 to 34 tokens/s while one mlx worker ran, and to 26 with two. Choose
-  the runtime per run with `WHISPER_RUNTIME=mlx` in the campaign env; output
-  cached by one runtime is never reused by the other (the runtime, the mlx
-  checkpoint's pin, and its file identity are in the inference fingerprint;
-  the default runtime's fingerprint is unchanged, so finished sessions stay
-  valid). Setup: `make install EXTRAS=dev,mac`, then `WHISPER_RUNTIME=mlx make
-  setup-whisper`. Not measured: quality at the level of session notes (the
-  80-item skeleton judgment), and any other model size on mlx.
+  outside stock openai-whisper and were ruled out: they buy speed by changing
+  what the model hears or by adding a second model. Do not reintroduce
+  packing, encoder-context patches, or a detect-and-retry shim.
+  What can change is where the same model runs. `WHISPER_RUNTIME=mlx` runs
+  `large-v3-turbo` through mlx-whisper on the Apple GPU with the same islands
+  and the same decoding options, still one encoder pass per island, and
+  `WHISPER_DEVICE=mps` runs stock whisper on the GPU. Neither patches the
+  model, adds a second one, packs, or retries. The default stays stock
+  openai-whisper on the CPU; a campaign opts in with `WHISPER_RUNTIME=mlx`
+  or `WHISPER_DEVICE=mps` in its env file.
+  Measured on the Mac Studio (M5 Max, 128 GiB, macOS 27.0.1) on 5 x 30 min of
+  the 2026-10-04 session (379 islands) against the CPU run (14 m 09 s wall,
+  inference about 12 m 40 s): `mps` took 3 m 08 s with identical text (0 words
+  differ); `mlx` took 57 s of inference with one worker and 39 s with two
+  (4 workers: 38 s, no gain), 1.5% of words different (the loudness
+  normalisation noise floor was 1.7%), no prompt echoes, no lost islands, and
+  the same nine looping islands the CPU run has. The whole 13 h 53 m session
+  on `mlx` took 4 m 12 s with `PARALLEL_JOBS=2` (3 m 41 s with 4) against
+  1 h 06 m on the CPU: 0.9% of words different (WER 1.45%), 3 of 1813
+  islands lost (1 to 5 words each), bare "Thank you" 35 to 42, single-threaded
+  VAD now 118 s of the 458 s of work. What mlx-whisper does not have:
+  `carry_initial_prompt` (the prompt reaches only the first 30 s window of an
+  island; 59 of 1813 islands, 3.3%, are longer), beam search, and anything
+  but fp16. Both GPU runtimes share the GPU: with a 90 GB llama.cpp model
+  loaded, its generation fell from 72 to 34 tokens/s while one mlx worker
+  ran, and to 26 with two. A Neural Engine runtime (WhisperKit) left it
+  alone (72 to 71) but ran 4.7x slower than mlx and differed in 6.5% of
+  words with 19 islands lost; faster-whisper has no Metal backend. Output
+  cached by one runtime is never reused by the other: the runtime, the
+  pinned mlx checkpoint and its file identity are in the inference
+  fingerprint, while the default runtime's fingerprint is unchanged, so
+  finished sessions stay valid. Setup: `make install EXTRAS=dev,mac`, then
+  `WHISPER_RUNTIME=mlx make setup-whisper`. Not measured here: any other
+  model size on mlx.
 - **`WHISPER_MODEL` stays `large-v3-turbo`, by measurement.** small.en on the
   same 11.5 h session, judged at the level of session notes against an
   80-item skeleton built from turbo: 56 intact, 21 degraded, 3 lost,
