@@ -39,3 +39,7 @@ ENV_FILE=.env.jfk-sample make combine-transcripts
 ## Documentation
 
 See [docs/README.md](docs/README.md) for complete usage instructions.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
