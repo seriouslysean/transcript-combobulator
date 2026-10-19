@@ -246,6 +246,16 @@ fails loudly.
   Every segment now records the temperature whisper settled on, and
   telemetry carries `fallback_segment_count`, so a future A/B is one env
   change.
+- **Apple's SpeechAnalyzer is not a replacement, by measurement.**
+  `SpeechTranscriber` (en_US, `.transcription` preset, macOS 27) on the
+  1,864 VAD islands of a 15 h session ran at 83x realtime with no GPU
+  use, against 11.4x for the pipeline on MPS. Against MPS whisper it
+  differed on 10.4% of words, left 199 islands (10.7%) empty and hit
+  campaign names 65 times against 95. Part of the gap is whisper's own
+  filler (5 bare filler lines against 57; 177 of the empty islands were
+  1 or 2 words), but not the names. Untested: `contextualStrings`
+  vocabulary hints, other presets, a second session. Worth reopening
+  only for work where the GPU must stay free.
 
 - Whisper's `word_timestamps=True` hangs on some segments. Keep the default
   `WHISPER_WORD_TIMESTAMPS=false`.
