@@ -210,6 +210,42 @@ class TestValidateSpeakerMapping:
             validate_speaker_mapping(["1-nilbits"])
 
 
+def test_quote_marks_in_speaker_fields_survive(tmp_path, monkeypatch):
+    """A nickname in quotes keeps both quote marks, in the summary and on each line."""
+    from dotenv import dotenv_values
+
+    from transcript_combobulator.combine import combine_transcripts_from_env
+
+    env = tmp_path / "session.env"
+    env.write_text(
+        'TRANSCRIPT_1_USERNAME="solidstatevom"\n'
+        'TRANSCRIPT_1_NAME="Trevor"\n'
+        "TRANSCRIPT_1_LABEL='Krak the \"Heretic\"'\n"
+        "TRANSCRIPT_1_DESCRIPTION='Orc Cleric'\n"
+        'TRANSCRIPT_2_USERNAME="burger_bear"\n'
+        'TRANSCRIPT_2_NAME="William"\n'
+        "TRANSCRIPT_2_LABEL='Jasper \"Jukebox\" Doublestrings'\n"
+        'TRANSCRIPT_2_DESCRIPTION="Warforged Bard"\n',
+        encoding="utf-8",
+    )
+    for key, value in dotenv_values(env).items():
+        monkeypatch.setenv(key, value or "")
+    monkeypatch.setenv("TRANSCRIPT_3_USERNAME", "")
+    monkeypatch.setenv("CHUNKS", "1")
+    for stem in ("1-solidstatevom", "4-burger_bear"):
+        (tmp_path / "night" / stem).mkdir(parents=True)
+        _write_vtt(
+            tmp_path / "night" / stem / f"{stem}.vtt",
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n",
+        )
+
+    text = combine_transcripts_from_env(tmp_path, "night")[0].read_text()
+
+    assert 'Trevor - Krak the "Heretic" - Orc Cleric' in text
+    assert 'Krak the "Heretic": Roll for initiative.' in text
+    assert 'Jasper "Jukebox" Doublestrings: Roll for initiative.' in text
+
+
 class TestCombineFromEnvExplicitFiles:
     """Batch runs hand combine the exact VTTs they produced."""
 
