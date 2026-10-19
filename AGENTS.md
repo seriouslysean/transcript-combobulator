@@ -178,6 +178,13 @@ fails loudly.
   (`transcript_combobulator.config.vtt_path_for_input` is the one source of truth for the VTT path)
 - **Session outputs**: `<session>-combined.txt` (or `-1.txt`, `-2.txt` when
   `CHUNKS>1`), `<session>-metrics.json`, `<session>.log`
+- **Timing sidecar**: `<session>-combined.cues.jsonl` beside each transcript
+  file (`-1.cues.jsonl`, `-2.cues.jsonl` when chunked). One JSON row per
+  transcript line, in the same order, after the summary block: `speaker`,
+  `start`, `end` (seconds) and `confidence` (from the speaker's
+  `_transcription.json`, matched on whole-millisecond times and text;
+  `null` when no segment matches). The text transcript is unchanged, and
+  `INCLUDE_TIMESTAMPS` still controls only the inline form.
 
 ## Performance Notes
 

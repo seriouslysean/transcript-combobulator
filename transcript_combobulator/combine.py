@@ -1,13 +1,17 @@
 """Transcript combination utilities.
 
 Reads per-user VTT files, tags each line with a speaker label, sorts by
-timestamp, deduplicates, and writes a combined session transcript.
+timestamp, deduplicates, and writes a combined session transcript. Each
+transcript file gets a `.cues.jsonl` sidecar with one row per line:
+speaker, start, end and whisper's confidence.
 """
 
+import json
 import os
 import re
 import string
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -41,6 +45,7 @@ class TranscriptEntry:
     speaker: str
     content: str  # original text, for display
     dedup_key: str  # lowercased/punctuation-stripped, for comparison only
+    confidence: Optional[float] = None  # from the whisper JSON; None if no segment matched
 
 
 @dataclass
@@ -75,6 +80,46 @@ def parse_timestamp_to_seconds(timestamp: str) -> float:
     return int(h) * 3600 + int(m) * 60 + int(s) + (int(ms) / 1000 if ms else 0)
 
 
+def _timestamp_ms(timestamp: str) -> int:
+    """HH:MM:SS.mmm -> whole milliseconds, without float rounding."""
+    h, m, sec_ms = timestamp.split(':')
+    s, _, ms = sec_ms.partition('.')
+    return ((int(h) * 60 + int(m)) * 60 + int(s)) * 1000 + int(ms or 0)
+
+
+def _cue_key(start_ms: int, end_ms: int, text: str) -> tuple[int, int, str]:
+    return start_ms, end_ms, ' '.join(line.strip() for line in text.split('\n') if line.strip())
+
+
+def _segment_confidences(vtt_path: Path) -> dict[tuple[int, int, str], float]:
+    """Confidence for each cue, from the whisper JSON the pipeline saved beside the VTT.
+
+    A cue matches only the segment it was written from: the same start and end
+    in whole milliseconds (the VTT writer truncates to them) and the same text.
+    A missing or unreadable JSON gives no confidences, not an error.
+    """
+    json_path = vtt_path.parent / f"{vtt_path.parent.name}_transcription.json"
+    if not json_path.exists():
+        return {}
+    try:
+        segments = json.loads(json_path.read_text(encoding='utf-8')).get('segments', [])
+    except (OSError, ValueError) as e:
+        logger.warning(f"No confidences for {vtt_path.name}: cannot read {json_path.name}: {e}")
+        return {}
+    confidences: dict[tuple[int, int, str], float] = {}
+    ms = timedelta(milliseconds=1)
+    for seg in segments:
+        if not isinstance(seg, dict) or 'confidence' not in seg:
+            continue
+        key = _cue_key(
+            timedelta(seconds=float(seg['start'])) // ms,
+            timedelta(seconds=float(seg['end'])) // ms,
+            str(seg.get('text', '')).strip(),
+        )
+        confidences.setdefault(key, float(seg['confidence']))
+    return confidences
+
+
 def parse_vtt_file(
     file_path: Path,
     speaker_label: str,
@@ -82,6 +127,7 @@ def parse_vtt_file(
 ) -> list[TranscriptEntry]:
     """Parse a VTT file into TranscriptEntry objects, preserving original text."""
     skip_filters = skip_filters or []
+    confidences = _segment_confidences(file_path)
 
     try:
         content = file_path.read_text(encoding='utf-8')
@@ -124,6 +170,9 @@ def parse_vtt_file(
                 speaker=speaker_label,
                 content=text,
                 dedup_key=dedup_key,
+                confidence=confidences.get(
+                    _cue_key(_timestamp_ms(start_str), _timestamp_ms(end_str), text)
+                ),
             )
         )
 
@@ -192,12 +241,31 @@ def combine_transcripts(
                         )
                     else:
                         f.write(f"{entry.speaker}: {entry.content}\n")
+            _write_cues(cues_path_for(chunk_path), chunk_entries)
             output_files.append(chunk_path)
             logger.info(f"Generated: {chunk_path}")
         except Exception as e:
             raise CombineError(f"Failed to write output file {chunk_path}: {e}") from e
 
     return output_files
+
+
+def cues_path_for(transcript_path: Path) -> Path:
+    """'<session>-combined-1.txt' -> '<session>-combined-1.cues.jsonl'."""
+    return transcript_path.with_suffix('.cues.jsonl')
+
+
+def _write_cues(path: Path, entries: list[TranscriptEntry]) -> None:
+    """One JSON row per transcript line, in the same order (the summary block has none)."""
+    with open(path, 'w', encoding='utf-8') as f:
+        for entry in entries:
+            row = {
+                'speaker': entry.speaker,
+                'start': entry.start_time,
+                'end': entry.end_time,
+                'confidence': entry.confidence,
+            }
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 
 def _load_username_mapping() -> dict[str, dict[str, str]]:

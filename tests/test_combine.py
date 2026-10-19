@@ -210,6 +210,96 @@ class TestValidateSpeakerMapping:
             validate_speaker_mapping(["1-nilbits"])
 
 
+class TestCueSidecar:
+    """combine writes <transcript>.cues.jsonl: one row per line, text file unchanged."""
+
+    def _session(self, tmp_path, monkeypatch, chunks):
+        import json
+
+        import transcript_combobulator.combine as combine
+
+        _set_mapping(monkeypatch, ["nilbits", "dezfrost"])
+        monkeypatch.setattr(combine, "CHUNKS", chunks)  # read from the env once, at import
+        session = tmp_path / "night"
+        nil, dez = session / "1-nilbits", session / "2-dezfrost"
+        nil.mkdir(parents=True)
+        dez.mkdir(parents=True)
+        # The VTT writer truncates to whole milliseconds: 2.0009 is written as 00:00:02.000.
+        _write_vtt(
+            nil / "1-nilbits.vtt",
+            "WEBVTT\n\n"
+            "00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n"
+            "00:00:02.500 --> 00:00:03.000\nRoll for initiative.\n\n"
+            "00:00:05.000 --> 00:00:06.500\nI attack.\n\n"
+            "00:00:09.000 --> 00:00:10.000\nNot in the JSON.\n\n",
+        )
+        (nil / "1-nilbits_transcription.json").write_text(json.dumps({"segments": [
+            {"start": 1.0, "end": 2.0009, "text": "Roll for initiative.", "confidence": 81.5},
+            {"start": 2.5, "end": 3.0, "text": "Roll for initiative.", "confidence": 12.0},
+            {"start": 5.0, "end": 6.5, "text": " I attack. ", "confidence": 64.25},
+        ]}), encoding="utf-8")
+        # No JSON beside this VTT: its rows carry a null confidence.
+        _write_vtt(
+            dez / "2-dezfrost.vtt",
+            "WEBVTT\n\n"
+            "00:00:04.000 --> 00:00:04.800\nWait.\n\n"
+            "00:00:07.000 --> 00:00:08.000\nNice.\n\n"
+            "00:00:11.000 --> 00:00:12.000\nOkay.\n\n",
+        )
+        return session
+
+    @staticmethod
+    def _lines_and_rows(transcript):
+        import json
+
+        from transcript_combobulator.combine import cues_path_for
+
+        lines = transcript.read_text().split("\n\n", 1)[1].splitlines()
+        rows = [json.loads(r) for r in cues_path_for(transcript).read_text().splitlines()]
+        return lines, rows
+
+    def test_rows_follow_the_lines_and_the_text_is_unchanged(self, tmp_path, monkeypatch):
+        from transcript_combobulator.combine import combine_transcripts_from_env
+
+        self._session(tmp_path, monkeypatch, chunks=1)
+        (out,) = combine_transcripts_from_env(tmp_path, "night")
+
+        assert out.read_text() == (
+            "Summary:\nName 1 - Label 1 - Desc 1\nName 2 - Label 2 - Desc 2\n\n"
+            "Label 1: Roll for initiative.\n"
+            "Label 2: Wait.\n"
+            "Label 1: I attack.\n"
+            "Label 2: Nice.\n"
+            "Label 1: Not in the JSON.\n"
+            "Label 2: Okay.\n"
+        )
+        assert out.with_name("night-combined.cues.jsonl").exists()
+        lines, rows = self._lines_and_rows(out)
+        assert rows == [
+            {"speaker": "Label 1", "start": 1.0, "end": 2.0, "confidence": 81.5},
+            {"speaker": "Label 2", "start": 4.0, "end": 4.8, "confidence": None},
+            {"speaker": "Label 1", "start": 5.0, "end": 6.5, "confidence": 64.25},
+            {"speaker": "Label 2", "start": 7.0, "end": 8.0, "confidence": None},
+            {"speaker": "Label 1", "start": 9.0, "end": 10.0, "confidence": None},
+            {"speaker": "Label 2", "start": 11.0, "end": 12.0, "confidence": None},
+        ]
+        assert all(line.startswith(f"{row['speaker']}: ") for line, row in zip(lines, rows))
+
+    def test_each_chunk_gets_its_own_sidecar(self, tmp_path, monkeypatch):
+        from transcript_combobulator.combine import combine_transcripts_from_env
+
+        self._session(tmp_path, monkeypatch, chunks=2)
+        outputs = combine_transcripts_from_env(tmp_path, "night")
+
+        assert [p.name for p in outputs] == ["night-combined-1.txt", "night-combined-2.txt"]
+        starts = []
+        for out in outputs:
+            lines, rows = self._lines_and_rows(out)
+            assert len(rows) == len(lines) == 3
+            starts += [row["start"] for row in rows]
+        assert starts == [1.0, 4.0, 5.0, 7.0, 9.0, 11.0]
+
+
 class TestCombineFromEnvExplicitFiles:
     """Batch runs hand combine the exact VTTs they produced."""
 
