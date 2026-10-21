@@ -55,7 +55,7 @@ _GIB = float(1 << 30)
 def _total_memory_bytes() -> int | None:
     """Physical RAM via sysconf (Linux and macOS); None if unavailable."""
     try:
-        return int(os.sysconf('SC_PAGE_SIZE')) * int(os.sysconf('SC_PHYS_PAGES'))
+        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
     except (AttributeError, OSError, ValueError):
         return None
 

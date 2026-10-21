@@ -6,7 +6,7 @@ import shutil
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, MutableMapping, Optional
+from typing import Any, Generator, MutableMapping, Optional
 
 from transcript_combobulator.audio_utils import (
     AudioValidationError,
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def _timed_stage(metrics: dict[str, Any], stage: str) -> Iterator[None]:
+def _timed_stage(metrics: dict[str, Any], stage: str) -> Generator[None, None, None]:
     started = time.perf_counter()
     try:
         yield

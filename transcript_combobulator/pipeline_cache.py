@@ -77,7 +77,7 @@ def load_manifest(manifest_path: Path) -> dict[str, Any]:
             return {}
         stages = manifest.get('stages')
         return stages if isinstance(stages, dict) else {}
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError):
         logger.warning(f"Ignoring invalid pipeline manifest: {manifest_path}")
         return {}
 
@@ -191,7 +191,7 @@ def load_chunk_checkpoint(progress_path: Path, key: str) -> dict[int, dict[str, 
                 index = record.get('index')
                 if isinstance(index, int) and isinstance(record.get('segments'), list):
                     completed[index] = record
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError):
         logger.warning(f"Ignoring invalid progress file: {progress_path}")
         progress_path.unlink(missing_ok=True)
         return {}
