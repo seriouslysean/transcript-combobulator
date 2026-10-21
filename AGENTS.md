@@ -85,7 +85,7 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 | `make run-single file=path [force=1]` | Convert → VAD → transcribe one file, no combine |
 | `make combine-transcripts session=name` | Re-merge a session's per-speaker VTTs |
 | `make filter-vtt file=path [threshold=50]` | Re-emit a speaker VTT from its saved JSON above a confidence; no inference |
-| `make session-env bundle=dir [speakers=json] [base=env] [dm=id] [tz=zone] [force=1]` | Write a recording bundle's session env; no inference |
+| `make session-env bundle=dir output=env [speakers=json] [base=env] [dm=id] [tz=zone] [force=1]` | Write a recording bundle's session env, outside the bundle; no inference |
 | `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
 | `make test-fast` | pytest without the `slow` (real inference) tests |
 | `make test` | Whole suite; never touches `tmp/output` |

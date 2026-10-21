@@ -89,6 +89,7 @@ A single mixed track whose speakers are unknown, such as a downloaded video:
 
 This page is the canonical copy of the format; producers cite its schema version. `combobulator session-env --bundle DIR` checks a bundle against it (`transcript_combobulator.bundle.BUNDLE_SCHEMA_VERSION`) before writing the session's env, and refuses with a message that names the file or track at fault.
 
+- **The bundle is never written to.** `session-env` writes the env to `--output`, which must be outside the bundle (rule 6).
 - **Schema version 1 only.** Any other `schema_version` is refused. Unknown fields are ignored.
 - **Checked before use:**
   - every `file` stays inside the bundle and exists;

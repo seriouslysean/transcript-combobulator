@@ -89,9 +89,9 @@ filter-vtt: ## Rewrite a speaker's VTT from saved JSON above a confidence: file=
 		$(CLI) filter-vtt "$$file"; \
 	fi
 
-session-env: ## Write a bundle's session env: bundle=<dir> [speakers=<json>] [base=<env>] [dm=<track_id>] [tz=<zone>] [force=1]
-	if [ -z "$$bundle" ]; then echo "Usage: make session-env bundle=<dir> [speakers=<json>] [base=<env>] [dm=<track_id>] [tz=<zone>] [force=1]"; exit 1; fi
-	set -- --bundle "$$bundle"; \
+session-env: ## Write a bundle's session env outside it: bundle=<dir> output=<env> [speakers=<json>] [base=<env>] [dm=<track_id>] [tz=<zone>] [force=1]
+	if [ -z "$$bundle" ] || [ -z "$$output" ]; then echo "Usage: make session-env bundle=<dir> output=<env> [speakers=<json>] [base=<env>] [dm=<track_id>] [tz=<zone>] [force=1]"; exit 1; fi
+	set -- --bundle "$$bundle" --output "$$output"; \
 	if [ -n "$$speakers" ]; then set -- "$$@" --speakers "$$speakers"; fi; \
 	if [ -n "$$base" ]; then set -- "$$@" --base "$$base"; fi; \
 	if [ -n "$$dm" ]; then set -- "$$@" --dm "$$dm"; fi; \

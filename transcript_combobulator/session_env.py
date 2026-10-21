@@ -20,7 +20,8 @@ transcripts are combined, so fixing them needs ``combobulator combine <session>`
 inference. ``WHISPER_PROMPT`` is part of the inference fingerprint, so changing it in the
 base re-runs transcription.
 
-An existing output file is never overwritten without ``--force``: it may hold edits.
+The env is written outside the bundle (``--output`` is required): a published bundle never
+changes. An existing output file is never overwritten without ``--force``: it may hold edits.
 """
 
 from __future__ import annotations
@@ -45,7 +46,6 @@ from transcript_combobulator.combine import (
 )
 from transcript_combobulator.config import ROOT_DIR, parse_env_text, read_env_file
 
-OUTPUT_NAME = "transcript-combobulator.env"
 PROVISIONAL = "PROVISIONAL"
 CHARACTER_UNSET = f"{PROVISIONAL}: character not set"
 SEVERAL_PEOPLE = "may be several people"
@@ -341,10 +341,10 @@ def build_session_env(
     base: Path | None = None,
     dm: str | None = None,
     tz: str | None = None,
-    output: Path | None = None,
+    output: Path,
     force: bool = False,
 ) -> SessionEnvResult:
-    """Write ``output`` (default: ``<bundle_dir>/transcript-combobulator.env``)."""
+    """Write ``output``, which must be outside the bundle: a published bundle never changes."""
     try:
         bundle = load_bundle(bundle_dir)
     except BundleError as e:
@@ -359,7 +359,8 @@ def build_session_env(
     absent: list[dict[str, str | None]] = [
         {"speaker_key": s.speaker_key, "username": s.username} for s in entries if id(s) not in matched
     ]
-    output = output or bundle.root / OUTPUT_NAME
+    if Path(output).resolve().is_relative_to(bundle.root):
+        raise SessionEnvError(f"--output {output} is inside the bundle; a published bundle never changes")
 
     if output.exists() and not force:
         values = read_env_file(output)
@@ -415,7 +416,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="combobulator session-env",
         description=(
-            "Write a session's own env file (transcript-combobulator.env) from a recording bundle "
+            "Write a session's own env file from a recording bundle "
             "and a base env. Tracks with no known speaker get provisional rows."
         ),
     )
@@ -424,7 +425,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--base", type=Path, help="env whose settings are copied (default: the repo's .env.example)")
     parser.add_argument("--dm", metavar="TRACK_ID", help="which track is the DM (default: the speakers file's, else the largest track, flagged)")
     parser.add_argument("--tz", metavar="ZONE", help="IANA zone for the session date (default: this host's)")
-    parser.add_argument("--output", type=Path, help=f"where to write (default: <bundle>/{OUTPUT_NAME})")
+    parser.add_argument("--output", type=Path, required=True, help="where to write the env; outside the bundle")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output file")
     parser.add_argument("--json", action="store_true", help="print one JSON object instead of text")
     opts = parser.parse_args(argv)

@@ -14,7 +14,9 @@ import pytest
 
 from transcript_combobulator.combine import CombineError, combine_transcripts_from_env, validate_speaker_mapping
 from transcript_combobulator.config import ROOT_DIR, read_env_file
-from transcript_combobulator.session_env import OUTPUT_NAME, SessionEnvError, _quote, build_session_env, main
+from transcript_combobulator.session_env import SessionEnvError, SessionEnvResult, _quote, build_session_env, main
+
+ENV = "session.env"
 
 BASE = """\
 # ── Whisper Settings ──
@@ -68,6 +70,12 @@ def make_bundle(root: Path, tracks: list[dict[str, Any]], started_at: str | None
     return root
 
 
+def build(bundle: Path, **kw: Any) -> SessionEnvResult:
+    """build_session_env with the env next to the bundle, as a caller would put it."""
+    kw.setdefault("output", bundle.parent / ENV)
+    return build_session_env(bundle, **kw)
+
+
 def speakers_file(path: Path, *entries: dict[str, Any]) -> Path:
     path.write_text(json.dumps({"speakers": list(entries)}), encoding="utf-8")
     return path
@@ -99,8 +107,8 @@ def settings(values: dict[str, str]) -> dict[str, str]:
 
 def test_known_speakers_get_their_rows_dm_first_and_settings_copied(tmp_path: Path, base: Path) -> None:
     b = make_bundle(tmp_path / "b", [BOB_T, ALICE_T, CAROL_T])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL), base=base)
-    assert result.status == "written" and result.path == b / OUTPUT_NAME
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL), base=base)
+    assert result.status == "written" and result.path == b.parent / ENV
     assert rows(result.path) == [
         ("1-alice_dm", "Pat", "DM", "Dungeon Master"),
         ("2-bob", "Robin", "Milo \"Maestro\" Fairweather", "A bard"),
@@ -115,7 +123,7 @@ def test_speaker_key_wins_over_a_matching_username(tmp_path: Path) -> None:
     """Same username, different key: a different person, so the track stays provisional."""
     impostor = {**BOB, "speaker_key": "discord:999"}
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, impostor))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, impostor))
     assert result.provisional == ["2"]
     assert result.absent == [{"speaker_key": "discord:999", "username": "bob"}]
 
@@ -123,7 +131,7 @@ def test_speaker_key_wins_over_a_matching_username(tmp_path: Path) -> None:
 def test_username_matches_when_a_side_has_no_key(tmp_path: Path) -> None:
     keyless = {k: v for k, v in BOB.items() if k != "speaker_key"}
     b = make_bundle(tmp_path / "b", [ALICE_T, track(2, "bob", 40, key=None)])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, keyless))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, keyless))
     assert rows(result.path)[1][1:3] == ("Robin", "Milo \"Maestro\" Fairweather")
 
 
@@ -131,19 +139,19 @@ def test_an_entry_matching_two_tracks_is_refused(tmp_path: Path) -> None:
     keyless = {k: v for k, v in BOB.items() if k != "speaker_key"}
     b = make_bundle(tmp_path / "b", [ALICE_T, track(2, "bob", 40), track(3, "bob", 30, file="3-bob2.flac")])
     with pytest.raises(SessionEnvError, match="2-bob.flac.*3-bob2.flac"):
-        build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, keyless))
+        build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, keyless))
 
 
 def test_a_track_matching_two_entries_is_refused(tmp_path: Path) -> None:
     by_name = {k: v for k, v in BOB.items() if k != "speaker_key"}
     b = make_bundle(tmp_path / "b", [ALICE_T, track(2, "bob", 40, key=None)])
     with pytest.raises(SessionEnvError, match="2-bob.flac"):
-        build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, by_name, {**by_name, "label": "Orsk"}))
+        build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, by_name, {**by_name, "label": "Orsk"}))
 
 
 def test_unmatched_tracks_get_provisional_rows(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T, track(3, None, 30, key=None)])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE))
     assert rows(result.path)[1:] == [
         ("2-bob", "bob", "bob", "PROVISIONAL: character not set"),
         ("3-track", "3", "3", "PROVISIONAL: character not set; may be several people"),
@@ -155,7 +163,7 @@ def test_unmatched_tracks_get_provisional_rows(tmp_path: Path) -> None:
 
 def test_entries_with_no_track_are_absent_not_an_error(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL))
     assert result.absent == [{"speaker_key": CAROL["speaker_key"], "username": "carol"}]
 
 
@@ -164,7 +172,7 @@ def test_entries_with_no_track_are_absent_not_an_error(tmp_path: Path) -> None:
 
 def test_without_a_dm_the_largest_track_is_a_provisional_guess(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [track(1, "alice.dm", 30), BOB_T, CAROL_T])
-    result = build_session_env(b)
+    result = build(b)
     assert rows(result.path)[0][0] == "2-bob" and rows(result.path)[0][2] == "DM"
     assert "dm" in result.as_json()["speakers"][0]["provisional"]
     assert any("largest" in w for w in result.warnings)
@@ -173,7 +181,7 @@ def test_without_a_dm_the_largest_track_is_a_provisional_guess(tmp_path: Path) -
 def test_dm_flag_picks_the_track(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T, CAROL_T])
     no_dm = {k: v for k, v in ALICE.items() if k != "dm"} | {"label": "Ranger"}
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", no_dm, BOB, CAROL), dm="3")
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", no_dm, BOB, CAROL), dm="3")
     assert rows(result.path)[0] == ("3-carol", "Sam", "DM", "Dungeon Master")
     assert result.as_json()["speakers"][0]["dm"] is True and result.provisional == []
 
@@ -181,23 +189,23 @@ def test_dm_flag_picks_the_track(tmp_path: Path) -> None:
 def test_dm_flag_conflicting_with_the_speakers_file_is_refused(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
     with pytest.raises(SessionEnvError, match="--dm 2"):
-        build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB), dm="2")
+        build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB), dm="2")
 
 
 def test_dm_flag_naming_no_track_is_refused(tmp_path: Path) -> None:
     with pytest.raises(SessionEnvError, match="--dm 9"):
-        build_session_env(make_bundle(tmp_path / "b", [ALICE_T]), dm="9")
+        build(make_bundle(tmp_path / "b", [ALICE_T]), dm="9")
 
 
 def test_two_present_dms_are_refused(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
     with pytest.raises(SessionEnvError, match="dm"):
-        build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, {**BOB, "dm": True}))
+        build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, {**BOB, "dm": True}))
 
 
 def test_an_absent_dm_does_not_count(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [BOB_T, CAROL_T])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL))
     assert rows(result.path)[0][0] == "2-bob"  # largest present track, guessed
     assert "dm" in result.as_json()["speakers"][0]["provisional"]
 
@@ -216,20 +224,20 @@ def test_an_absent_dm_does_not_count(tmp_path: Path) -> None:
 def test_bad_speaker_entries_are_refused(tmp_path: Path, entry: dict[str, Any], match: str) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
     with pytest.raises(SessionEnvError, match=match):
-        build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, entry))
-    assert not (b / OUTPUT_NAME).exists()
+        build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, entry))
+    assert not (b.parent / ENV).exists()
 
 
 def test_a_speakers_file_that_is_not_one_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "s.json"
     path.write_text('{"people": []}')
     with pytest.raises(SessionEnvError, match="speakers"):
-        build_session_env(make_bundle(tmp_path / "b", [ALICE_T]), speakers=path)
+        build(make_bundle(tmp_path / "b", [ALICE_T]), speakers=path)
 
 
 def test_unknown_speaker_fields_are_ignored(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", {**ALICE, "pronouns": "they"}))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", {**ALICE, "pronouns": "they"}))
     assert result.provisional == []
 
 
@@ -239,14 +247,14 @@ def test_unknown_speaker_fields_are_ignored(tmp_path: Path) -> None:
 def test_a_bad_bundle_is_refused_with_its_reason(tmp_path: Path) -> None:
     (tmp_path / "b").mkdir()
     with pytest.raises(SessionEnvError, match="incomplete: no manifest.json"):
-        build_session_env(tmp_path / "b")
+        build(tmp_path / "b")
 
 
 def test_stems_that_contain_one_another_are_refused(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [track(1, "bob", 40, file="bob.flac"), track(2, "bob2", 30, file="bob-2.flac")])
     with pytest.raises(SessionEnvError, match="bob.flac.*bob-2.flac|bob-2.flac.*bob.flac"):
-        build_session_env(b)
-    assert not (b / OUTPUT_NAME).exists()
+        build(b)
+    assert not (b.parent / ENV).exists()
 
 
 # ── what it writes ──
@@ -254,22 +262,22 @@ def test_stems_that_contain_one_another_are_refused(tmp_path: Path) -> None:
 
 def test_session_date_is_local_to_the_zone(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T])
-    assert build_session_env(b, tz="America/New_York").session_date == "2026-10-18"
-    assert build_session_env(b, tz="Europe/Berlin", force=True).session_date == "2026-10-19"
+    assert build(b, tz="America/New_York").session_date == "2026-10-18"
+    assert build(b, tz="Europe/Berlin", force=True).session_date == "2026-10-19"
 
 
 def test_no_start_time_means_no_date(tmp_path: Path) -> None:
-    result = build_session_env(make_bundle(tmp_path / "b", [ALICE_T], started_at=None))
+    result = build(make_bundle(tmp_path / "b", [ALICE_T], started_at=None))
     assert result.session_date is None and result.started_at is None
 
 
 def test_an_unknown_zone_is_refused(tmp_path: Path) -> None:
     with pytest.raises(SessionEnvError, match="Mars/Olympus"):
-        build_session_env(make_bundle(tmp_path / "b", [ALICE_T]), tz="Mars/Olympus")
+        build(make_bundle(tmp_path / "b", [ALICE_T]), tz="Mars/Olympus")
 
 
 def test_default_base_is_the_repo_example_without_its_speakers(tmp_path: Path) -> None:
-    result = build_session_env(make_bundle(tmp_path / "b", [ALICE_T, BOB_T]))
+    result = build(make_bundle(tmp_path / "b", [ALICE_T, BOB_T]))
     example = read_env_file(ROOT_DIR / ".env.example")
     assert settings(read_env_file(result.path)) == settings(example)
     assert [r[0] for r in rows(result.path)] == ["1-alice_dm", "2-bob"]
@@ -278,35 +286,44 @@ def test_default_base_is_the_repo_example_without_its_speakers(tmp_path: Path) -
 def test_existing_output_is_kept_unless_forced(tmp_path: Path, base: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
     s = speakers_file(tmp_path / "s.json", ALICE)
-    first = build_session_env(b, speakers=s, base=base)
+    first = build(b, speakers=s, base=base)
     edited = first.path.read_text().replace('TRANSCRIPT_2_LABEL="bob"', 'TRANSCRIPT_2_LABEL="Orsk"')
     first.path.write_text(edited)
-    kept = build_session_env(b, speakers=s, base=base)
+    kept = build(b, speakers=s, base=base)
     assert kept.status == "kept" and first.path.read_text() == edited
     assert kept.provisional == ["2"]  # description still says PROVISIONAL
     assert kept.as_json()["speakers"][1]["label"] == "Orsk"
-    forced = build_session_env(b, speakers=s, base=base, force=True)
+    forced = build(b, speakers=s, base=base, force=True)
     assert forced.status == "written" and rows(forced.path)[1][2] == "bob"
 
 
 def test_existing_output_that_does_not_fit_is_refused(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
-    (b / OUTPUT_NAME).write_text('TRANSCRIPT_1_USERNAME="1-alice_dm"\nTRANSCRIPT_1_NAME="Pat"\n'
+    (b.parent / ENV).write_text('TRANSCRIPT_1_USERNAME="1-alice_dm"\nTRANSCRIPT_1_NAME="Pat"\n'
                                  'TRANSCRIPT_1_LABEL="DM"\nTRANSCRIPT_1_DESCRIPTION="Dungeon Master"\n')
     with pytest.raises(SessionEnvError, match="--force"):
-        build_session_env(b)
+        build(b)
 
 
-def test_output_path_can_be_elsewhere(tmp_path: Path) -> None:
+def test_the_bundle_is_never_written_to(tmp_path: Path) -> None:
+    b = make_bundle(tmp_path / "b", [ALICE_T])
+    before = sorted(p.name for p in b.iterdir())
     out = tmp_path / "envs" / "game.env"
-    result = build_session_env(make_bundle(tmp_path / "b", [ALICE_T]), output=out)
-    assert result.path == out and out.is_file()
-    assert not (tmp_path / "b" / OUTPUT_NAME).exists()
+    assert build(b, output=out).path == out and out.is_file()
+    assert sorted(p.name for p in b.iterdir()) == before
+
+
+@pytest.mark.parametrize("inside", ["session.env", "sub/session.env"])
+def test_output_inside_the_bundle_is_refused(tmp_path: Path, inside: str) -> None:
+    b = make_bundle(tmp_path / "b", [ALICE_T])
+    with pytest.raises(SessionEnvError, match="inside the bundle"):
+        build(b, output=b / inside)
+    assert not (b / inside).exists()
 
 
 def test_the_written_file_passes_runs_own_check(tmp_path: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T, track(3, None, 30, key=None)])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB))
     validate_speaker_mapping(["1-alice_dm", "2-bob", "3-track"], env=read_env_file(result.path))
 
 
@@ -318,7 +335,7 @@ def test_values_roundtrip_through_the_env_parser(tmp_path: Path, value: str) -> 
     from dotenv import dotenv_values
 
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
-    result = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, {**BOB, "description": value}))
+    result = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, {**BOB, "description": value}))
     assert rows(result.path)[1][3] == value
     # what `combobulator run` reads: config.load_dotenv expands ${VAR}
     assert dotenv_values(result.path)["TRANSCRIPT_2_DESCRIPTION"] == value
@@ -336,7 +353,7 @@ def test_variable_reference_in_a_field_is_refused(value: str) -> None:
 
 def test_cli_prints_the_json_result(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
-    main(["--bundle", str(b), "--speakers", str(speakers_file(tmp_path / "s.json", ALICE)), "--tz", "UTC", "--json"])
+    main(["--bundle", str(b), "--output", str(tmp_path / ENV), "--speakers", str(speakers_file(tmp_path / "s.json", ALICE)), "--tz", "UTC", "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert set(payload) == {"path", "status", "recording_id", "started_at", "session_date", "speakers",
                             "provisional", "absent", "warnings"}
@@ -348,9 +365,15 @@ def test_cli_prints_the_json_result(tmp_path: Path, capsys: pytest.CaptureFixtur
 
 def test_cli_refusal_exits_1_with_one_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as e:
-        main(["--bundle", str(tmp_path / "missing")])
+        main(["--bundle", str(tmp_path / "missing"), "--output", str(tmp_path / ENV)])
     err = capsys.readouterr().err
     assert e.value.code == 1 and "not a folder" in err and err.count("\n") == 1
+
+
+def test_cli_usage_errors_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as e:
+        main(["--bundle", str(make_bundle(tmp_path / "b", [ALICE_T]))])
+    assert e.value.code == 2 and "--output" in capsys.readouterr().err
 
 
 # ── what a later edit costs: the resume fingerprints ──
@@ -370,20 +393,20 @@ def stage_settings(env_file: Path) -> dict[str, Any]:
 
 
 def test_generated_env_has_the_base_fingerprints(tmp_path: Path, base: Path) -> None:
-    result = build_session_env(make_bundle(tmp_path / "b", [ALICE_T, BOB_T]), base=base)
+    result = build(make_bundle(tmp_path / "b", [ALICE_T, BOB_T]), base=base)
     assert stage_settings(result.path) == stage_settings(base)
 
 
 def test_names_labels_and_descriptions_are_in_no_fingerprint(tmp_path: Path, base: Path) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T, CAROL_T])
-    out = build_session_env(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL), base=base).path
+    out = build(b, speakers=speakers_file(tmp_path / "s.json", ALICE, BOB, CAROL), base=base).path
     before = stage_settings(out)
     out.write_text(out.read_text().replace('"Orsk"', '"Someone Else"').replace('"A bard"', '"A wizard"'))
     assert stage_settings(out) == before
 
 
 def test_whisper_prompt_is_in_the_inference_fingerprint_only(tmp_path: Path, base: Path) -> None:
-    out = build_session_env(make_bundle(tmp_path / "b", [ALICE_T, BOB_T]), base=base).path
+    out = build(make_bundle(tmp_path / "b", [ALICE_T, BOB_T]), base=base).path
     before = stage_settings(out)
     out.write_text(out.read_text().replace("A Dungeons & Dragons session.", "A session with Orsk."))
     after = stage_settings(out)
@@ -391,7 +414,7 @@ def test_whisper_prompt_is_in_the_inference_fingerprint_only(tmp_path: Path, bas
 
 
 def test_usernames_are_checked_before_transcription(tmp_path: Path) -> None:
-    out = build_session_env(make_bundle(tmp_path / "b", [ALICE_T, BOB_T])).path
+    out = build(make_bundle(tmp_path / "b", [ALICE_T, BOB_T])).path
     values = read_env_file(out)
     values["TRANSCRIPT_2_USERNAME"] = "robert"
     with pytest.raises(CombineError, match="No mapping found"):
@@ -412,7 +435,7 @@ def test_labels_can_be_fixed_after_transcription_by_recombining(
 ) -> None:
     b = make_bundle(tmp_path / "b", [ALICE_T, BOB_T])
     s = tmp_path / "s.json"
-    out = build_session_env(b, speakers=speakers_file(s, ALICE)).path
+    out = build(b, speakers=speakers_file(s, ALICE)).path
     session = tmp_path / "output" / "game"
     write_vtt(session / "1-alice_dm" / "1-alice_dm.vtt", [("00:00:01.000", "The door creaks open.")])
     write_vtt(session / "2-bob" / "2-bob.vtt", [("00:00:03.000", "I check for traps.")])
@@ -426,7 +449,7 @@ def test_labels_can_be_fixed_after_transcription_by_recombining(
     first = combine()
     assert "bob: I check for traps." in first and "bob - bob - PROVISIONAL" in first
 
-    build_session_env(b, speakers=speakers_file(s, ALICE, BOB), force=True)
+    build(b, speakers=speakers_file(s, ALICE, BOB), force=True)
     second = combine()
     assert "Milo \"Maestro\" Fairweather: I check for traps." in second
     assert "Robin - Milo \"Maestro\" Fairweather - A bard" in second and "PROVISIONAL" not in second
