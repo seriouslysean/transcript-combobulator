@@ -25,7 +25,7 @@ class TranscriptionError(Exception):
 
 def transcribe_segments(
     audio_path: Path,
-    original_input_path: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     metrics: Optional[dict[str, Any]] = None,
     checkpoint_path: Optional[Path] = None,
@@ -37,11 +37,7 @@ def transcribe_segments(
     (written by transcript_combobulator.vad.process_audio).
     """
     try:
-        output_dir = (
-            get_output_path_for_input(original_input_path)
-            if original_input_path
-            else audio_path.parent
-        )
+        output_dir = output_dir or audio_path.parent
         mapping_path = output_dir / f"{audio_path.stem}_mapping.json"
         logger.info(f"Looking for mapping file at: {mapping_path}")
 
@@ -58,7 +54,7 @@ def transcribe_segments(
         result = transcribe_audio(
             audio_path,
             pre_processed_mapping=mapping_data['segments'],
-            original_input_path=original_input_path,
+            output_dir=output_dir,
             progress_callback=progress_callback,
             metrics=metrics,
             checkpoint_path=checkpoint_path,
@@ -82,7 +78,7 @@ def transcribe_segments(
 def transcribe_audio(
     audio_path: Path,
     pre_processed_mapping: Optional[list[dict[str, Any]]] = None,
-    original_input_path: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
     progress_callback: Optional[Callable[[str, int, int], None]] = None,
     metrics: Optional[dict[str, Any]] = None,
     checkpoint_path: Optional[Path] = None,
@@ -100,8 +96,7 @@ def transcribe_audio(
         raise TranscriptionError(f"Expected WAV file but got: {audio_path.suffix}")
 
     try:
-        path_for_output = original_input_path or audio_path
-        output_dir = get_output_path_for_input(path_for_output)
+        output_dir = output_dir or get_output_path_for_input(audio_path)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if pre_processed_mapping is None:

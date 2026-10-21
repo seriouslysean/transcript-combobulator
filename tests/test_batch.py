@@ -610,6 +610,45 @@ class TestPartialTranscriptionFailsFile:
         manifest.assert_called_once()
 
 
+class TestOutputPlacement:
+    """process_file places output by the given path and session (issue #22)."""
+
+    def _run(self, tmp_path, input_file, session=None):
+        from transcript_combobulator.pipeline import process_file as main
+
+        transcription = {
+            "vtt_file": str(tmp_path / "out.vtt"),
+            "json_file": str(tmp_path / "out.json"),
+            "mapping_file": str(tmp_path / "out_mapping.json"),
+            "metrics": {"chunk_count": 0, "failed_chunk_count": 0, "chunks": []},
+        }
+        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=tmp_path / "out") as out, \
+             patch("transcript_combobulator.pipeline.is_pipeline_complete", return_value=False), \
+             patch("transcript_combobulator.pipeline.needs_conversion", return_value=False), \
+             patch("transcript_combobulator.pipeline.process_audio", return_value=(tmp_path, [])), \
+             patch("transcript_combobulator.pipeline.transcribe_segments", return_value=transcription) as ts, \
+             patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+            main(str(input_file), session=session)
+        return out, ts
+
+    def test_symlink_is_placed_by_the_link_not_its_target(self, tmp_path):
+        real = tmp_path / "archive" / "4-pikel.wav"
+        real.parent.mkdir()
+        real.touch()
+        link = tmp_path / "s11" / "4-pikel.wav"
+        link.parent.mkdir()
+        link.symlink_to(real)
+        out, ts = self._run(tmp_path, link)
+        assert out.call_args.args == (link, None)
+        assert ts.call_args.args[1] == tmp_path / "out"
+
+    def test_session_is_passed_through(self, tmp_path):
+        track = tmp_path / "1-cadderly.wav"
+        track.touch()
+        out, _ = self._run(tmp_path, track, session="s11")
+        assert out.call_args.args == (track, "s11")
+
+
 class TestStageReuse:
     """Completed stages are reused; only the changed stage and later rerun."""
 
