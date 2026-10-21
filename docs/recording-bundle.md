@@ -56,9 +56,9 @@ A Craig recording with three speakers (synthetic values):
   "source": "craig",
   "started_at": "2026-10-18T23:04:11.000Z",
   "tracks": [
-    {"track_id": "1", "file": "1-alice_dm.flac", "sha256": "<64 hex>", "speaker_key": "discord:100000000000000001", "username": "alice.dm"},
-    {"track_id": "2", "file": "2-bob.flac", "sha256": "<64 hex>", "speaker_key": "discord:100000000000000002", "username": "bob"},
-    {"track_id": "3", "file": "3-carol.flac", "sha256": "<64 hex>", "speaker_key": "discord:100000000000000003", "username": "carol"}
+    {"track_id": "1", "file": "1-cadderly_dm.flac", "sha256": "<64 hex>", "speaker_key": "discord:100000000000000001", "username": "cadderly.dm"},
+    {"track_id": "2", "file": "2-danica.flac", "sha256": "<64 hex>", "speaker_key": "discord:100000000000000002", "username": "danica"},
+    {"track_id": "3", "file": "3-ivan.flac", "sha256": "<64 hex>", "speaker_key": "discord:100000000000000003", "username": "ivan"}
   ]
 }
 ```

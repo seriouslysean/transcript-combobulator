@@ -102,8 +102,8 @@ def test_a_wrong_checksum_is_refused(tmp_path: Path) -> None:
 
 
 def test_stems_must_be_unique_ignoring_case(tmp_path: Path) -> None:
-    with pytest.raises(BundleError, match="Bob.flac.*bob.wav|bob.wav.*Bob.flac"):
-        load_bundle(make_bundle(tmp_path / "b", [{"file": "Bob.flac"}, {"file": "bob.wav"}]))
+    with pytest.raises(BundleError, match="Pikel.flac.*pikel.wav|pikel.wav.*Pikel.flac"):
+        load_bundle(make_bundle(tmp_path / "b", [{"file": "Pikel.flac"}, {"file": "pikel.wav"}]))
 
 
 def test_two_tracks_with_one_speaker_key_are_refused(tmp_path: Path) -> None:

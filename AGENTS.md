@@ -173,7 +173,7 @@ fails loudly.
 
 ## File Naming Conventions
 
-- **Input audio**: `tmp/input/<session>/3-alice.flac`. The file stem names the
+- **Input audio**: `tmp/input/<session>/3-cadderly.flac`. The file stem names the
   speaker; any source works (Craig's stems are `<number>-<username>`)
 - **Per-speaker output dir**: `tmp/output/<session>/3-nilbits/` (input stem)
 - **Converted**: `3-nilbits.wav` inside it (16 kHz mono PCM_16, peak-normalised)

@@ -223,7 +223,7 @@ def match_speakers(tracks: list[Track], speakers: list[Speaker]) -> dict[str, Sp
 
 
 def _check_stems(tracks: list[Track]) -> None:
-    """combine matches USERNAME as a whole token, so 'bob' would also claim 'bob-2'."""
+    """combine matches USERNAME as a whole token, so 'danica' would also claim 'danica-2'."""
     for a in tracks:
         for b in tracks:
             if a is not b and match_usernames(b.stem, {a.stem: {}}):
