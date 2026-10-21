@@ -1,5 +1,5 @@
 .PHONY: help check-deps setup install setup-whisper run run-single \
-        combine-transcripts filter-vtt create-sample-files test test-fast lint \
+        combine-transcripts filter-vtt create-sample-files sample-ami check-sample test test-fast lint \
         clean-output clean-tmp
 
 ROOT_DIR := $(shell pwd)
@@ -93,6 +93,17 @@ compare-transcripts: ## Compare two combined transcripts of one session, per spe
 create-sample-files: ## Build tmp/input/jfk-sample/ from samples/
 	if [ ! -d "$(ROOT_DIR)/samples" ]; then echo "Samples directory not found at samples/"; exit 1; fi
 	$(CLI) samples
+
+sample-ami: ## Fetch the 4-speaker AMI sample (checksum-verified) into tmp/input/ami-en2002b/
+	$(VENV_CMD) combobulator samples --ami
+
+# The reference was made with .env.ami-sample on CPU. Any change in output fails: use it
+# for changes that should not change words (runtime, refactor, dependency bump).
+SAMPLE_ENV ?= .env.ami-sample
+check-sample: sample-ami ## Transcribe the AMI sample and fail if it differs from samples/ami/
+	$(VENV_CMD) ENV_FILE=$(SAMPLE_ENV) combobulator run tmp/input/ami-en2002b --session ami-en2002b
+	$(VENV_CMD) ENV_FILE=$(SAMPLE_ENV) combobulator compare --ref samples/ami/EN2002b-reference.txt \
+		--hyp tmp/output/ami-en2002b/ami-en2002b-combined.txt --strict
 
 test: ## Run the whole suite, including real whisper/VAD inference
 	$(VENV_CMD) python -m pytest tests/ -v

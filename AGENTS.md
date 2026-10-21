@@ -86,6 +86,8 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 | `make filter-vtt file=path [threshold=50]` | Re-emit a speaker VTT from its saved JSON above a confidence; no inference |
 | `make compare-transcripts ref="…" hyp="…" [json=out]` | Compare two combined transcripts of one session per speaker; numbers only, `WHISPER_PROMPT` from `ENV_FILE` |
 | `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
+| `make sample-ami` | Fetch the 4-speaker AMI sample into `tmp/input/ami-en2002b/` (network, checksum-verified) |
+| `make check-sample` | Transcribe the AMI sample; fail if any word differs from `samples/ami/EN2002b-reference.txt` |
 | `make test-fast` | pytest without the `slow` (real inference) tests |
 | `make test` | Whole suite; never touches `tmp/output` |
 | `make lint` | `mypy --strict` |

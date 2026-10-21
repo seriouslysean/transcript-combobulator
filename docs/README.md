@@ -125,6 +125,7 @@ make compare-transcripts ref="old-1.txt old-2.txt" hyp="new-1.txt new-2.txt"  # 
 # Dev
 make test-fast                          # Suite without real inference (seconds)
 make test                               # Whole suite (minutes)
+make check-sample                       # Transcribe the 4-speaker AMI sample; fail if any word changed (samples/ami/NOTICE.md)
 make lint                               # mypy --strict
 make clean-output                       # Delete every session's outputs under tmp/output
 ```
