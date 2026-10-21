@@ -63,27 +63,31 @@ setup-whisper: ## Download WHISPER_MODEL into models/ without loading it
 
 # ── Pipeline ──
 run: ## Full session pipeline: folder=tmp/input/<session> [force=1]
-	if [ -z "$(folder)" ]; then echo "Usage: make run folder=tmp/input/<session> [force=1]"; exit 1; fi
-	if [ ! -d "$(folder)" ]; then echo "Directory not found: $(folder)"; exit 1; fi
-	session_name=$$(basename "$(folder)"); \
-	force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
-	$(CLI) run "$(folder)" --session "$$session_name" $$force_flag
+	if [ -z "$$folder" ]; then echo "Usage: make run folder=tmp/input/<session> [force=1]"; exit 1; fi
+	if [ ! -d "$$folder" ]; then echo "Directory not found: $$folder"; exit 1; fi
+	session_name=$$(basename "$$folder"); \
+	force_flag=""; if [ "$$force" = "1" ]; then force_flag="--force"; fi; \
+	$(CLI) run "$$folder" --session "$$session_name" $$force_flag
 
 run-single: ## Convert -> VAD -> transcribe one file, no combine: file=path [force=1]
-	if [ -z "$(file)" ]; then echo "Usage: make run-single file=path/to/file.flac [force=1]"; exit 1; fi
-	if [ ! -f "$(file)" ]; then echo "File not found: $(file)"; exit 1; fi
-	echo "Processing $$(basename $(file))..."
-	force_flag=""; if [ "$(force)" = "1" ]; then force_flag="--force"; fi; \
-	$(CLI) file "$(file)" $$force_flag
+	if [ -z "$$file" ]; then echo "Usage: make run-single file=path/to/file.flac [force=1]"; exit 1; fi
+	if [ ! -f "$$file" ]; then echo "File not found: $$file"; exit 1; fi
+	echo "Processing $$(basename "$$file")..."
+	force_flag=""; if [ "$$force" = "1" ]; then force_flag="--force"; fi; \
+	$(CLI) file "$$file" $$force_flag
 
 combine-transcripts: ## Merge per-speaker VTTs into one transcript: session=<name>
-	if [ -z "$(session)" ]; then echo "Usage: make combine-transcripts session=<name>"; exit 1; fi
-	echo "Combining transcripts for $(session)..."
-	$(CLI) combine "$(session)"
+	if [ -z "$$session" ]; then echo "Usage: make combine-transcripts session=<name>"; exit 1; fi
+	echo "Combining transcripts for $$session..."
+	$(CLI) combine "$$session"
 
 filter-vtt: ## Rewrite a speaker's VTT from saved JSON above a confidence: file=<input audio> [threshold=50]
-	if [ -z "$(file)" ]; then echo "Usage: make filter-vtt file=tmp/input/<session>/<speaker>.flac [threshold=50]"; exit 1; fi
-	$(CLI) filter-vtt "$(file)" $(if $(threshold),--threshold $(threshold),)
+	if [ -z "$$file" ]; then echo "Usage: make filter-vtt file=tmp/input/<session>/<speaker>.flac [threshold=50]"; exit 1; fi
+	if [ -n "$$threshold" ]; then \
+		$(CLI) filter-vtt "$$file" --threshold "$$threshold"; \
+	else \
+		$(CLI) filter-vtt "$$file"; \
+	fi
 
 # ── Dev ──
 create-sample-files: ## Build tmp/input/jfk-sample/ from samples/
