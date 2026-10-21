@@ -140,7 +140,9 @@ ENV_FILE=/path/to/.env.campaign /path/to/repo/.venv/bin/combobulator run /srv/cr
 ```
 
 `combobulator --help` lists the other commands (`file`, `combine`,
-`filter-vtt`, `setup-model`, `samples`); every Makefile target wraps one.
+`filter-vtt`, `session-env`, `setup-model`, `samples`); every Makefile target wraps one.
+`session-env` writes a session's own env from a recording bundle
+([recording-bundle.md](recording-bundle.md)) and a speakers file.
 Defaults in `.env`:
 
 ```sh

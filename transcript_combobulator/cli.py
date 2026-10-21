@@ -16,6 +16,7 @@ COMMANDS = {
     "file": "Convert, VAD, and transcribe one file; no combine",
     "combine": "Merge a session's per-speaker VTTs into one transcript",
     "filter-vtt": "Rewrite a speaker's VTT from its saved JSON above a confidence",
+    "session-env": "Write a session's env file from a recording bundle and a speakers file",
     "setup-model": "Download WHISPER_MODEL into models/ without loading it",
     "samples": "Build sample and test audio from samples/",
 }
@@ -64,6 +65,10 @@ def main(argv: list[str] | None = None) -> None:
         from transcript_combobulator.vtt_filter import main as filter_main
 
         filter_main(rest)
+    elif command == "session-env":
+        from transcript_combobulator.session_env import main as session_env_main
+
+        session_env_main(rest)
     elif command == "setup-model":
         from transcript_combobulator.model_setup import main as setup_main
 
