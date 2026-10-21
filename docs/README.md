@@ -120,6 +120,7 @@ make run-single file=path/to/file.flac  # One file, no combine
 # Post-processing
 make combine-transcripts session=name   # Re-merge per-speaker VTTs
 make filter-vtt file=path/to/file.flac threshold=60  # Re-emit a VTT above a confidence, no inference
+make compare-transcripts ref="old-1.txt old-2.txt" hyp="new-1.txt new-2.txt"  # Per-speaker differences between two runs
 
 # Dev
 make test-fast                          # Suite without real inference (seconds)
@@ -140,7 +141,7 @@ ENV_FILE=/path/to/.env.campaign /path/to/repo/.venv/bin/combobulator run /srv/cr
 ```
 
 `combobulator --help` lists the other commands (`file`, `combine`,
-`filter-vtt`, `setup-model`, `samples`); every Makefile target wraps one.
+`filter-vtt`, `compare`, `setup-model`, `samples`); every Makefile target wraps one.
 Defaults in `.env`:
 
 ```sh

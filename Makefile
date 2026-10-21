@@ -85,6 +85,10 @@ filter-vtt: ## Rewrite a speaker's VTT from saved JSON above a confidence: file=
 	if [ -z "$(file)" ]; then echo "Usage: make filter-vtt file=tmp/input/<session>/<speaker>.flac [threshold=50]"; exit 1; fi
 	$(CLI) filter-vtt "$(file)" $(if $(threshold),--threshold $(threshold),)
 
+compare-transcripts: ## Compare two combined transcripts of one session, per speaker: ref="a-1.txt a-2.txt" hyp="b-1.txt b-2.txt" [json=out.json]
+	if [ -z "$(ref)" ] || [ -z "$(hyp)" ]; then echo "Usage: make compare-transcripts ref=\"<ref files>\" hyp=\"<new files>\" [json=out.json]"; exit 1; fi
+	$(CLI) compare --ref $(ref) --hyp $(hyp) $(if $(json),--json "$(json)",)
+
 # ── Dev ──
 create-sample-files: ## Build tmp/input/jfk-sample/ from samples/
 	if [ ! -d "$(ROOT_DIR)/samples" ]; then echo "Samples directory not found at samples/"; exit 1; fi
