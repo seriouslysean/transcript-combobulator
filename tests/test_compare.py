@@ -35,7 +35,7 @@ def test_identical_runs_differ_by_nothing_and_pass_the_gate(tmp_path: Path) -> N
 
 
 def test_quoted_labels_and_timestamps_parse(tmp_path: Path) -> None:
-    stamped = [f"{line} [00:0{i}:00]" for i, line in enumerate(LINES)]
+    stamped = [f"{line} [00:0{i}:00.000 --> 00:0{i}:04.500]" for i, line in enumerate(LINES)]  # combine's format
     t = load([_write(tmp_path / "a.txt", stamped)])
     assert set(t.lines) == {"DM", "Milo \"Maestro\" Fairweather", "Orsk"}
     assert t.lines["Orsk"] == ["I check the gate for traps before anyone touches it."]
@@ -104,3 +104,17 @@ def test_main_refuses_a_missing_file(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as e:
         main(["--ref", str(a), "--hyp", str(tmp_path / "nope.txt")])
     assert e.value.code == 2
+
+
+def test_combines_own_output_reads_the_same_with_and_without_timestamps(tmp_path: Path) -> None:
+    from transcript_combobulator.combine import TranscriptConfig, combine_transcripts
+
+    configs = []
+    for i, (name, label, text) in enumerate([("Pat", "DM", LINES[0][4:]), ("Sam", "Orsk", LINES[2][6:])]):
+        vtt = tmp_path / f"{i}.vtt"
+        vtt.write_text(f"WEBVTT\n\n00:00:0{i}.000 --> 00:00:0{i}.900\n{text}\n", encoding="utf-8")
+        configs.append(TranscriptConfig(name, label, "x", vtt))
+    (stamped,) = combine_transcripts(configs, tmp_path / "t.txt", include_timestamps=True)
+    (plain,) = combine_transcripts(configs, tmp_path / "p.txt", include_timestamps=False)
+    t, p = load([stamped]), load([plain])
+    assert t.lines == p.lines == {"DM": [LINES[0][4:]], "Orsk": [LINES[2][6:]]}

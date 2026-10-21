@@ -38,8 +38,9 @@ CANNED = frozenset({'thank you', 'thanks for watching', 'thank you for watching'
 # A speaker line when the Summary header is missing: a label of up to 31 characters,
 # quotes allowed (Milo "Maestro" Fairweather).
 _SPEAKER_RE = re.compile(r'^([A-Za-z][A-Za-z .\'"“”-]{0,30}?):\s(.*)$')
-# combine's INCLUDE_TIMESTAMPS suffix, so both modes compare the same words.
-_TIMESTAMP_RE = re.compile(r'\s\[\d{2}:\d{2}:\d{2}(?:\.\d+)?\]$')
+# combine's INCLUDE_TIMESTAMPS suffix (`` [00:00:15.000 --> 00:00:25.380]``), so both modes
+# compare the same words.
+_TIMESTAMP_RE = re.compile(r'\s\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]$')
 
 
 def normalize(text: str) -> str:
