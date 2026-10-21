@@ -201,23 +201,27 @@ def combine_transcripts(
 
 
 def _load_username_mapping() -> dict[str, dict[str, str]]:
-    """Build username -> {name, label, description} from TRANSCRIPT_N_* env vars."""
+    """Build username -> {name, label, description} from TRANSCRIPT_N_* env vars.
+
+    Values are used as python-dotenv parsed them: it already removes the outer
+    quotes, so quote marks left in a value are part of the name.
+    """
     mapping: dict[str, dict[str, str]] = {}
     i = 1
     while True:
-        username = os.getenv(f'TRANSCRIPT_{i}_USERNAME', '').strip().strip('"')
+        username = os.getenv(f'TRANSCRIPT_{i}_USERNAME', '').strip()
         if not username:
             break
 
         name = (
             os.getenv(f'TRANSCRIPT_{i}_NAME', '')
             or os.getenv(f'TRANSCRIPT_{i}_PLAYER', '')
-        ).strip().strip('"')
+        ).strip()
         label = (
             os.getenv(f'TRANSCRIPT_{i}_LABEL', '')
             or os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '')
-        ).strip().strip('"')
-        description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip().strip('"')
+        ).strip()
+        description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip()
 
         if all([name, label, description]):
             mapping[username] = {'name': name, 'label': label, 'description': description}
