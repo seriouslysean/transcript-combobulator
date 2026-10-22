@@ -209,8 +209,8 @@ fails loudly.
   swung between 0.9 and 3.9 GB run to run, which is why only the ONNX build is used.
 - **The package `__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
-- **One encoder pass per VAD island is the floor, by decision.** Whisper
-  encodes a fixed 30 s window, so short islands pay full
+- **One encoder pass per VAD island is the floor on stock whisper, by
+  decision.** Whisper encodes a fixed 30 s window, so short islands pay full
   price (utilisation ~24% on a real session). Packing islands into one clip
   was measured at 2.45x on a 2.9 h track with identical words, but whisper
   places segment boundaries from what it hears, never from splices: 56 of
@@ -219,11 +219,12 @@ fails loudly.
   still misassigned 9 of 128. WhisperX and faster-whisper pack the same way
   and fix time with a separate wav2vec2 forced-alignment model; whisper.cpp
   shrinks the encoder per clip (`audio_ctx`, ~3x on short clips). Both are
-  outside stock openai-whisper and were ruled out: they buy speed by changing
-  what the model hears or by adding a second model. Do not reintroduce
-  packing, encoder-context patches, or a detect-and-retry shim.
-  What can change is where the same model runs. `WHISPER_RUNTIME=mlx` runs
-  `large-v3-turbo` through mlx-whisper on the Apple GPU with the same islands
+  outside stock openai-whisper and were ruled out: this project stays on
+  stock whisper, slow and correct, rather than patching the model or adding
+  a second one. Do not reintroduce packing, encoder-context patches, or a
+  detect-and-retry shim.
+- **`WHISPER_RUNTIME=mlx` runs the same model on the Apple GPU, for speed.**
+  It runs `large-v3-turbo` through mlx-whisper on the Apple GPU with the same islands
   and the same decoding options, still one encoder pass per island, and
   `WHISPER_DEVICE=mps` runs stock whisper on the GPU. Neither patches the
   model, adds a second one, packs, or retries. The default stays stock
@@ -239,13 +240,14 @@ fails loudly.
   on `mlx` took 4 m 12 s with `PARALLEL_JOBS=2` (3 m 41 s with 4) against
   1 h 06 m on the CPU: 0.9% of words different (WER 1.45%), 3 of 1813
   islands lost (1 to 5 words each), bare "Thank you" 35 to 42, single-threaded
-  VAD now 118 s of the 458 s of work. At the level of session notes (Rue's
-  notes from the whole transcript, instructions v5, cold, graded against
-  Sean's 28 bullets of session 11): CPU transcript 22 of 28, mlx transcript
+  VAD now 118 s of the 458 s of work. At the level of session notes (notes
+  written cold from the whole transcript, graded against a 28-bullet human
+  reference): CPU transcript 22 of 28, mlx transcript
   22 of 28, inside the 0.77 to 0.80 spread between runs on one transcript;
-  the proper-noun variants in the two transcripts are the same (Nafir 14 and
-  14, Artis 4 and 4, Hu Tao 1 and 1). One run each, so a difference smaller
-  than that spread is not shown either way. What mlx-whisper does not have:
+  the proper-noun variants in the two transcripts are the same, name by name
+  and count by count. One run each, so a difference smaller than that
+  spread is not shown either way: this is a speed change, not a correctness
+  gain. What mlx-whisper does not have:
   `carry_initial_prompt` (the prompt reaches only the first 30 s window of an
   island; 59 of 1813 islands, 3.3%, are longer), beam search, and anything
   but fp16. Both GPU runtimes share the GPU: with a 90 GB llama.cpp model
