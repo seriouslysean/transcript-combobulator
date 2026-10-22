@@ -39,6 +39,7 @@ dev = [
     "mypy==2.3.1",
     "pyrefly==1.4.0",
     "pytest==9.1.1",
+    "ruff==0.17.1",
 ]
 # Apple Silicon only; inert until a WHISPER_RUNTIME seam exists.
 mac = [
@@ -89,10 +90,11 @@ matches = "transcript_combobulator/vad.py"
 [tool.pyrefly.sub-config.errors]
 unnecessary-type-conversion = false
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py311']
+target-version = "py311"
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
+[tool.ruff.lint]
+# Ruff's classic default set (pycodestyle errors, pyflakes) plus import sorting,
+# which replaces the old isort config.
+select = ["E4", "E7", "E9", "F", "I"]
