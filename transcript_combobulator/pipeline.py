@@ -6,7 +6,7 @@ import shutil
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, MutableMapping, Optional
+from typing import Any, Generator, MutableMapping, Optional
 
 from transcript_combobulator.audio_utils import (
     AudioValidationError,
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def _timed_stage(metrics: dict[str, Any], stage: str) -> Iterator[None]:
+def _timed_stage(metrics: dict[str, Any], stage: str) -> Generator[None, None, None]:
     started = time.perf_counter()
     try:
         yield
@@ -55,7 +55,9 @@ def process_file(
     status_key: Optional[str] = None,
     force: bool = False,
     metrics: Optional[dict[str, Any]] = None,
+    session: Optional[str] = None,
 ) -> dict[str, Any]:
+    # Read through symlinks, but place output by the path as given.
     input_file = Path(input_path).resolve()
     setup_logging()
     file_metrics = metrics if metrics is not None else {}
@@ -96,7 +98,7 @@ def process_file(
                 )
 
         with _timed_stage(file_metrics, 'setup'):
-            output_dir = get_output_path_for_input(input_file)
+            output_dir = get_output_path_for_input(Path(input_path), session)
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / f"{input_file.stem}.wav"
             manifest_path = get_manifest_path(output_dir, input_file.stem)
@@ -208,7 +210,7 @@ def process_file(
             else:
                 transcription = transcribe_segments(
                     output_file,
-                    input_file,
+                    output_dir,
                     progress_callback=_progress_callback,
                     metrics=transcription_metrics,
                     checkpoint_path=progress_path,

@@ -82,10 +82,18 @@ OUTPUT_DIR = TMP_DIR / 'output'
 WHISPER_MODELS_DIR = ROOT_DIR / 'models'
 
 
-def get_output_path_for_input(input_path: Path) -> Path:
-    """Mirror input dir structure under OUTPUT_DIR, scoped to a per-file subdir."""
+def get_output_path_for_input(input_path: Path, session: str | None = None) -> Path:
+    """Per-file output dir: ``OUTPUT_DIR/<session>/<stem>``.
+
+    A batch run names its session, so its tracks land under the session
+    wherever the audio lives. Without one the input folder under INPUT_DIR is
+    mirrored. The path is made absolute without following symlinks, so a link
+    under ``tmp/input/<session>/`` still counts as being there.
+    """
+    if session:
+        return OUTPUT_DIR / session / input_path.stem
     try:
-        rel_path = input_path.relative_to(INPUT_DIR)
+        rel_path = Path(os.path.abspath(input_path)).relative_to(INPUT_DIR)
         return OUTPUT_DIR / rel_path.parent / input_path.stem
     except ValueError:
         return OUTPUT_DIR / input_path.stem
@@ -100,9 +108,9 @@ def vtt_name_for_stem(stem: str) -> str:
     return f"{m.group(1)}_combined.vtt" if m else f"{stem}.vtt"
 
 
-def vtt_path_for_input(input_path: Path) -> Path:
+def vtt_path_for_input(input_path: Path, session: str | None = None) -> Path:
     """Where the pipeline writes the per-speaker VTT for a given input file."""
-    return get_output_path_for_input(input_path) / vtt_name_for_stem(input_path.stem)
+    return get_output_path_for_input(input_path, session) / vtt_name_for_stem(input_path.stem)
 
 
 # ── Parallel Processing ──

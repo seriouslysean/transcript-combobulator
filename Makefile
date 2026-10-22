@@ -1,5 +1,5 @@
 .PHONY: help check-deps setup install setup-whisper run run-single \
-        combine-transcripts filter-vtt session-env create-sample-files test test-fast lint \
+        combine-transcripts filter-vtt session-env create-sample-files test test-fast lint lint-pyrefly \
         clean-output clean-tmp
 
 ROOT_DIR := $(shell pwd)
@@ -112,6 +112,9 @@ test-fast: ## Run the suite without the slow inference tests
 
 lint: ## Run mypy (strict)
 	$(VENV_CMD) mypy transcript_combobulator
+
+lint-pyrefly: ## Run pyrefly beside mypy (trial; mypy stays the gate)
+	$(VENV_CMD) pyrefly check
 
 # ── Cleanup ──
 # These delete data. tmp/output holds every session's transcripts, metrics,
