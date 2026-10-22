@@ -9,7 +9,7 @@ import re
 import string
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Mapping, Optional
 
 from transcript_combobulator.config import (
     CHUNKS,
@@ -200,28 +200,31 @@ def combine_transcripts(
     return output_files
 
 
-def _load_username_mapping() -> dict[str, dict[str, str]]:
-    """Build username -> {name, label, description} from TRANSCRIPT_N_* env vars.
+def load_speaker_mapping(
+    env: Optional[Mapping[str, Optional[str]]] = None,
+) -> dict[str, dict[str, str]]:
+    """Build username -> {name, label, description} from TRANSCRIPT_N_* variables.
 
-    Values are used as python-dotenv parsed them: it already removes the outer
-    quotes, so quote marks left in a value are part of the name.
+    Reads the process environment, or ``env`` when given (a parsed env file that
+    is not the one this process runs with). Values are used as python-dotenv
+    parsed them: it already removes the outer quotes, so quote marks left in a
+    value are part of the name.
     """
+    source: Mapping[str, Optional[str]] = os.environ if env is None else env
+
+    def get(key: str) -> str:
+        return source.get(key) or ''
+
     mapping: dict[str, dict[str, str]] = {}
     i = 1
     while True:
-        username = os.getenv(f'TRANSCRIPT_{i}_USERNAME', '').strip()
+        username = get(f'TRANSCRIPT_{i}_USERNAME').strip()
         if not username:
             break
 
-        name = (
-            os.getenv(f'TRANSCRIPT_{i}_NAME', '')
-            or os.getenv(f'TRANSCRIPT_{i}_PLAYER', '')
-        ).strip()
-        label = (
-            os.getenv(f'TRANSCRIPT_{i}_LABEL', '')
-            or os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '')
-        ).strip()
-        description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip()
+        name = (get(f'TRANSCRIPT_{i}_NAME') or get(f'TRANSCRIPT_{i}_PLAYER')).strip()
+        label = (get(f'TRANSCRIPT_{i}_LABEL') or get(f'TRANSCRIPT_{i}_CHARACTER')).strip()
+        description = get(f'TRANSCRIPT_{i}_DESCRIPTION').strip()
 
         if all([name, label, description]):
             mapping[username] = {'name': name, 'label': label, 'description': description}
@@ -254,7 +257,7 @@ def _dedupe_entries(
     return kept
 
 
-def _match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
+def match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
     """Usernames that appear in a per-speaker dir name as a whole token.
 
     Token boundaries are non-alphanumerics or the string ends, so 'dez' does
@@ -267,14 +270,18 @@ def _match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[
     ]
 
 
-def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, str]]:
+def validate_speaker_mapping(
+    dir_names: Iterable[str],
+    env: Optional[Mapping[str, Optional[str]]] = None,
+) -> dict[str, dict[str, str]]:
     """Check TRANSCRIPT_N_* covers every per-speaker directory name exactly once.
 
     Raises CombineError with the same messages the combine step would produce.
     Batch runs call this before transcription so a config typo fails in
     seconds rather than after hours of inference. Returns the loaded mapping.
+    ``env`` checks a parsed env file instead of the process environment.
     """
-    username_mapping = _load_username_mapping()
+    username_mapping = load_speaker_mapping(env)
     if not username_mapping:
         raise CombineError(
             "No transcript mappings found. Define TRANSCRIPT_N_USERNAME, "
@@ -283,7 +290,7 @@ def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, st
 
     unmapped_dirs: list[str] = []
     for dir_name in dir_names:
-        matches = _match_usernames(dir_name, username_mapping)
+        matches = match_usernames(dir_name, username_mapping)
         if not matches:
             unmapped_dirs.append(dir_name)
             continue
@@ -332,7 +339,7 @@ def combine_transcripts_from_env(
 
     transcript_configs: list[TranscriptConfig] = []
     for vtt_file in vtt_files:
-        matches = _match_usernames(vtt_file.parent.name, username_mapping)
+        matches = match_usernames(vtt_file.parent.name, username_mapping)
         m = username_mapping[matches[0]]
         transcript_configs.append(
             TranscriptConfig(

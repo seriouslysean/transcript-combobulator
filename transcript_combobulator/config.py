@@ -4,12 +4,13 @@ Respects ENV_FILE to override the default .env. This module is imported early
 by every other module — do not add imports from transcript_combobulator.* here.
 """
 
+import io
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 # Anchor every path to the repository, not the caller's cwd, so the tools behave
 # the same from cron, systemd, or another directory. PROJECT_ROOT (shell env,
@@ -35,6 +36,25 @@ if os.environ.get('ENV_FILE') and not _env_file.is_file():
         f"ENV_FILE={os.environ['ENV_FILE']!r} not found (looked at {_env_file})"
     )
 load_dotenv(dotenv_path=_env_file, override=True)
+
+
+def _literal(values: Mapping[str, str | None]) -> dict[str, str]:
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """Parse an env file into a dict without touching ``os.environ``.
+
+    For tools that read a file they do not run with (a campaign's base env, a
+    generated session env). Values are literal: ``${VAR}`` is not expanded, so
+    what is read is what a rewrite writes back.
+    """
+    return _literal(dotenv_values(path, interpolate=False))
+
+
+def parse_env_text(text: str) -> dict[str, str]:
+    """Like ``read_env_file`` for text that is not on disk yet."""
+    return _literal(dotenv_values(stream=io.StringIO(text), interpolate=False))
 
 
 def get_bool_env(key: str, default: bool = False) -> bool:

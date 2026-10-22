@@ -1,5 +1,5 @@
 .PHONY: help check-deps setup install setup-whisper run run-single \
-        combine-transcripts filter-vtt create-sample-files test test-fast lint lint-pyrefly \
+        combine-transcripts filter-vtt session-env create-sample-files test test-fast lint lint-pyrefly \
         clean-output clean-tmp
 
 ROOT_DIR := $(shell pwd)
@@ -88,6 +88,16 @@ filter-vtt: ## Rewrite a speaker's VTT from saved JSON above a confidence: file=
 	else \
 		$(CLI) filter-vtt "$$file"; \
 	fi
+
+session-env: ## Write a bundle's session env outside it: bundle=<dir> output=<env> [speakers=<json>] [base=<env>] [dm=<track_id>] [tz=<zone>] [force=1]
+	if [ -z "$$bundle" ] || [ -z "$$output" ]; then echo "Usage: make session-env bundle=<dir> output=<env> [speakers=<json>] [base=<env>] [dm=<track_id>] [tz=<zone>] [force=1]"; exit 1; fi
+	set -- --bundle "$$bundle" --output "$$output"; \
+	if [ -n "$$speakers" ]; then set -- "$$@" --speakers "$$speakers"; fi; \
+	if [ -n "$$base" ]; then set -- "$$@" --base "$$base"; fi; \
+	if [ -n "$$dm" ]; then set -- "$$@" --dm "$$dm"; fi; \
+	if [ -n "$$tz" ]; then set -- "$$@" --tz "$$tz"; fi; \
+	if [ "$$force" = "1" ]; then set -- "$$@" --force; fi; \
+	$(CLI) session-env "$$@"
 
 # ── Dev ──
 create-sample-files: ## Build tmp/input/jfk-sample/ from samples/
