@@ -53,14 +53,14 @@ Implementation details for developers and advanced users.
 Handles dynamic user positions (Discord Craig bot assigns numbers by join order):
 
 ```bash
-# Audio file: 3-nilbits.flac
-# Directory: 3-nilbits/
-# Username extraction: nilbits
-# Environment mapping: TRANSCRIPT_2_USERNAME="nilbits"
+# Audio file: 3-cadderly.flac
+# Directory: 3-cadderly/
+# Username extraction: cadderly
+# Environment mapping: TRANSCRIPT_2_USERNAME="cadderly"
 ```
 
 Patterns supported:
-- `{number}-{username}` (e.g., "3-nilbits", the input stem)
+- `{number}-{username}` (e.g., "3-cadderly", the input stem)
 - Direct username match (directory name in username mapping)
 
 ## Performance Optimizations
