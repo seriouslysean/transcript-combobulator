@@ -68,8 +68,8 @@ def load_vad_model() -> Any:
         raise VADError(f"Failed to load VAD model: {e}") from e
 
 
-_WINDOW_SAMPLES = 512          # silero's frame at 16 kHz
-_BLOCK_SAMPLES = 60 * 16000     # streaming read size; a multiple of the frame
+_WINDOW_SAMPLES = 512  # silero's frame at 16 kHz
+_BLOCK_SAMPLES = 60 * 16000  # streaming read size; a multiple of the frame
 
 
 def _stream_speech_probs(
@@ -86,11 +86,15 @@ def _stream_speech_probs(
     carry: npt.NDArray[np.float32] = np.zeros(0, dtype=np.float32)
     with sf.SoundFile(str(audio_path)) as f:
         total = f.frames
-        for block in f.blocks(blocksize=block_samples, dtype='float32', always_2d=False):
+        for block in f.blocks(
+            blocksize=block_samples, dtype="float32", always_2d=False
+        ):
             data = block if carry.size == 0 else np.concatenate((carry, block))
             full = (len(data) // _WINDOW_SAMPLES) * _WINDOW_SAMPLES
             for start in range(0, full, _WINDOW_SAMPLES):
-                frame = torch.from_numpy(np.ascontiguousarray(data[start:start + _WINDOW_SAMPLES]))
+                frame = torch.from_numpy(
+                    np.ascontiguousarray(data[start : start + _WINDOW_SAMPLES])
+                )
                 probs.append(float(model(frame, SAMPLE_RATE).item()))
             carry = np.asarray(data[full:], dtype=np.float32).reshape(-1)
     if carry.size:
@@ -110,7 +114,7 @@ def _speech_regions_from_probs(
     min_speech_duration_ms: int,
     min_silence_duration_ms: int,
     speech_pad_ms: int = 30,
-    max_speech_duration_s: float = float('inf'),
+    max_speech_duration_s: float = float("inf"),
     neg_threshold: float | None = None,
     min_silence_at_max_speech: int = 98,
     use_max_poss_sil_at_max_speech: bool = True,
@@ -121,7 +125,11 @@ def _speech_regions_from_probs(
     window_size_samples = _WINDOW_SAMPLES
     min_speech_samples = sampling_rate * min_speech_duration_ms / 1000
     speech_pad_samples = sampling_rate * speech_pad_ms / 1000
-    max_speech_samples = sampling_rate * max_speech_duration_s - window_size_samples - 2 * speech_pad_samples
+    max_speech_samples = (
+        sampling_rate * max_speech_duration_s
+        - window_size_samples
+        - 2 * speech_pad_samples
+    )
     min_silence_samples = sampling_rate * min_silence_duration_ms / 1000
     min_silence_samples_at_max_speech = sampling_rate * min_silence_at_max_speech / 1000
 
@@ -148,35 +156,35 @@ def _speech_regions_from_probs(
 
         if (speech_prob >= threshold) and not triggered:
             triggered = True
-            current_speech['start'] = cur_sample
+            current_speech["start"] = cur_sample
             continue
 
-        if triggered and (cur_sample - current_speech['start'] > max_speech_samples):
+        if triggered and (cur_sample - current_speech["start"] > max_speech_samples):
             if use_max_poss_sil_at_max_speech and possible_ends:
                 prev_end, dur = max(possible_ends, key=lambda x: x[1])
-                current_speech['end'] = prev_end
+                current_speech["end"] = prev_end
                 speeches.append(current_speech)
                 current_speech = {}
                 next_start = prev_end + dur
                 if next_start < prev_end + cur_sample:
-                    current_speech['start'] = next_start
+                    current_speech["start"] = next_start
                 else:
                     triggered = False
                 prev_end = next_start = temp_end = 0
                 possible_ends = []
             else:
                 if prev_end:
-                    current_speech['end'] = prev_end
+                    current_speech["end"] = prev_end
                     speeches.append(current_speech)
                     current_speech = {}
                     if next_start < prev_end:
                         triggered = False
                     else:
-                        current_speech['start'] = next_start
+                        current_speech["start"] = next_start
                     prev_end = next_start = temp_end = 0
                     possible_ends = []
                 else:
-                    current_speech['end'] = cur_sample
+                    current_speech["end"] = cur_sample
                     speeches.append(current_speech)
                     current_speech = {}
                     prev_end = next_start = temp_end = 0
@@ -188,13 +196,18 @@ def _speech_regions_from_probs(
             if not temp_end:
                 temp_end = cur_sample
             sil_dur_now = cur_sample - temp_end
-            if not use_max_poss_sil_at_max_speech and sil_dur_now > min_silence_samples_at_max_speech:
+            if (
+                not use_max_poss_sil_at_max_speech
+                and sil_dur_now > min_silence_samples_at_max_speech
+            ):
                 prev_end = temp_end
             if sil_dur_now < min_silence_samples:
                 continue
             else:
-                current_speech['end'] = temp_end
-                if (current_speech['end'] - current_speech['start']) > min_speech_samples:
+                current_speech["end"] = temp_end
+                if (
+                    current_speech["end"] - current_speech["start"]
+                ) > min_speech_samples:
                     speeches.append(current_speech)
                 current_speech = {}
                 prev_end = next_start = temp_end = 0
@@ -202,29 +215,45 @@ def _speech_regions_from_probs(
                 possible_ends = []
                 continue
 
-    if current_speech and (audio_length_samples - current_speech['start']) > min_speech_samples:
-        current_speech['end'] = audio_length_samples
+    if (
+        current_speech
+        and (audio_length_samples - current_speech["start"]) > min_speech_samples
+    ):
+        current_speech["end"] = audio_length_samples
         speeches.append(current_speech)
 
     for i, speech in enumerate(speeches):
         if i == 0:
-            speech['start'] = int(max(0, speech['start'] - speech_pad_samples))
+            speech["start"] = int(max(0, speech["start"] - speech_pad_samples))
         if i != len(speeches) - 1:
-            silence_duration = speeches[i + 1]['start'] - speech['end']
+            silence_duration = speeches[i + 1]["start"] - speech["end"]
             if silence_duration < 2 * speech_pad_samples:
-                speech['end'] += int(silence_duration // 2)
-                speeches[i + 1]['start'] = int(max(0, speeches[i + 1]['start'] - silence_duration // 2))
+                speech["end"] += int(silence_duration // 2)
+                speeches[i + 1]["start"] = int(
+                    max(0, speeches[i + 1]["start"] - silence_duration // 2)
+                )
             else:
-                speech['end'] = int(min(audio_length_samples, speech['end'] + speech_pad_samples))
-                speeches[i + 1]['start'] = int(max(0, speeches[i + 1]['start'] - speech_pad_samples))
+                speech["end"] = int(
+                    min(audio_length_samples, speech["end"] + speech_pad_samples)
+                )
+                speeches[i + 1]["start"] = int(
+                    max(0, speeches[i + 1]["start"] - speech_pad_samples)
+                )
         else:
-            speech['end'] = int(min(audio_length_samples, speech['end'] + speech_pad_samples))
+            speech["end"] = int(
+                min(audio_length_samples, speech["end"] + speech_pad_samples)
+            )
 
     if return_seconds:
         audio_length_seconds = audio_length_samples / sampling_rate
         for speech_dict in speeches:
-            speech_dict['start'] = max(round(speech_dict['start'] / sampling_rate, time_resolution), 0)
-            speech_dict['end'] = min(round(speech_dict['end'] / sampling_rate, time_resolution), audio_length_seconds)
+            speech_dict["start"] = max(
+                round(speech_dict["start"] / sampling_rate, time_resolution), 0
+            )
+            speech_dict["end"] = min(
+                round(speech_dict["end"] / sampling_rate, time_resolution),
+                audio_length_seconds,
+            )
 
     return speeches
 
@@ -262,7 +291,7 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
     except AudioValidationError as e:
         raise VADError(f"Audio validation failed: {e}") from e
 
-    if input_path.suffix.lower() != '.wav':
+    if input_path.suffix.lower() != ".wav":
         raise VADError(f"Expected WAV file but got: {input_path.suffix}")
 
     logger.info(
@@ -277,12 +306,12 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
         model = load_vad_model()
         # The pipeline converts upstream; anything else is a wiring bug, and
         # silently resampling here would hide it from the cache fingerprint.
-        if audio_info['sample_rate'] != SAMPLE_RATE or audio_info['channels'] != 1:
+        if audio_info["sample_rate"] != SAMPLE_RATE or audio_info["channels"] != 1:
             raise VADError(
                 f"Expected {SAMPLE_RATE}Hz mono, got {audio_info['sample_rate']}Hz "
                 f"{audio_info['channels']}ch: run convert_to_wav first"
             )
-        total_samples = int(audio_info['frames'])
+        total_samples = int(audio_info["frames"])
 
         # Silero runs frame by frame; intra-op threading only adds overhead.
         # Restore the worker's whisper thread count afterwards, even on error.
@@ -297,18 +326,22 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
 
         if not speech_timestamps:
             # A muted participant is a real, empty track, not a failure.
-            logger.warning(f"No speech detected in {input_path.name}; writing an empty mapping")
+            logger.warning(
+                f"No speech detected in {input_path.name}; writing an empty mapping"
+            )
 
         padding_samples = int(PADDING_SECONDS * SAMPLE_RATE)
-        logger.info(f"Found {len(speech_timestamps)} speech segments in {input_path.name}")
+        logger.info(
+            f"Found {len(speech_timestamps)} speech segments in {input_path.name}"
+        )
 
         segments: list[dict[str, Any]] = []
         with sf.SoundFile(str(input_path)) as source:
             for i, ts in enumerate(speech_timestamps):
-                start = max(0, int(ts['start'] * SAMPLE_RATE) - padding_samples)
-                end = min(total_samples, int(ts['end'] * SAMPLE_RATE) + padding_samples)
+                start = max(0, int(ts["start"] * SAMPLE_RATE) - padding_samples)
+                end = min(total_samples, int(ts["end"] * SAMPLE_RATE) + padding_samples)
                 source.seek(start)
-                segment = source.read(end - start, dtype='float32', always_2d=False)
+                segment = source.read(end - start, dtype="float32", always_2d=False)
 
                 segment_path = output_dir / f"{input_path.stem}_segment_{i:03d}.wav"
                 sf.write(str(segment_path), segment, SAMPLE_RATE)
@@ -317,22 +350,24 @@ def process_audio(input_path: Path) -> tuple[Path, list[dict[str, Any]]]:
                 # of the WAV actually written, which include the padding. Whisper
                 # timestamps are relative to the clip, so the clip start is the
                 # offset to add back.
-                segments.append({
-                    'start_seconds': ts['start'],
-                    'end_seconds': ts['end'],
-                    'clip_start_seconds': start / SAMPLE_RATE,
-                    'clip_end_seconds': end / SAMPLE_RATE,
-                    'segment_file': str(segment_path),
-                })
+                segments.append(
+                    {
+                        "start_seconds": ts["start"],
+                        "end_seconds": ts["end"],
+                        "clip_start_seconds": start / SAMPLE_RATE,
+                        "clip_end_seconds": end / SAMPLE_RATE,
+                        "segment_file": str(segment_path),
+                    }
+                )
 
         mapping_path = output_dir / f"{input_path.stem}_mapping.json"
-        with open(mapping_path, 'w') as f:
+        with open(mapping_path, "w") as f:
             json.dump(
                 {
-                    'original_file': str(input_path),
-                    'sample_rate': SAMPLE_RATE,
-                    'segments': segments,
-                    'created_at': datetime.now().isoformat(),
+                    "original_file": str(input_path),
+                    "sample_rate": SAMPLE_RATE,
+                    "segments": segments,
+                    "created_at": datetime.now().isoformat(),
                 },
                 f,
                 indent=2,

@@ -42,8 +42,10 @@ class WhisperError(Exception):
 
 
 def get_whisper_device() -> str:
-    if WHISPER_DEVICE not in ('cpu', 'cuda', 'mps'):
-        raise ValueError(f"Invalid WHISPER_DEVICE: {WHISPER_DEVICE}. Must be cpu, cuda, or mps.")
+    if WHISPER_DEVICE not in ("cpu", "cuda", "mps"):
+        raise ValueError(
+            f"Invalid WHISPER_DEVICE: {WHISPER_DEVICE}. Must be cpu, cuda, or mps."
+        )
     return WHISPER_DEVICE
 
 
@@ -86,14 +88,16 @@ def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> st
     while i < len(tokens):
         collapsed = False
         for n in range(1, _MAX_REPEAT_PHRASE_WORDS + 1):
-            unit = [_norm_token(t) for t in tokens[i:i + n]]
+            unit = [_norm_token(t) for t in tokens[i : i + n]]
             if len(unit) < n or not all(unit):
                 break
             repeats = 1
-            while [_norm_token(t) for t in tokens[i + repeats * n:i + (repeats + 1) * n]] == unit:
+            while [
+                _norm_token(t) for t in tokens[i + repeats * n : i + (repeats + 1) * n]
+            ] == unit:
                 repeats += 1
             if repeats >= threshold:
-                out.extend(tokens[i:i + n])
+                out.extend(tokens[i : i + n])
                 i += repeats * n
                 collapsed = True
                 break
@@ -143,18 +147,20 @@ def _segments_from_result(
         start = float(segment.get("start", 0.0)) + offset
         end = float(segment.get("end", 0.0)) + offset
         text = collapse_repetition(str(segment.get("text", "")).strip())
-        avg_logprob = float(segment.get('avg_logprob', 0))
+        avg_logprob = float(segment.get("avg_logprob", 0))
         confidence = min(100, max(0, (1 + avg_logprob) * 100))
         # whisper records the temperature it settled on; anything above the
         # first value means its compression/logprob guard tripped and it
         # re-decoded (only possible with a WHISPER_TEMPERATURE list).
-        out.append({
-            "start": start,
-            "end": end,
-            "text": text,
-            "confidence": confidence,
-            "temperature": float(segment.get("temperature", 0.0)),
-        })
+        out.append(
+            {
+                "start": start,
+                "end": end,
+                "text": text,
+                "confidence": confidence,
+                "temperature": float(segment.get("temperature", 0.0)),
+            }
+        )
     return out
 
 
@@ -201,13 +207,15 @@ def _write_vtt(output_path: Path, segments: list[dict[str, Any]]) -> None:
 
 def _load_segment_audio(audio_path: Path) -> npt.NDArray[np.float32]:
     """Decode a normalized pipeline WAV without spawning FFmpeg."""
-    audio, sample_rate = sf.read(str(audio_path), dtype='float32', always_2d=False)
+    audio, sample_rate = sf.read(str(audio_path), dtype="float32", always_2d=False)
     if sample_rate != SAMPLE_RATE:
         raise WhisperError(
             f"Expected {SAMPLE_RATE}Hz segment but got {sample_rate}Hz: {audio_path}"
         )
     if audio.ndim != 1:
-        raise WhisperError(f"Expected mono segment but got shape {audio.shape}: {audio_path}")
+        raise WhisperError(
+            f"Expected mono segment but got shape {audio.shape}: {audio_path}"
+        )
     return np.asarray(audio, dtype=np.float32)
 
 
@@ -224,22 +232,22 @@ def transcribe_segment(
 
     metrics = timing if timing is not None else {}
     started = time.perf_counter()
-    metrics['model_was_provided'] = model is not None
+    metrics["model_was_provided"] = model is not None
     try:
         stage_started = time.perf_counter()
         try:
             model = model or load_whisper_model()
         finally:
-            metrics['model_resolve_seconds'] = elapsed_seconds(
+            metrics["model_resolve_seconds"] = elapsed_seconds(
                 stage_started, time.perf_counter()
             )
 
         stage_started = time.perf_counter()
         try:
             audio = _load_segment_audio(audio_path)
-            metrics['audio_seconds'] = round(len(audio) / SAMPLE_RATE, 6)
+            metrics["audio_seconds"] = round(len(audio) / SAMPLE_RATE, 6)
         finally:
-            metrics['audio_decode_seconds'] = elapsed_seconds(
+            metrics["audio_decode_seconds"] = elapsed_seconds(
                 stage_started, time.perf_counter()
             )
 
@@ -247,7 +255,7 @@ def transcribe_segment(
         try:
             result = model.transcribe(audio, **get_whisper_options())
         finally:
-            metrics['inference_seconds'] = elapsed_seconds(
+            metrics["inference_seconds"] = elapsed_seconds(
                 stage_started, time.perf_counter()
             )
 
@@ -255,7 +263,7 @@ def transcribe_segment(
         try:
             segments = _segments_from_result(result, offset=offset)
         finally:
-            metrics['result_processing_seconds'] = elapsed_seconds(
+            metrics["result_processing_seconds"] = elapsed_seconds(
                 stage_started, time.perf_counter()
             )
 
@@ -264,26 +272,26 @@ def transcribe_segment(
             try:
                 _write_vtt(output_path, segments)
             finally:
-                metrics['vtt_write_seconds'] = elapsed_seconds(
+                metrics["vtt_write_seconds"] = elapsed_seconds(
                     stage_started, time.perf_counter()
                 )
         else:
-            metrics['vtt_write_seconds'] = 0.0
-        metrics['status'] = 'processed' if segments else 'empty'
-        metrics['result_segment_count'] = len(segments)
-        metrics['text_characters'] = sum(len(s.get('text', '')) for s in segments)
+            metrics["vtt_write_seconds"] = 0.0
+        metrics["status"] = "processed" if segments else "empty"
+        metrics["result_segment_count"] = len(segments)
+        metrics["text_characters"] = sum(len(s.get("text", "")) for s in segments)
         return segments
     except Exception as e:
-        metrics['status'] = 'error'
-        metrics['error_type'] = type(e).__name__
-        metrics['error'] = str(e)
+        metrics["status"] = "error"
+        metrics["error_type"] = type(e).__name__
+        metrics["error"] = str(e)
         raise WhisperError(f"Failed to transcribe segment: {e}") from e
     finally:
-        metrics['total_seconds'] = elapsed_seconds(started, time.perf_counter())
+        metrics["total_seconds"] = elapsed_seconds(started, time.perf_counter())
 
 
 def _whisper_model_cache_hits() -> Optional[int]:
-    cache_info = getattr(_load_whisper_model, 'cache_info', None)
+    cache_info = getattr(_load_whisper_model, "cache_info", None)
     if not callable(cache_info):
         return None
     try:
@@ -308,11 +316,11 @@ def transcribe_audio_segments(
     transcription_metrics = metrics if metrics is not None else {}
     transcription_metrics.update(
         {
-            'chunk_count': len(segments),
-            'chunks': [],
-            'failed_chunk_count': 0,
-            'raw_result_segment_count': 0,
-            'written_vtt_cue_count': 0,
+            "chunk_count": len(segments),
+            "chunks": [],
+            "failed_chunk_count": 0,
+            "raw_result_segment_count": 0,
+            "written_vtt_cue_count": 0,
         }
     )
     started = time.perf_counter()
@@ -327,11 +335,11 @@ def transcribe_audio_segments(
         try:
             model = load_whisper_model()
         finally:
-            transcription_metrics['model_load_seconds'] = elapsed_seconds(
+            transcription_metrics["model_load_seconds"] = elapsed_seconds(
                 stage_started, time.perf_counter()
             )
         cache_hits_after = _whisper_model_cache_hits()
-        transcription_metrics['model_cache_hit'] = (
+        transcription_metrics["model_cache_hit"] = (
             cache_hits_after > cache_hits_before
             if cache_hits_before is not None and cache_hits_after is not None
             else None
@@ -351,20 +359,22 @@ def transcribe_audio_segments(
 
         for i, (segment_path, start_time) in enumerate(segments, 1):
             chunk_metrics: dict[str, Any] = {
-                'index': i,
-                'file': segment_path.name,
-                'offset_seconds': round(float(start_time), 6),
-                'timings': {},
+                "index": i,
+                "file": segment_path.name,
+                "offset_seconds": round(float(start_time), 6),
+                "timings": {},
             }
             if checkpoint is not None and i in checkpoint.completed:
                 saved = checkpoint.completed[i]
-                chunk_segments = list(saved['segments'])
+                chunk_segments = list(saved["segments"])
                 all_segments.extend(chunk_segments)
-                chunk_metrics['status'] = 'resumed'
-                chunk_metrics['timings'] = dict(saved.get('timings') or {})
-                chunk_metrics['result_segment_count'] = len(chunk_segments)
-                chunk_metrics['audio_seconds'] = chunk_metrics['timings'].get('audio_seconds')
-                transcription_metrics['chunks'].append(chunk_metrics)
+                chunk_metrics["status"] = "resumed"
+                chunk_metrics["timings"] = dict(saved.get("timings") or {})
+                chunk_metrics["result_segment_count"] = len(chunk_segments)
+                chunk_metrics["audio_seconds"] = chunk_metrics["timings"].get(
+                    "audio_seconds"
+                )
+                transcription_metrics["chunks"].append(chunk_metrics)
                 resumed_segments += 1
                 if progress_callback:
                     progress_callback("transcribing", i, total)
@@ -378,35 +388,33 @@ def transcribe_audio_segments(
                     None,
                     start_time,
                     model,
-                    timing=chunk_metrics['timings'],
+                    timing=chunk_metrics["timings"],
                 )
                 all_segments.extend(chunk_segments)
-                chunk_metrics['status'] = (
-                    'processed' if chunk_segments else 'empty'
-                )
+                chunk_metrics["status"] = "processed" if chunk_segments else "empty"
                 if checkpoint is not None:
-                    checkpoint.record(i, chunk_segments, chunk_metrics['timings'])
-                chunk_metrics['result_segment_count'] = len(chunk_segments)
-                chunk_metrics['text_characters'] = sum(
-                    len(segment.get('text', '')) for segment in chunk_segments
+                    checkpoint.record(i, chunk_segments, chunk_metrics["timings"])
+                chunk_metrics["result_segment_count"] = len(chunk_segments)
+                chunk_metrics["text_characters"] = sum(
+                    len(segment.get("text", "")) for segment in chunk_segments
                 )
             except Exception as e:
                 failed_segments += 1
-                chunk_metrics['status'] = 'error'
-                chunk_metrics['error_type'] = type(e).__name__
-                chunk_metrics['error'] = str(e)
+                chunk_metrics["status"] = "error"
+                chunk_metrics["error_type"] = type(e).__name__
+                chunk_metrics["error"] = str(e)
                 logger.warning(f"Failed to transcribe segment {segment_path}: {e}")
-            chunk_metrics['audio_seconds'] = chunk_metrics['timings'].get(
-                'audio_seconds'
+            chunk_metrics["audio_seconds"] = chunk_metrics["timings"].get(
+                "audio_seconds"
             )
-            transcription_metrics['chunks'].append(chunk_metrics)
+            transcription_metrics["chunks"].append(chunk_metrics)
 
-        transcription_metrics['failed_chunk_count'] = failed_segments
-        transcription_metrics['resumed_chunk_count'] = resumed_segments
-        transcription_metrics['fallback_segment_count'] = sum(
-            1 for s in all_segments if float(s.get('temperature', 0.0)) > 0.0
+        transcription_metrics["failed_chunk_count"] = failed_segments
+        transcription_metrics["resumed_chunk_count"] = resumed_segments
+        transcription_metrics["fallback_segment_count"] = sum(
+            1 for s in all_segments if float(s.get("temperature", 0.0)) > 0.0
         )
-        transcription_metrics['raw_result_segment_count'] = len(all_segments)
+        transcription_metrics["raw_result_segment_count"] = len(all_segments)
         if total and failed_segments == total:
             if checkpoint is not None:
                 checkpoint.close(remove=False)
@@ -417,21 +425,21 @@ def transcribe_audio_segments(
             if output_path:
                 deduped = dedupe_segments(all_segments)
                 _write_vtt(output_path, deduped)
-                transcription_metrics['written_vtt_cue_count'] = len(deduped)
+                transcription_metrics["written_vtt_cue_count"] = len(deduped)
                 logger.info(f"User transcript saved: {output_path.name}")
             if checkpoint is not None:
                 # Keep the checkpoint while chunks failed so a rerun retries
                 # only those; remove it once every chunk succeeded.
                 checkpoint.close(remove=failed_segments == 0)
         finally:
-            transcription_metrics['vtt_write_seconds'] = elapsed_seconds(
+            transcription_metrics["vtt_write_seconds"] = elapsed_seconds(
                 stage_started, time.perf_counter()
             )
 
         all_segments.sort(key=lambda s: s["start"])
         return all_segments
     finally:
-        transcription_metrics['total_seconds'] = elapsed_seconds(
+        transcription_metrics["total_seconds"] = elapsed_seconds(
             started, time.perf_counter()
         )
 

@@ -10,17 +10,18 @@ from transcript_combobulator.transcribe import transcribe_audio
 
 pytestmark = pytest.mark.slow  # real whisper/VAD inference
 
+
 def test_basic_transcription():
     """Test transcription of the original JFK audio file."""
-    input_file = INPUT_DIR / 'test_jfk.wav'
+    input_file = INPUT_DIR / "test_jfk.wav"
     assert input_file.exists(), "Test JFK file not found"
 
     # Transcribe the file
     result = transcribe_audio(input_file)
 
     # Verify result structure
-    assert 'segments' in result, "No segments in transcription result"
-    assert len(result['segments']) > 0, "No segments were transcribed"
+    assert "segments" in result, "No segments in transcription result"
+    assert len(result["segments"]) > 0, "No segments were transcribed"
 
     # Verify output files — transcribe_audio writes to OUTPUT_DIR/<stem>/
     output_subdir = OUTPUT_DIR / input_file.stem
@@ -33,19 +34,19 @@ def test_basic_transcription():
     # Verify VTT content
     with open(vtt_file) as f:
         vtt_content = f.read()
-        assert 'WEBVTT' in vtt_content, "Invalid VTT format"
-        assert '-->' in vtt_content, "No timestamps in VTT"
+        assert "WEBVTT" in vtt_content, "Invalid VTT format"
+        assert "-->" in vtt_content, "No timestamps in VTT"
 
     # Verify JSON content
     with open(json_file) as f:
         json_content = json.load(f)
-        assert 'segments' in json_content, "No segments in JSON output"
-        assert len(json_content['segments']) > 0, "Empty segments in JSON output"
+        assert "segments" in json_content, "No segments in JSON output"
+        assert len(json_content["segments"]) > 0, "Empty segments in JSON output"
 
         # Verify segment structure
-        for segment in json_content['segments']:
-            assert 'start' in segment, "Missing start time"
-            assert 'end' in segment, "Missing end time"
-            assert 'text' in segment, "Missing text"
-            assert segment['end'] > segment['start'], "Invalid segment timing"
-            assert len(segment['text'].strip()) > 0, "Empty segment text"
+        for segment in json_content["segments"]:
+            assert "start" in segment, "Missing start time"
+            assert "end" in segment, "Missing end time"
+            assert "text" in segment, "Missing text"
+            assert segment["end"] > segment["start"], "Invalid segment timing"
+            assert len(segment["text"].strip()) > 0, "Empty segment text"

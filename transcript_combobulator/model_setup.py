@@ -20,7 +20,9 @@ def setup_whisper(model_name: str, models_dir: Path) -> bool:
     """Ensure models_dir/<model_name>.pt exists and matches whisper's checksum."""
     url = whisper._MODELS.get(model_name)
     if url is None:
-        print(f"Unknown whisper model {model_name!r}. Available: {', '.join(whisper.available_models())}")
+        print(
+            f"Unknown whisper model {model_name!r}. Available: {', '.join(whisper.available_models())}"
+        )
         return False
     try:
         models_dir.mkdir(parents=True, exist_ok=True)
@@ -30,7 +32,9 @@ def setup_whisper(model_name: str, models_dir: Path) -> bool:
         else:
             print(f"Downloading {model_name} to {models_dir}...")
         whisper._download(url, str(models_dir), in_memory=False)
-        print(f"Model ready: {model_path} ({model_path.stat().st_size / 2**20:.0f} MiB)")
+        print(
+            f"Model ready: {model_path} ({model_path.stat().st_size / 2**20:.0f} MiB)"
+        )
         return True
     except Exception as e:
         print(f"Error setting up whisper: {e}")

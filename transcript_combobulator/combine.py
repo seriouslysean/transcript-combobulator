@@ -21,10 +21,8 @@ from transcript_combobulator.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_PUNCT_TRANS = str.maketrans('', '', string.punctuation)
-_TIME_RE = re.compile(
-    r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})'
-)
+_PUNCT_TRANS = str.maketrans("", "", string.punctuation)
+_TIME_RE = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})")
 
 
 class CombineError(Exception):
@@ -34,6 +32,7 @@ class CombineError(Exception):
 @dataclass
 class TranscriptEntry:
     """A single timestamped line spoken by one speaker."""
+
     timestamp: str
     start_time: float
     end_time: float
@@ -45,6 +44,7 @@ class TranscriptEntry:
 @dataclass
 class TranscriptConfig:
     """Mapping from a per-user VTT file to its display metadata."""
+
     name: str
     label: str
     description: str
@@ -53,13 +53,13 @@ class TranscriptConfig:
 
 def _normalize_for_dedup(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace. Used only for dedup comparison."""
-    return re.sub(r'\s+', ' ', text.strip().lower().translate(_PUNCT_TRANS))
+    return re.sub(r"\s+", " ", text.strip().lower().translate(_PUNCT_TRANS))
 
 
 def should_skip_content(content: str, skip_filters: list[str]) -> bool:
     """True if content matches any literal or /regex/ filter."""
     for pattern in skip_filters:
-        if pattern.startswith('/') and pattern.endswith('/'):
+        if pattern.startswith("/") and pattern.endswith("/"):
             if re.search(pattern[1:-1], content):
                 return True
         elif pattern in content:
@@ -69,8 +69,8 @@ def should_skip_content(content: str, skip_filters: list[str]) -> bool:
 
 def parse_timestamp_to_seconds(timestamp: str) -> float:
     """HH:MM:SS.mmm -> seconds."""
-    h, m, sec_ms = timestamp.split(':')
-    s, _, ms = sec_ms.partition('.')
+    h, m, sec_ms = timestamp.split(":")
+    s, _, ms = sec_ms.partition(".")
     return int(h) * 3600 + int(m) * 60 + int(s) + (int(ms) / 1000 if ms else 0)
 
 
@@ -83,14 +83,14 @@ def parse_vtt_file(
     skip_filters = skip_filters or []
 
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = file_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise CombineError(f"Transcript file not found: {file_path}")
     except Exception as e:
         raise CombineError(f"Failed to read transcript file {file_path}: {e}") from e
 
     entries: list[TranscriptEntry] = []
-    lines = content.split('\n')
+    lines = content.split("\n")
     i = 0
     while i < len(lines):
         match = _TIME_RE.match(lines[i].strip())
@@ -108,7 +108,7 @@ def parse_vtt_file(
         if not content_lines:
             continue
 
-        text = ' '.join(content_lines)
+        text = " ".join(content_lines)
         if should_skip_content(text, skip_filters):
             continue
         dedup_key = _normalize_for_dedup(text)
@@ -163,7 +163,7 @@ def combine_transcripts(
         if line not in seen_summary:
             summary_lines.append(line)
             seen_summary.add(line)
-    summary = '\n'.join(summary_lines)
+    summary = "\n".join(summary_lines)
 
     min_per_chunk = 5
     actual_chunks = 1 if len(deduped) < max(chunks, min_per_chunk) else chunks
@@ -182,8 +182,8 @@ def combine_transcripts(
             )
         )
         try:
-            with open(chunk_path, 'w', encoding='utf-8') as f:
-                f.write(summary + '\n\n')
+            with open(chunk_path, "w", encoding="utf-8") as f:
+                f.write(summary + "\n\n")
                 for entry in chunk_entries:
                     if include_timestamps:
                         f.write(
@@ -212,21 +212,27 @@ def load_speaker_mapping(
     source: Mapping[str, Optional[str]] = os.environ if env is None else env
 
     def get(key: str) -> str:
-        return source.get(key) or ''
+        return source.get(key) or ""
 
     mapping: dict[str, dict[str, str]] = {}
     i = 1
     while True:
-        username = get(f'TRANSCRIPT_{i}_USERNAME').strip()
+        username = get(f"TRANSCRIPT_{i}_USERNAME").strip()
         if not username:
             break
 
-        name = (get(f'TRANSCRIPT_{i}_NAME') or get(f'TRANSCRIPT_{i}_PLAYER')).strip()
-        label = (get(f'TRANSCRIPT_{i}_LABEL') or get(f'TRANSCRIPT_{i}_CHARACTER')).strip()
-        description = get(f'TRANSCRIPT_{i}_DESCRIPTION').strip()
+        name = (get(f"TRANSCRIPT_{i}_NAME") or get(f"TRANSCRIPT_{i}_PLAYER")).strip()
+        label = (
+            get(f"TRANSCRIPT_{i}_LABEL") or get(f"TRANSCRIPT_{i}_CHARACTER")
+        ).strip()
+        description = get(f"TRANSCRIPT_{i}_DESCRIPTION").strip()
 
         if all([name, label, description]):
-            mapping[username] = {'name': name, 'label': label, 'description': description}
+            mapping[username] = {
+                "name": name,
+                "label": label,
+                "description": description,
+            }
         else:
             logger.warning(f"Incomplete configuration for TRANSCRIPT_{i}_* variables")
         i += 1
@@ -264,8 +270,9 @@ def match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[s
     '3-nilbits', '3-nilbits_16khz', and '2-burger_bear' still match.
     """
     return [
-        u for u in mapping
-        if re.search(rf'(?<![A-Za-z0-9]){re.escape(u)}(?![A-Za-z0-9])', dir_name)
+        u
+        for u in mapping
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(u)}(?![A-Za-z0-9])", dir_name)
     ]
 
 
@@ -342,9 +349,9 @@ def combine_transcripts_from_env(
         m = username_mapping[matches[0]]
         transcript_configs.append(
             TranscriptConfig(
-                name=m['name'],
-                label=m['label'],
-                description=m['description'],
+                name=m["name"],
+                label=m["label"],
+                description=m["description"],
                 transcript_path=vtt_file,
             )
         )
@@ -357,7 +364,8 @@ def combine_transcripts_from_env(
     chunks = CHUNKS
 
     output_filename = (
-        f"{session_subdir}-combined.txt" if session_subdir
+        f"{session_subdir}-combined.txt"
+        if session_subdir
         else f"{output_dir.name}-combined.txt"
     )
     output_path = output_dir / output_filename

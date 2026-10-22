@@ -49,7 +49,7 @@ def create_padded_audio(
         print(f"Error: Input file {input_path} not found")
         return
 
-    wav, sr = sf.read(str(input_path), dtype='float32', always_2d=True)
+    wav, sr = sf.read(str(input_path), dtype="float32", always_2d=True)
     silence = np.zeros((int(silence_duration * sr), wav.shape[1]), dtype=np.float32)
 
     parts = [wav]
@@ -74,22 +74,22 @@ def create_sample_files(
     Sample files go to ``tmp/input/{session}/``.
     """
     root_dir = Path(__file__).parent.parent
-    samples_dir = root_dir / 'samples'
+    samples_dir = root_dir / "samples"
 
     if not samples_dir.exists():
         print(f"Error: Samples directory not found at {samples_dir}")
         print("Please create the samples/ directory and add your audio files.")
         return
 
-    wav_files = list(samples_dir.glob('*.wav'))
+    wav_files = list(samples_dir.glob("*.wav"))
     if not wav_files:
         print(f"Error: No WAV files found in {samples_dir}")
         return
 
     input_dir = (
-        root_dir / 'tmp' / 'input'
+        root_dir / "tmp" / "input"
         if prefix.startswith("test_")
-        else root_dir / 'tmp' / 'input' / session
+        else root_dir / "tmp" / "input" / session
     )
     print(f"Creating sample files in {input_dir}")
 
@@ -97,17 +97,23 @@ def create_sample_files(
         create_copies(sample_file, input_dir, num_copies=copies, prefix=prefix)
         create_padded_audio(
             input_path=sample_file,
-            output_path=input_dir / f"{prefix}{sample_file.stem}_padded{sample_file.suffix}",
+            output_path=input_dir
+            / f"{prefix}{sample_file.stem}_padded{sample_file.suffix}",
             num_copies=padded_copies,
         )
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="combobulator samples", description="Build sample and test audio from samples/")
-    parser.add_argument('--prefix', default="", help='Prefix for output files (e.g. "test_")')
-    parser.add_argument('--copies', type=int, default=5)
-    parser.add_argument('--padded-copies', type=int, default=3)
-    parser.add_argument('--session', default="jfk-sample")
+    parser = argparse.ArgumentParser(
+        prog="combobulator samples",
+        description="Build sample and test audio from samples/",
+    )
+    parser.add_argument(
+        "--prefix", default="", help='Prefix for output files (e.g. "test_")'
+    )
+    parser.add_argument("--copies", type=int, default=5)
+    parser.add_argument("--padded-copies", type=int, default=3)
+    parser.add_argument("--session", default="jfk-sample")
     args = parser.parse_args(argv)
     create_sample_files(
         prefix=args.prefix,

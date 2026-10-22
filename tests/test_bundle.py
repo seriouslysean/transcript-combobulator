@@ -24,12 +24,22 @@ def make_bundle(root: Path, tracks: list[dict[str, Any]], **manifest: Any) -> Pa
         if t.pop("_write", True) and file:
             (root / file).parent.mkdir(parents=True, exist_ok=True)
             (root / file).write_bytes(data)
-        entry = {"track_id": str(i), "file": file, "sha256": hashlib.sha256(data).hexdigest(),
-                 "speaker_key": f"discord:{i}", "username": f"speaker{i}"}
+        entry = {
+            "track_id": str(i),
+            "file": file,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "speaker_key": f"discord:{i}",
+            "username": f"speaker{i}",
+        }
         entry.update(t)
         entries.append(entry)
-    body = {"schema_version": 1, "recording_id": "rec-1", "source": "test",
-            "started_at": "2026-10-18T23:04:11.000Z", "tracks": entries}
+    body = {
+        "schema_version": 1,
+        "recording_id": "rec-1",
+        "source": "test",
+        "started_at": "2026-10-18T23:04:11.000Z",
+        "tracks": entries,
+    }
     body.update(manifest)
     (root / "manifest.json").write_text(json.dumps(body), encoding="utf-8")
     return root
@@ -88,8 +98,16 @@ def test_paths_must_stay_inside(tmp_path: Path, bad: str) -> None:
 def test_a_symlink_out_of_the_bundle_is_refused(tmp_path: Path) -> None:
     outside = tmp_path / "outside.flac"
     outside.write_bytes(b"fLaC")
-    root = make_bundle(tmp_path / "b", [{"file": "1-x.flac", "_write": False,
-                                         "sha256": hashlib.sha256(b"fLaC").hexdigest()}])
+    root = make_bundle(
+        tmp_path / "b",
+        [
+            {
+                "file": "1-x.flac",
+                "_write": False,
+                "sha256": hashlib.sha256(b"fLaC").hexdigest(),
+            }
+        ],
+    )
     (root / "1-x.flac").symlink_to(outside)
     with pytest.raises(BundleError, match="outside"):
         load_bundle(root)
@@ -101,22 +119,38 @@ def test_a_missing_file_is_refused(tmp_path: Path) -> None:
 
 
 def test_a_wrong_checksum_is_refused(tmp_path: Path) -> None:
-    with pytest.raises(BundleError, match="sha256.*2-speaker2.flac|2-speaker2.flac.*sha256"):
+    with pytest.raises(
+        BundleError, match="sha256.*2-speaker2.flac|2-speaker2.flac.*sha256"
+    ):
         load_bundle(make_bundle(tmp_path / "b", [{}, {"sha256": "0" * 64}]))
 
 
 def test_stems_must_be_unique_ignoring_case(tmp_path: Path) -> None:
-    with pytest.raises(BundleError, match="Pikel.flac.*pikel.wav|pikel.wav.*Pikel.flac"):
-        load_bundle(make_bundle(tmp_path / "b", [{"file": "Pikel.flac"}, {"file": "pikel.wav"}]))
+    with pytest.raises(
+        BundleError, match="Pikel.flac.*pikel.wav|pikel.wav.*Pikel.flac"
+    ):
+        load_bundle(
+            make_bundle(tmp_path / "b", [{"file": "Pikel.flac"}, {"file": "pikel.wav"}])
+        )
 
 
 def test_two_tracks_with_one_speaker_key_are_refused(tmp_path: Path) -> None:
     with pytest.raises(BundleError, match="discord:7"):
-        load_bundle(make_bundle(tmp_path / "b", [{"speaker_key": "discord:7"}, {"speaker_key": "discord:7"}]))
+        load_bundle(
+            make_bundle(
+                tmp_path / "b",
+                [{"speaker_key": "discord:7"}, {"speaker_key": "discord:7"}],
+            )
+        )
 
 
 def test_null_speakers_are_allowed(tmp_path: Path) -> None:
-    b = load_bundle(make_bundle(tmp_path / "b", [{"speaker_key": None, "username": None}, {"speaker_key": None}]))
+    b = load_bundle(
+        make_bundle(
+            tmp_path / "b",
+            [{"speaker_key": None, "username": None}, {"speaker_key": None}],
+        )
+    )
     assert [t.speaker_key for t in b.tracks] == [None, None]
 
 
@@ -149,14 +183,19 @@ def test_track_ids_must_be_unique(tmp_path: Path) -> None:
         load_bundle(make_bundle(tmp_path / "b", [{"track_id": "1"}, {"track_id": "1"}]))
 
 
-@pytest.mark.parametrize("started_at", ["2026-10-18", "2026-10-18T23:04:11", "yesterday", 5])
+@pytest.mark.parametrize(
+    "started_at", ["2026-10-18", "2026-10-18T23:04:11", "yesterday", 5]
+)
 def test_started_at_needs_an_offset(tmp_path: Path, started_at: Any) -> None:
     with pytest.raises(BundleError, match="started_at"):
         load_bundle(make_bundle(tmp_path / "b", [{}], started_at=started_at))
 
 
 def test_started_at_may_be_null(tmp_path: Path) -> None:
-    assert load_bundle(make_bundle(tmp_path / "b", [{}], started_at=None)).started_at is None
+    assert (
+        load_bundle(make_bundle(tmp_path / "b", [{}], started_at=None)).started_at
+        is None
+    )
 
 
 def test_recording_id_is_required(tmp_path: Path) -> None:

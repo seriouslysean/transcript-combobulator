@@ -12,6 +12,7 @@ from transcript_combobulator.vad import load_vad_model, process_audio
 
 pytestmark = pytest.mark.slow  # real whisper/VAD inference
 
+
 def test_vad_model_loading():
     """Test that the VAD model loads successfully."""
     model = load_vad_model()
@@ -24,7 +25,9 @@ def test_vad_model_is_cached_per_process():
     load_vad_model.cache_clear()
 
     try:
-        with patch('transcript_combobulator.vad.load_silero_vad', return_value=expected_model) as load:
+        with patch(
+            "transcript_combobulator.vad.load_silero_vad", return_value=expected_model
+        ) as load:
             first = load_vad_model()
             second = load_vad_model()
 
@@ -34,9 +37,10 @@ def test_vad_model_is_cached_per_process():
     finally:
         load_vad_model.cache_clear()
 
+
 def test_vad_detection():
     """Test that VAD detects speech segments in the test JFK file."""
-    input_file = INPUT_DIR / 'test_jfk.wav'
+    input_file = INPUT_DIR / "test_jfk.wav"
     assert input_file.exists(), "Test JFK file not found"
 
     # Process the audio
@@ -50,13 +54,15 @@ def test_vad_detection():
     # Verify mapping content
     with open(mapping_file) as f:
         mapping = json.load(f)
-        assert 'segments' in mapping, "No segments in mapping"
-        assert len(mapping['segments']) > 0, "Empty segments in mapping"
+        assert "segments" in mapping, "No segments in mapping"
+        assert len(mapping["segments"]) > 0, "Empty segments in mapping"
 
         # Verify segment structure
-        for segment in mapping['segments']:
-            assert 'start_seconds' in segment, "Missing start time"
-            assert 'end_seconds' in segment, "Missing end time"
-            assert 'segment_file' in segment, "Missing segment file"
-            assert segment['end_seconds'] > segment['start_seconds'], "Invalid segment timing"
-            assert Path(segment['segment_file']).exists(), "Segment file not created"
+        for segment in mapping["segments"]:
+            assert "start_seconds" in segment, "Missing start time"
+            assert "end_seconds" in segment, "Missing end time"
+            assert "segment_file" in segment, "Missing segment file"
+            assert segment["end_seconds"] > segment["start_seconds"], (
+                "Invalid segment timing"
+            )
+            assert Path(segment["segment_file"]).exists(), "Segment file not created"

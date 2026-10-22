@@ -29,7 +29,7 @@ This is a test.
 
 
 def _write_vtt(path: Path, content: str) -> None:
-    path.write_text(content, encoding='utf-8')
+    path.write_text(content, encoding="utf-8")
 
 
 class TestNormalizeForDedup:
@@ -117,7 +117,9 @@ class TestCombineTranscripts:
         out = tmp_path / "combined.txt"
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+                TranscriptConfig(
+                    name="Alice", label="Alice", description="", transcript_path=vtt
+                )
             ],
             output_path=out,
         )
@@ -135,7 +137,9 @@ class TestCombineTranscripts:
         out = tmp_path / "combined.txt"
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+                TranscriptConfig(
+                    name="Alice", label="Alice", description="", transcript_path=vtt
+                )
             ],
             output_path=out,
         )
@@ -197,7 +201,9 @@ class TestValidateSpeakerMapping:
 
     def test_token_match_accepts_craig_and_converted_dir_names(self, monkeypatch):
         _set_mapping(monkeypatch, ["nilbits", "burger_bear"])
-        mapping = validate_speaker_mapping(["3-nilbits", "3-nilbits_16khz", "2-burger_bear"])
+        mapping = validate_speaker_mapping(
+            ["3-nilbits", "3-nilbits_16khz", "2-burger_bear"]
+        )
         assert set(mapping) == {"nilbits", "burger_bear"}
         with pytest.raises(CombineError, match="No mapping found"):
             validate_speaker_mapping(["3-nilbits2"])
