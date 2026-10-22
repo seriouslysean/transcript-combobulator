@@ -9,8 +9,18 @@ import soundfile as sf
 import torch
 from silero_vad import get_speech_timestamps
 
-from transcript_combobulator.config import SAMPLE_RATE, VAD_MIN_SILENCE_DURATION, VAD_MIN_SPEECH_DURATION, VAD_THRESHOLD
-from transcript_combobulator.vad import _stream_speech_probs, detect_speech, load_vad_model, process_audio
+from transcript_combobulator.config import (
+    SAMPLE_RATE,
+    VAD_MIN_SILENCE_DURATION,
+    VAD_MIN_SPEECH_DURATION,
+    VAD_THRESHOLD,
+)
+from transcript_combobulator.vad import (
+    _stream_speech_probs,
+    detect_speech,
+    load_vad_model,
+    process_audio,
+)
 
 pytestmark = pytest.mark.slow  # real silero inference on a few minutes of audio (seconds)
 
@@ -21,7 +31,10 @@ def _composite(tmp_path: Path) -> Path:
     assert sr == SAMPLE_RATE
     if speech.ndim > 1:
         speech = speech.mean(axis=1)
-    z = lambda seconds: np.zeros(int(seconds * SAMPLE_RATE), dtype=np.float32)
+
+    def z(seconds: float) -> np.ndarray:
+        return np.zeros(int(seconds * SAMPLE_RATE), dtype=np.float32)
+
     parts = [
         speech, z(0.1), speech[: int(0.15 * SAMPLE_RATE)], z(0.2), speech,
         z(1.0), speech, z(VAD_MIN_SILENCE_DURATION + 0.5), speech, z(0.05),

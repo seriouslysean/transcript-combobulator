@@ -7,7 +7,11 @@ from typing import Any
 
 import pytest
 
-from transcript_combobulator.bundle import BUNDLE_SCHEMA_VERSION, BundleError, load_bundle
+from transcript_combobulator.bundle import (
+    BUNDLE_SCHEMA_VERSION,
+    BundleError,
+    load_bundle,
+)
 
 
 def make_bundle(root: Path, tracks: list[dict[str, Any]], **manifest: Any) -> Path:

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Test transcription functionality."""
 
-from pathlib import Path
+from difflib import SequenceMatcher
+
 import pytest
 
-pytestmark = pytest.mark.slow  # real whisper/VAD inference
-from transcript_combobulator.transcribe import transcribe_audio
 from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
-import json
-from difflib import SequenceMatcher
+from transcript_combobulator.transcribe import transcribe_audio
+
+pytestmark = pytest.mark.slow  # real whisper/VAD inference
 
 def similar(a: str, b: str) -> float:
     """Calculate string similarity ratio."""
@@ -23,7 +23,7 @@ def test_segmented_transcription():
     assert padded_file.exists(), "Padded test file not found"
 
     # Transcribe both files
-    original_result = transcribe_audio(original_file)
+    transcribe_audio(original_file)  # writes the VTT read below
     padded_result = transcribe_audio(padded_file)
 
     # Get the full original transcription

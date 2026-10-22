@@ -25,7 +25,10 @@ import soundfile as sf
 import torch
 from silero_vad import load_silero_vad
 
-from transcript_combobulator.audio_utils import AudioValidationError, validate_audio_file
+from transcript_combobulator.audio_utils import (
+    AudioValidationError,
+    validate_audio_file,
+)
 from transcript_combobulator.config import (
     PADDING_SECONDS,
     SAMPLE_RATE,

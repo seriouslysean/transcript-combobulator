@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-
 TELEMETRY_SCHEMA_VERSION = 1
 
 _STAGE_KEYS = (

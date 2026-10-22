@@ -12,9 +12,19 @@ from typing import Any
 
 import pytest
 
-from transcript_combobulator.combine import CombineError, combine_transcripts_from_env, validate_speaker_mapping
+from transcript_combobulator.combine import (
+    CombineError,
+    combine_transcripts_from_env,
+    validate_speaker_mapping,
+)
 from transcript_combobulator.config import ROOT_DIR, read_env_file
-from transcript_combobulator.session_env import SessionEnvError, SessionEnvResult, _quote, build_session_env, main
+from transcript_combobulator.session_env import (
+    SessionEnvError,
+    SessionEnvResult,
+    _quote,
+    build_session_env,
+    main,
+)
 
 ENV = "session.env"
 

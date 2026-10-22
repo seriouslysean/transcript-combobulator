@@ -2,16 +2,15 @@
 """Test batch processing utilities."""
 
 import json
-import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 import pytest
 from rich.console import Console
 
 from transcript_combobulator.batch import (
-    _build_table,
     _build_file_metrics_table,
     _build_run_metrics_table,
+    _build_table,
     _calculate_torch_threads,
     _estimate_worker_bytes,
     _format_duration,
@@ -209,11 +208,11 @@ class TestProcessSingleFile:
 
     def test_status_dict_updates(self):
         """Verify _update_status writes to shared dict when provided."""
-        from transcript_combobulator.pipeline import process_file as main
-
         # We can't easily run the full pipeline without audio files,
         # but we can verify the function signature accepts status_dict/status_key
         import inspect
+
+        from transcript_combobulator.pipeline import process_file as main
         sig = inspect.signature(main)
         params = list(sig.parameters.keys())
         assert "status_dict" in params
@@ -222,6 +221,7 @@ class TestProcessSingleFile:
     def test_main_still_works_without_status_dict(self):
         """main() should accept being called without status_dict (backward compat)."""
         import inspect
+
         from transcript_combobulator.pipeline import process_file as main
         sig = inspect.signature(main)
         # Both params should have defaults (None)
@@ -653,7 +653,10 @@ class TestStageReuse:
     """Completed stages are reused; only the changed stage and later rerun."""
 
     def _setup(self, tmp_path):
-        from transcript_combobulator.pipeline_cache import build_stage_fingerprints, record_stage
+        from transcript_combobulator.pipeline_cache import (
+            build_stage_fingerprints,
+            record_stage,
+        )
 
         input_file = tmp_path / "speaker.flac"
         input_file.write_bytes(b"audio")
@@ -699,8 +702,8 @@ class TestStageReuse:
         assert metrics["vad"]["chunk_count"] == 1
 
     def test_presentation_only_change_rewrites_vtt_without_inference(self, tmp_path):
-        from transcript_combobulator.pipeline_cache import record_stage
         from transcript_combobulator.pipeline import process_file as main
+        from transcript_combobulator.pipeline_cache import record_stage
 
         input_file, output_dir, manifest, fps = self._setup(tmp_path)
         json_path = output_dir / "speaker_transcription.json"

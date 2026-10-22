@@ -11,7 +11,11 @@ from transcript_combobulator.config import (
 )
 from transcript_combobulator.logging_config import get_logger
 from transcript_combobulator.vad import process_audio
-from transcript_combobulator.whisper import WhisperError, _write_vtt, transcribe_audio_segments
+from transcript_combobulator.whisper import (
+    WhisperError,
+    _write_vtt,
+    transcribe_audio_segments,
+)
 
 logger = get_logger(__name__)
 

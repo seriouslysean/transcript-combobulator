@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Test Voice Activity Detection."""
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from transcript_combobulator.config import INPUT_DIR
+from transcript_combobulator.vad import load_vad_model, process_audio
+
 pytestmark = pytest.mark.slow  # real whisper/VAD inference
-from transcript_combobulator.vad import load_vad_model, process_audio, VADError
-from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
-import json
 
 def test_vad_model_loading():
     """Test that the VAD model loads successfully."""

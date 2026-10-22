@@ -11,8 +11,8 @@ from transcript_combobulator.whisper import (
     WhisperError,
     _load_whisper_model,
     dedupe_segments,
-    regenerate_vtt_with_confidence,
     load_whisper_model,
+    regenerate_vtt_with_confidence,
     transcribe_audio_segments,
     transcribe_segment,
 )
@@ -223,7 +223,10 @@ def test_interrupted_transcription_resumes_from_checkpoint(tmp_path: Path) -> No
     jobs = [(clips[0], 0.0), (clips[1], 10.0), (clips[2], 20.0)]
     progress = tmp_path / 'progress.jsonl'
     vtt = tmp_path / 'out.vtt'
-    seg = lambda t, text: [{'start': t, 'end': t + 1.0, 'text': text, 'confidence': 90.0}]
+
+    def seg(t: float, text: str) -> list[dict[str, object]]:
+        return [{'start': t, 'end': t + 1.0, 'text': text, 'confidence': 90.0}]
+
 
     # First run: chunk 2 fails; chunks 1 and 3 are checkpointed.
     metrics = {}

@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-
 from unittest.mock import patch
 
 from transcript_combobulator.pipeline_cache import (

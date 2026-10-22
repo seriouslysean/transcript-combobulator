@@ -7,14 +7,13 @@ import pytest
 
 from transcript_combobulator.combine import (
     CombineError,
-    validate_speaker_mapping,
     TranscriptConfig,
     _normalize_for_dedup,
     combine_transcripts,
     parse_vtt_file,
     should_skip_content,
+    validate_speaker_mapping,
 )
-
 
 VTT_SAMPLE = """WEBVTT
 

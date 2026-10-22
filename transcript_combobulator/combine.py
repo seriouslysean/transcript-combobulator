@@ -15,7 +15,6 @@ from transcript_combobulator.config import (
     CHUNKS,
     DEDUPE_WINDOW_SECONDS,
     INCLUDE_TIMESTAMPS,
-    OUTPUT_DIR,
     SKIP_FILTERS,
 )
 from transcript_combobulator.logging_config import get_logger

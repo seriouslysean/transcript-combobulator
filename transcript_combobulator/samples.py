@@ -5,8 +5,8 @@ import argparse
 import shutil
 from pathlib import Path
 
-import soundfile as sf
 import numpy as np
+import soundfile as sf
 
 
 def create_copies(

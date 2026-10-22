@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 COMMANDS = {
     "run": "Full pipeline for a session folder (convert, VAD, transcribe, combine)",

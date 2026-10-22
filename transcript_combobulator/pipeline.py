@@ -30,8 +30,8 @@ from transcript_combobulator.pipeline_cache import (
     stage_is_complete,
     write_pipeline_manifest,
 )
-from transcript_combobulator.transcribe import TranscriptionError, transcribe_segments
 from transcript_combobulator.telemetry import elapsed_seconds, utc_now_iso
+from transcript_combobulator.transcribe import TranscriptionError, transcribe_segments
 from transcript_combobulator.vad import process_audio
 from transcript_combobulator.whisper import regenerate_vtt_with_confidence
 

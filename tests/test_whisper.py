@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Test Whisper transcription."""
 
-from pathlib import Path
+import json
+
 import pytest
 
-pytestmark = pytest.mark.slow  # real whisper/VAD inference
-from transcript_combobulator.transcribe import transcribe_audio
 from transcript_combobulator.config import INPUT_DIR, OUTPUT_DIR
-import json
+from transcript_combobulator.transcribe import transcribe_audio
+
+pytestmark = pytest.mark.slow  # real whisper/VAD inference
 
 def test_basic_transcription():
     """Test transcription of the original JFK audio file."""

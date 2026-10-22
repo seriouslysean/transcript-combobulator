@@ -93,7 +93,10 @@ class TestOutputPathForInput:
         return input_dir, output_dir
 
     def test_named_session_wins_for_audio_anywhere(self, tmp_path, monkeypatch):
-        from transcript_combobulator.config import get_output_path_for_input, vtt_path_for_input
+        from transcript_combobulator.config import (
+            get_output_path_for_input,
+            vtt_path_for_input,
+        )
 
         _, output_dir = self._dirs(tmp_path, monkeypatch)
         track = tmp_path / "craig-export" / "1-cadderly.flac"

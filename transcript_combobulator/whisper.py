@@ -1,7 +1,6 @@
 """Whisper integration for audio transcription."""
 
 import json
-import os
 import re
 import time
 import warnings
@@ -17,11 +16,11 @@ import whisper
 
 from transcript_combobulator.config import (
     DEDUPE_WINDOW_SECONDS,
+    SAMPLE_RATE,
     WHISPER_CONFIDENCE_THRESHOLD,
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODELS_DIR,
-    SAMPLE_RATE,
     get_whisper_options,
 )
 from transcript_combobulator.logging_config import get_logger
