@@ -87,6 +87,7 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 | `make test-fast` | pytest without the `slow` (real inference) tests |
 | `make test` | Whole suite; never touches `tmp/output` |
 | `make lint` | `mypy --strict` |
+| `make lint-pyrefly` | pyrefly, on trial beside mypy; not a gate yet |
 | `make clean-output` | Delete every session's outputs under `tmp/output` |
 | `make clean-tmp` | Also delete `tmp/input` and local caches |
 

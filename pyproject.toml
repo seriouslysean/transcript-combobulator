@@ -37,6 +37,7 @@ classifiers = [
 [project.optional-dependencies]
 dev = [
     "mypy==2.3.1",
+    "pyrefly==1.4.0",
     "pytest==9.1.1",
 ]
 # Apple Silicon only; inert until a WHISPER_RUNTIME seam exists.
@@ -75,6 +76,18 @@ strict = true
 warn_unreachable = true
 # whisper, silero_vad, torchaudio, and soundfile ship no type information.
 ignore_missing_imports = true
+
+[tool.pyrefly]
+project-includes = ["transcript_combobulator"]
+# Checked beside mypy, which stays the gate (`make lint`). No python_version
+# pin, for the same reason as mypy: it checks against the venv interpreter.
+
+# _speech_regions_from_probs is a verbatim port of silero-vad; its int()
+# calls stay so the port can be diffed against upstream.
+[[tool.pyrefly.sub-config]]
+matches = "transcript_combobulator/vad.py"
+[tool.pyrefly.sub-config.errors]
+unnecessary-type-conversion = false
 
 [tool.black]
 line-length = 88
