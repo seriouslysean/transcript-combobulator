@@ -237,7 +237,12 @@ fails loudly.
   models and audio pre-treatment are not options for this audio; the
   pipeline is built for machines that can run turbo. Turbo's own known
   artefact is the bare "Thank you." silence filler (37 lines per session),
-  which displaces nothing.
+  which displaces nothing. large-v3 was worse on a full real session (five
+  speakers, mps, production prompt). It was compared with two turbo runs
+  whose only difference was 3 words: 51 prompt echoes against turbo's 5,
+  299 s of speech dropped against 121 s, 108 repeat loops against 59, and
+  1.44x the wall time. It also rewrote 19% of turbo's words, including 1005
+  deleted on one player's track.
 - **Temperature fallback stays off, by measurement.** `WHISPER_TEMPERATURE=
   0.0,0.2,0.4` enables whisper's re-decode when its compression-ratio or
   logprob guard trips; with the default scalar those guards never fire.
