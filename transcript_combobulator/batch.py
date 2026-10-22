@@ -122,6 +122,7 @@ def _worker(
     status_key: str,
     force: bool,
     log_file: str | None = None,
+    session: str | None = None,
 ) -> tuple[str, str, str, dict[str, Any]]:
     """Worker function that runs in a subprocess.
 
@@ -154,6 +155,7 @@ def _worker(
             status_key=status_key,
             force=force,
             metrics=file_metrics,
+            session=session,
         )
         result_status = 'cached' if file_metrics.get('cache_hit') else 'done'
         return (Path(file_path).name, result_status, "", file_metrics)
@@ -481,6 +483,7 @@ def main(argv: list[str] | None = None) -> None:
                         f.name,
                         args.force,
                         str(log_file),
+                        session_name,
                     )
                     futures[fut] = f.name
 
@@ -552,7 +555,7 @@ def main(argv: list[str] | None = None) -> None:
             output_files = combine_transcripts_from_env(
                 OUTPUT_DIR,
                 session_name,
-                vtt_files=[vtt_path_for_input(f) for f in files],
+                vtt_files=[vtt_path_for_input(f, session_name) for f in files],
             )
             combine_metrics['status'] = 'completed'
             combine_metrics['output_files'] = [str(path) for path in output_files]
