@@ -9,10 +9,22 @@ import soundfile as sf
 import torch
 from silero_vad import get_speech_timestamps
 
-from transcript_combobulator.config import SAMPLE_RATE, VAD_MIN_SILENCE_DURATION, VAD_MIN_SPEECH_DURATION, VAD_THRESHOLD
-from transcript_combobulator.vad import _stream_speech_probs, detect_speech, load_vad_model, process_audio
+from transcript_combobulator.config import (
+    SAMPLE_RATE,
+    VAD_MIN_SILENCE_DURATION,
+    VAD_MIN_SPEECH_DURATION,
+    VAD_THRESHOLD,
+)
+from transcript_combobulator.vad import (
+    _stream_speech_probs,
+    detect_speech,
+    load_vad_model,
+    process_audio,
+)
 
-pytestmark = pytest.mark.slow  # real silero inference on a few minutes of audio (seconds)
+pytestmark = (
+    pytest.mark.slow
+)  # real silero inference on a few minutes of audio (seconds)
 
 
 def _composite(tmp_path: Path) -> Path:
@@ -21,12 +33,29 @@ def _composite(tmp_path: Path) -> Path:
     assert sr == SAMPLE_RATE
     if speech.ndim > 1:
         speech = speech.mean(axis=1)
-    z = lambda seconds: np.zeros(int(seconds * SAMPLE_RATE), dtype=np.float32)
+
+    def z(seconds: float) -> np.ndarray:
+        return np.zeros(int(seconds * SAMPLE_RATE), dtype=np.float32)
+
     parts = [
-        speech, z(0.1), speech[: int(0.15 * SAMPLE_RATE)], z(0.2), speech,
-        z(1.0), speech, z(VAD_MIN_SILENCE_DURATION + 0.5), speech, z(0.05),
-        speech[: int(2.0 * SAMPLE_RATE)], z(7.3), speech, z(0.03),
-        z(4.0), speech[: int(1.5 * SAMPLE_RATE)], z(3.2), speech[: int(0.5 * SAMPLE_RATE)],
+        speech,
+        z(0.1),
+        speech[: int(0.15 * SAMPLE_RATE)],
+        z(0.2),
+        speech,
+        z(1.0),
+        speech,
+        z(VAD_MIN_SILENCE_DURATION + 0.5),
+        speech,
+        z(0.05),
+        speech[: int(2.0 * SAMPLE_RATE)],
+        z(7.3),
+        speech,
+        z(0.03),
+        z(4.0),
+        speech[: int(1.5 * SAMPLE_RATE)],
+        z(3.2),
+        speech[: int(0.5 * SAMPLE_RATE)],
     ]
     audio = np.concatenate(parts)
     # make the total not a multiple of 512 so the padded last frame is exercised
@@ -56,7 +85,7 @@ def test_streamed_probabilities_match_whole_file(tmp_path: Path) -> None:
     model.reset_states()
     expected = []
     for start in range(0, len(audio), 512):
-        frame = torch.from_numpy(audio[start:start + 512])
+        frame = torch.from_numpy(audio[start : start + 512])
         if len(frame) < 512:
             frame = torch.nn.functional.pad(frame, (0, 512 - len(frame)))
         expected.append(float(model(frame, SAMPLE_RATE).item()))

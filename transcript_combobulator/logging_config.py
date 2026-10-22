@@ -15,7 +15,7 @@ def setup_logging(
 ) -> logging.Logger:
     """Configure the root logger. Level is read from LOG_LEVEL env if set."""
     fmt = format_string or _DEFAULT_FORMAT
-    log_level = os.getenv('LOG_LEVEL', level).upper()
+    log_level = os.getenv("LOG_LEVEL", level).upper()
 
     logging.basicConfig(
         level=getattr(logging, log_level),
@@ -58,12 +58,12 @@ def add_file_handler(
     ``remove_file_handler`` when the unit of work ends; pooled workers are
     reused across files.
     """
-    log_level = getattr(logging, os.getenv('LOG_LEVEL', level).upper())
+    log_level = getattr(logging, os.getenv("LOG_LEVEL", level).upper())
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(log_file, encoding='utf-8')
+    handler = logging.FileHandler(log_file, encoding="utf-8")
     handler.setLevel(log_level)
     if context:
-        fields = ' '.join(f'%({key})s' for key in context)
+        fields = " ".join(f"%({key})s" for key in context)
         fmt = f"%(asctime)s [{fields}] %(name)s - %(levelname)s - %(message)s"
         handler.addFilter(_ContextFilter(context))
     else:

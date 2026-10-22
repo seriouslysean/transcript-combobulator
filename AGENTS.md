@@ -89,7 +89,9 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 | `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
 | `make test-fast` | pytest without the `slow` (real inference) tests |
 | `make test` | Whole suite; never touches `tmp/output` |
-| `make lint` | `mypy --strict` |
+| `make lint` | `ruff check` and `ruff format --check` |
+| `make format` | `ruff format` |
+| `make typecheck` | `mypy --strict` |
 | `make lint-pyrefly` | pyrefly, on trial beside mypy; not a gate yet |
 | `make clean-output` | Delete every session's outputs under `tmp/output` |
 | `make clean-tmp` | Also delete `tmp/input` and local caches |
@@ -335,7 +337,7 @@ fails loudly.
 5. Add a test in `tests/test_<module>.py` using synthetic fixtures where
    possible. Only use the slow whisper tests when actually testing whisper
    behavior.
-6. Run `make lint` and `make test` before declaring done.
+6. Run `make lint`, `make typecheck` and `make test` before declaring done.
 
 ## Common Pitfalls
 

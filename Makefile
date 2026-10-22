@@ -1,5 +1,5 @@
 .PHONY: help check-deps setup install setup-whisper run run-single \
-        combine-transcripts filter-vtt session-env create-sample-files test test-fast lint lint-pyrefly \
+        combine-transcripts filter-vtt session-env create-sample-files test test-fast lint format typecheck lint-pyrefly \
         clean-output clean-tmp
 
 ROOT_DIR := $(shell pwd)
@@ -110,7 +110,13 @@ test: ## Run the whole suite, including real whisper/VAD inference
 test-fast: ## Run the suite without the slow inference tests
 	$(VENV_CMD) python -m pytest tests/ -v -m "not slow"
 
-lint: ## Run mypy (strict)
+lint: ## Run ruff check and ruff format --check
+	$(VENV_CMD) ruff check --output-format concise . && ruff format --check .
+
+format: ## Format with ruff
+	$(VENV_CMD) ruff format .
+
+typecheck: ## Run mypy (strict)
 	$(VENV_CMD) mypy transcript_combobulator
 
 lint-pyrefly: ## Run pyrefly beside mypy (trial; mypy stays the gate)

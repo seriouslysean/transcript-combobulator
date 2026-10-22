@@ -2,7 +2,6 @@
 """Shared test fixtures."""
 
 import shutil
-from pathlib import Path
 
 import pytest
 

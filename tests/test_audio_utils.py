@@ -44,8 +44,10 @@ def test_ffmpeg_conversion_yields_16k_mono_peak_normalized(tmp_path: Path) -> No
 def test_missing_ffmpeg_is_a_clear_error(tmp_path: Path) -> None:
     src = tmp_path / "in.wav"
     _stereo_44k(src)
-    with patch("transcript_combobulator.audio_utils.shutil.which", return_value=None), \
-         pytest.raises(AudioValidationError, match="ffmpeg not found"):
+    with (
+        patch("transcript_combobulator.audio_utils.shutil.which", return_value=None),
+        pytest.raises(AudioValidationError, match="ffmpeg not found"),
+    ):
         convert_to_wav(src, tmp_path / "out.wav")
 
 
@@ -62,9 +64,12 @@ def test_ffmpeg_timeout_is_a_clear_error(tmp_path: Path) -> None:
 
     src = tmp_path / "in.wav"
     _stereo_44k(src)
-    with patch(
-        "transcript_combobulator.audio_utils.subprocess.run",
-        side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1),
-    ), pytest.raises(AudioValidationError, match="ffmpeg exceeded"):
+    with (
+        patch(
+            "transcript_combobulator.audio_utils.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1),
+        ),
+        pytest.raises(AudioValidationError, match="ffmpeg exceeded"),
+    ):
         convert_to_wav(src, tmp_path / "out.wav")
     assert not list(tmp_path.glob("*.unnormalized.wav"))

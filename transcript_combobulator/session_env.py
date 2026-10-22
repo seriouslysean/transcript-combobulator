@@ -51,7 +51,9 @@ CHARACTER_UNSET = f"{PROVISIONAL}: character not set"
 SEVERAL_PEOPLE = "may be several people"
 DM_GUESSED = f"{PROVISIONAL}: DM guessed from the largest track"
 
-_ROWS_HEADER = "# Speakers for this session: USERNAME is the track's file stem, DM first."
+_ROWS_HEADER = (
+    "# Speakers for this session: USERNAME is the track's file stem, DM first."
+)
 _TEXT_FIELDS = ("name", "label", "description")
 _MAX_FIELD = 200
 _ROW_RE = re.compile(r"\s*TRANSCRIPT_\d+_[A-Z]+\s*=")
@@ -128,9 +130,16 @@ class SessionEnvResult:
             "started_at": self.started_at,
             "session_date": self.session_date,
             "speakers": [
-                {"track_id": r.track.track_id, "file": r.track.file, "speaker_key": r.track.speaker_key,
-                 "username": r.track.username, "name": r.name, "label": r.label, "dm": r.dm,
-                 "provisional": r.provisional}
+                {
+                    "track_id": r.track.track_id,
+                    "file": r.track.file,
+                    "speaker_key": r.track.speaker_key,
+                    "username": r.track.username,
+                    "name": r.name,
+                    "label": r.label,
+                    "dm": r.dm,
+                    "provisional": r.provisional,
+                }
                 for r in self.rows
             ],
             "provisional": self.provisional,
@@ -150,10 +159,14 @@ def _where(track: Track) -> str:
 def _quote(value: str) -> str:
     """A value python-dotenv reads back unchanged (checked by the roundtrip test)."""
     if any(ord(c) < 32 for c in value):
-        raise SessionEnvError("speaker fields cannot contain control characters or newlines")
+        raise SessionEnvError(
+            "speaker fields cannot contain control characters or newlines"
+        )
     if "${" in value:
         # config.load_dotenv expands ${VAR} in any quoting, and no escape stops it
-        raise SessionEnvError("speaker fields cannot contain ${ (it would be read as a variable)")
+        raise SessionEnvError(
+            "speaker fields cannot contain ${ (it would be read as a variable)"
+        )
     if not any(c in value for c in '"\\$'):
         return f'"{value}"'
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
@@ -177,7 +190,9 @@ def load_speakers(path: Path) -> list[Speaker]:
         for key in ("speaker_key", "username"):
             value = entry.get(key)
             if value is not None and (not isinstance(value, str) or not value.strip()):
-                raise SessionEnvError(f"{where}: {key} must be a non-empty string or absent")
+                raise SessionEnvError(
+                    f"{where}: {key} must be a non-empty string or absent"
+                )
             ids[key] = value
         if not any(ids.values()):
             raise SessionEnvError(f"{where}: needs a speaker_key or username")
@@ -185,8 +200,14 @@ def load_speakers(path: Path) -> list[Speaker]:
         text = {}
         for key in _TEXT_FIELDS:
             value = entry.get(key)
-            if not isinstance(value, str) or not value.strip() or len(value.strip()) > _MAX_FIELD:
-                raise SessionEnvError(f"{where}: {key} must be 1 to {_MAX_FIELD} characters of text")
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or len(value.strip()) > _MAX_FIELD
+            ):
+                raise SessionEnvError(
+                    f"{where}: {key} must be 1 to {_MAX_FIELD} characters of text"
+                )
             try:
                 _quote(value)
             except SessionEnvError as e:
@@ -195,8 +216,16 @@ def load_speakers(path: Path) -> list[Speaker]:
         dm = entry.get("dm", False)
         if not isinstance(dm, bool):
             raise SessionEnvError(f"{where}: dm must be true or false")
-        speakers.append(Speaker(ids["speaker_key"], ids["username"], text["name"], text["label"],
-                                text["description"], dm))
+        speakers.append(
+            Speaker(
+                ids["speaker_key"],
+                ids["username"],
+                text["name"],
+                text["label"],
+                text["description"],
+                dm,
+            )
+        )
     return speakers
 
 
@@ -212,11 +241,15 @@ def match_speakers(tracks: list[Track], speakers: list[Speaker]) -> dict[str, Sp
     for speaker in speakers:
         hits = [t for t in tracks if _matches(t, speaker)]
         if len(hits) > 1:
-            raise SessionEnvError(f"{speaker.describe()} matches {_where(hits[0])} and {_where(hits[1])}")
+            raise SessionEnvError(
+                f"{speaker.describe()} matches {_where(hits[0])} and {_where(hits[1])}"
+            )
     for t in tracks:
         hits_s = [s for s in speakers if _matches(t, s)]
         if len(hits_s) > 1:
-            raise SessionEnvError(f"{_where(t)} matches {hits_s[0].describe()} and {hits_s[1].describe()}")
+            raise SessionEnvError(
+                f"{_where(t)} matches {hits_s[0].describe()} and {hits_s[1].describe()}"
+            )
         if hits_s:
             found[t.track_id] = hits_s[0]
     return found
@@ -243,7 +276,9 @@ def _session_date(started_at: str | None, tz: str | None) -> str | None:
     return datetime.fromisoformat(started_at).astimezone(zone).date().isoformat()
 
 
-def _build_rows(tracks: list[Track], found: dict[str, Speaker], dm: str | None) -> tuple[list[Row], list[str]]:
+def _build_rows(
+    tracks: list[Track], found: dict[str, Speaker], dm: str | None
+) -> tuple[list[Row], list[str]]:
     """Return (rows with the DM first, warnings)."""
     by_track: dict[str, Row] = {}
     for t in tracks:
@@ -251,26 +286,36 @@ def _build_rows(tracks: list[Track], found: dict[str, Speaker], dm: str | None) 
         if s is not None:
             by_track[t.track_id] = Row(t, s.name, s.label, s.description)
         else:
-            unset = CHARACTER_UNSET + (f"; {SEVERAL_PEOPLE}" if t.speaker_key is None else "")
+            unset = CHARACTER_UNSET + (
+                f"; {SEVERAL_PEOPLE}" if t.speaker_key is None else ""
+            )
             by_track[t.track_id] = Row(t, _fallback(t), _fallback(t), unset)
 
     warnings: list[str] = []
     marked = [tid for tid, s in found.items() if s.dm]
     if len(marked) > 1:
-        raise SessionEnvError(f'"dm": true on more than one present speaker: tracks {", ".join(sorted(marked))}')
+        raise SessionEnvError(
+            f'"dm": true on more than one present speaker: tracks {", ".join(sorted(marked))}'
+        )
     guessed = False
     if dm is not None:
         if dm not in by_track:
-            raise SessionEnvError(f"--dm {dm}: no track has that track_id ({', '.join(by_track)})")
+            raise SessionEnvError(
+                f"--dm {dm}: no track has that track_id ({', '.join(by_track)})"
+            )
         if marked and marked[0] != dm:
-            raise SessionEnvError(f"--dm {dm} conflicts with the speakers file, which marks track {marked[0]} as DM")
+            raise SessionEnvError(
+                f"--dm {dm} conflicts with the speakers file, which marks track {marked[0]} as DM"
+            )
         dm_id = dm
     elif marked:
         dm_id = marked[0]
     else:
         dm_id = max(tracks, key=lambda t: t.size).track_id
         guessed = True
-        warnings.append(f"DM guessed from the largest track: {_where(by_track[dm_id].track)}; confirm or pass --dm")
+        warnings.append(
+            f"DM guessed from the largest track: {_where(by_track[dm_id].track)}; confirm or pass --dm"
+        )
 
     dm_row = by_track[dm_id]
     dm_row.dm = True
@@ -281,7 +326,9 @@ def _build_rows(tracks: list[Track], found: dict[str, Speaker], dm: str | None) 
     ordered = [dm_row] + [by_track[t.track_id] for t in tracks if t.track_id != dm_id]
     labels = [r.label for r in ordered]
     if len(set(labels)) != len(labels):
-        warnings.append("two speakers share a label; their lines will not be told apart")
+        warnings.append(
+            "two speakers share a label; their lines will not be told apart"
+        )
     return ordered, warnings
 
 
@@ -296,8 +343,11 @@ def _split_base(text: str) -> tuple[list[str], list[str], list[str]]:
         start -= 1  # comments directly above the first row ("# DM") belong to the rows
     block = lines[start : rows[-1] + 1]
     stray = [
-        line for line in block
-        if line.strip() and not line.lstrip().startswith("#") and not _ROW_RE.match(line)
+        line
+        for line in block
+        if line.strip()
+        and not line.lstrip().startswith("#")
+        and not _ROW_RE.match(line)
     ]
     return lines[:start], lines[rows[-1] + 1 :], stray
 
@@ -310,14 +360,28 @@ def _render_rows(rows: list[Row]) -> list[str]:
     out = [_ROWS_HEADER]
     for i, row in enumerate(rows, 1):
         out.append("")
-        who = f"track {row.track.track_id}" + (f", {row.track.username}" if row.track.username else "")
+        who = f"track {row.track.track_id}" + (
+            f", {row.track.username}" if row.track.username else ""
+        )
         flags = [f.upper() for f in row.provisional if f != "dm"]
-        notes = [*(["DM guessed from the largest track; confirm or pass --dm"] if "dm" in row.provisional else []),
-                 *([f"fill in {', '.join(flags)}"] if flags else [])]
-        out.append(f"# {PROVISIONAL} ({who}): " + "; ".join(notes) if notes else f"# {'DM, ' if row.dm else ''}{who}")
+        notes = [
+            *(
+                ["DM guessed from the largest track; confirm or pass --dm"]
+                if "dm" in row.provisional
+                else []
+            ),
+            *([f"fill in {', '.join(flags)}"] if flags else []),
+        ]
+        out.append(
+            f"# {PROVISIONAL} ({who}): " + "; ".join(notes)
+            if notes
+            else f"# {'DM, ' if row.dm else ''}{who}"
+        )
         for key, value in (
-            ("USERNAME", row.track.stem), ("NAME", row.name),
-            ("LABEL", row.label), ("DESCRIPTION", row.description),
+            ("USERNAME", row.track.stem),
+            ("NAME", row.name),
+            ("LABEL", row.label),
+            ("DESCRIPTION", row.description),
         ):
             out.append(f"TRANSCRIPT_{i}_{key}={_quote(value)}")
     return out
@@ -328,9 +392,19 @@ def _rows_from_values(values: dict[str, str], tracks: list[Track]) -> list[Row]:
     mapping = load_speaker_mapping(values)
     rows = []
     for t in tracks:
-        (username,) = match_usernames(t.stem, mapping)  # validate_speaker_mapping ran first
+        (username,) = match_usernames(
+            t.stem, mapping
+        )  # validate_speaker_mapping ran first
         m = mapping[username]
-        rows.append(Row(t, m["name"], m["label"], m["description"], m["label"].strip().lower() == "dm"))
+        rows.append(
+            Row(
+                t,
+                m["name"],
+                m["label"],
+                m["description"],
+                m["label"].strip().lower() == "dm",
+            )
+        )
     return sorted(rows, key=lambda r: not r.dm)
 
 
@@ -357,10 +431,14 @@ def build_session_env(
     found = match_speakers(tracks, entries)
     matched = {id(s) for s in found.values()}
     absent: list[dict[str, str | None]] = [
-        {"speaker_key": s.speaker_key, "username": s.username} for s in entries if id(s) not in matched
+        {"speaker_key": s.speaker_key, "username": s.username}
+        for s in entries
+        if id(s) not in matched
     ]
     if Path(output).resolve().is_relative_to(bundle.root):
-        raise SessionEnvError(f"--output {output} is inside the bundle; a published bundle never changes")
+        raise SessionEnvError(
+            f"--output {output} is inside the bundle; a published bundle never changes"
+        )
 
     if output.exists() and not force:
         values = read_env_file(output)
@@ -370,7 +448,9 @@ def build_session_env(
             raise SessionEnvError(
                 f"{output} exists but does not fit these tracks ({e}); edit it, or rerun with --force to regenerate it"
             ) from None
-        return SessionEnvResult(output, "kept", bundle, _rows_from_values(values, tracks), when, absent)
+        return SessionEnvResult(
+            output, "kept", bundle, _rows_from_values(values, tracks), when, absent
+        )
 
     base_path = base or ROOT_DIR / ".env.example"
     if not base_path.is_file():
@@ -387,7 +467,11 @@ def build_session_env(
         "# `combobulator combine <session>` (no transcription). WHISPER_PROMPT and VAD_* are",
         "# different: changing them after transcription re-runs it.",
         "",
-        *before, *stray, "", *_render_rows(rows), *after,
+        *before,
+        *stray,
+        "",
+        *_render_rows(rows),
+        *after,
     ]
     text = "\n".join(text_lines).rstrip("\n") + "\n"
 
@@ -395,11 +479,14 @@ def build_session_env(
     # validator (the one `run` uses) accepts the speaker rows for these tracks.
     parsed = parse_env_text(text)
     changed = sorted(
-        k for k in _settings(parsed).keys() | _settings(base_values).keys()
+        k
+        for k in _settings(parsed).keys() | _settings(base_values).keys()
         if parsed.get(k) != base_values.get(k)
     )
     if changed:
-        raise SessionEnvError(f"internal error: settings {changed} would change; nothing written")
+        raise SessionEnvError(
+            f"internal error: settings {changed} would change; nothing written"
+        )
     try:
         validate_speaker_mapping(stems, env=parsed)
     except CombineError as e:
@@ -420,19 +507,52 @@ def main(argv: list[str] | None = None) -> None:
             "and a base env. Tracks with no known speaker get provisional rows."
         ),
     )
-    parser.add_argument("--bundle", type=Path, required=True, help="recording bundle folder (docs/recording-bundle.md)")
-    parser.add_argument("--speakers", type=Path, metavar="FILE", help="who is on which track (JSON)")
-    parser.add_argument("--base", type=Path, help="env whose settings are copied (default: the repo's .env.example)")
-    parser.add_argument("--dm", metavar="TRACK_ID", help="which track is the DM (default: the speakers file's, else the largest track, flagged)")
-    parser.add_argument("--tz", metavar="ZONE", help="IANA zone for the session date (default: this host's)")
-    parser.add_argument("--output", type=Path, required=True, help="where to write the env; outside the bundle")
-    parser.add_argument("--force", action="store_true", help="overwrite an existing output file")
-    parser.add_argument("--json", action="store_true", help="print one JSON object instead of text")
+    parser.add_argument(
+        "--bundle",
+        type=Path,
+        required=True,
+        help="recording bundle folder (docs/recording-bundle.md)",
+    )
+    parser.add_argument(
+        "--speakers", type=Path, metavar="FILE", help="who is on which track (JSON)"
+    )
+    parser.add_argument(
+        "--base",
+        type=Path,
+        help="env whose settings are copied (default: the repo's .env.example)",
+    )
+    parser.add_argument(
+        "--dm",
+        metavar="TRACK_ID",
+        help="which track is the DM (default: the speakers file's, else the largest track, flagged)",
+    )
+    parser.add_argument(
+        "--tz",
+        metavar="ZONE",
+        help="IANA zone for the session date (default: this host's)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="where to write the env; outside the bundle",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="overwrite an existing output file"
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="print one JSON object instead of text"
+    )
     opts = parser.parse_args(argv)
     try:
         result = build_session_env(
-            opts.bundle, speakers=opts.speakers, base=opts.base, dm=opts.dm, tz=opts.tz,
-            output=opts.output, force=opts.force,
+            opts.bundle,
+            speakers=opts.speakers,
+            base=opts.base,
+            dm=opts.dm,
+            tz=opts.tz,
+            output=opts.output,
+            force=opts.force,
         )
     except SessionEnvError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -442,7 +562,11 @@ def main(argv: list[str] | None = None) -> None:
         return
     print(f"{'Wrote' if result.status == 'written' else 'Kept existing'} {result.path}")
     for row in result.rows:
-        flag = f"   <- PROVISIONAL ({', '.join(row.provisional)})" if row.provisional else ""
+        flag = (
+            f"   <- PROVISIONAL ({', '.join(row.provisional)})"
+            if row.provisional
+            else ""
+        )
         print(f"  {row.track.stem}: {row.name} / {row.label}{flag}")
     for entry in result.absent:
         print(f"  not in this recording: {entry['speaker_key'] or entry['username']}")

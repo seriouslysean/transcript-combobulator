@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 COMMANDS = {
     "run": "Full pipeline for a session folder (convert, VAD, transcribe, combine)",
@@ -45,15 +44,21 @@ def main(argv: list[str] | None = None) -> None:
 
         run_main(rest)
     elif command == "file":
-        parser = argparse.ArgumentParser(prog="combobulator file", description=COMMANDS["file"])
+        parser = argparse.ArgumentParser(
+            prog="combobulator file", description=COMMANDS["file"]
+        )
         parser.add_argument("input_file")
-        parser.add_argument("--force", action="store_true", help="Ignore completed output")
+        parser.add_argument(
+            "--force", action="store_true", help="Ignore completed output"
+        )
         opts = parser.parse_args(rest)
         from transcript_combobulator.pipeline import process_file
 
         process_file(opts.input_file, force=opts.force)
     elif command == "combine":
-        parser = argparse.ArgumentParser(prog="combobulator combine", description=COMMANDS["combine"])
+        parser = argparse.ArgumentParser(
+            prog="combobulator combine", description=COMMANDS["combine"]
+        )
         parser.add_argument("session", help="Session name under tmp/output/")
         opts = parser.parse_args(rest)
         from transcript_combobulator.combine import combine_transcripts_from_env

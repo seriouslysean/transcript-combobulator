@@ -124,7 +124,9 @@ make filter-vtt file=path/to/file.flac threshold=60  # Re-emit a VTT above a con
 # Dev
 make test-fast                          # Suite without real inference (seconds)
 make test                               # Whole suite (minutes)
-make lint                               # mypy --strict
+make lint                               # ruff check and format check
+make format                             # ruff format
+make typecheck                          # mypy --strict
 make clean-output                       # Delete every session's outputs under tmp/output
 ```
 
