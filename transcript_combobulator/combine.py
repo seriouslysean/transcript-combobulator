@@ -265,9 +265,9 @@ def _dedupe_entries(
 def match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
     """Usernames that appear in a per-speaker dir name as a whole token.
 
-    Token boundaries are non-alphanumerics or the string ends, so 'dez' does
-    not claim '5-dezfrost' and 'nilbits' does not claim '3-nilbits2', while
-    '3-nilbits', '3-nilbits_16khz', and '2-burger_bear' still match.
+    Token boundaries are non-alphanumerics or the string ends, so 'wulf' does
+    not claim '5-wulfgar' and 'cadderly' does not claim '3-cadderly2', while
+    '3-cadderly', '3-cadderly_16khz', and '2-catti_brie' still match.
     """
     return [
         u

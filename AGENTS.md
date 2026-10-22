@@ -65,8 +65,8 @@ The standard pipeline: `transcript_combobulator.batch.main` →
   manifest is written, so the cache cannot
   hide a transcript with gaps. A track with no speech at all is an empty
   transcript, not an error.
-- **Usernames match as whole tokens** in per-speaker dir names, so `dez`
-  never claims `5-dezfrost`. Batch runs hand combine the exact VTTs they
+- **Usernames match as whole tokens** in per-speaker dir names, so `wulf`
+  never claims `5-wulfgar`. Batch runs hand combine the exact VTTs they
   produced; stale sibling dirs are ignored.
 - **Skip filters match raw text**, not normalized text. So `[BLANK_AUDIO]` in a
   VTT line is filtered by the literal `[BLANK_AUDIO]` filter.
@@ -178,10 +178,10 @@ fails loudly.
 
 - **Input audio**: `tmp/input/<session>/3-cadderly.flac`. The file stem names the
   speaker; any source works (Craig's stems are `<number>-<username>`)
-- **Per-speaker output dir**: `tmp/output/<session>/3-nilbits/` (input stem)
-- **Converted**: `3-nilbits.wav` inside it (16 kHz mono PCM_16, peak-normalised)
-- **Per-speaker VTT + JSON**: `3-nilbits.vtt`, `3-nilbits_transcription.json`,
-  `3-nilbits_mapping.json`, `3-nilbits_segment_NNN.wav`
+- **Per-speaker output dir**: `tmp/output/<session>/3-cadderly/` (input stem)
+- **Converted**: `3-cadderly.wav` inside it (16 kHz mono PCM_16, peak-normalised)
+- **Per-speaker VTT + JSON**: `3-cadderly.vtt`, `3-cadderly_transcription.json`,
+  `3-cadderly_mapping.json`, `3-cadderly_segment_NNN.wav`
   (`transcript_combobulator.config.vtt_path_for_input` is the one source of truth for the VTT path)
 - **Session outputs**: `<session>-combined.txt` (or `-1.txt`, `-2.txt` when
   `CHUNKS>1`), `<session>-metrics.json`, `<session>.log`

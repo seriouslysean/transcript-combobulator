@@ -216,7 +216,7 @@ def test_dedupe_sorts_by_start_before_comparing() -> None:
 def test_regenerate_vtt_reads_pipeline_json_and_filters(tmp_path: Path) -> None:
     import json
 
-    json_path = tmp_path / "3-nilbits_transcription.json"
+    json_path = tmp_path / "3-cadderly_transcription.json"
     json_path.write_text(
         json.dumps(
             {
@@ -232,7 +232,7 @@ def test_regenerate_vtt_reads_pipeline_json_and_filters(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    vtt = tmp_path / "3-nilbits.vtt"
+    vtt = tmp_path / "3-cadderly.vtt"
 
     kept = regenerate_vtt_with_confidence(json_path, vtt, 50.0)
 
@@ -344,8 +344,8 @@ def test_collapse_phrase_loops_but_keeps_short_repeats() -> None:
         == "Okay so no we go left"
     )
     # multi-word phrase looping >= 6 times collapses to one occurrence
-    six = "I think, " * 6 + "uh, Jaqen taps Veldis"
-    assert collapse_repetition(six) == "I think, uh, Jaqen taps Veldis"
+    six = "I think, " * 6 + "uh, Pikel taps Ivan"
+    assert collapse_repetition(six) == "I think, uh, Pikel taps Ivan"
     # a prompt echoed six times in one segment
     echo = "this is a recording of a session. " * 6
     assert collapse_repetition(echo.strip()) == "this is a recording of a session."

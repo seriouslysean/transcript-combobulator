@@ -15,13 +15,13 @@ authors = [
 # torchcodec (ABI-locked to torch, no aarch64 wheel before 0.11) is not needed.
 dependencies = [
     "openai-whisper==20250625",
-    "python-dotenv==1.2.3",
+    "python-dotenv==1.2.4",
     "soundfile==0.14.0",
-    "torch==2.11.0",
+    "torch==2.14.1",
     "torchaudio==2.11.0",
-    "silero-vad==6.2.1",
+    "silero-vad==6.2.3",
     # silero-vad does not declare onnxruntime; its ONNX build needs it.
-    "onnxruntime==1.30.0",
+    "onnxruntime==1.31.0",
     "rich==15.0.0",
 ]
 classifiers = [
@@ -36,7 +36,7 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "pyrefly==1.4.0",
     "pytest==9.1.1",
     "ruff==0.17.1",

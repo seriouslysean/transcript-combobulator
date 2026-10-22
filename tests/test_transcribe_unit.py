@@ -10,9 +10,9 @@ from transcript_combobulator.transcribe import TranscriptionError, transcribe_au
 
 
 def test_offset_uses_padded_clip_start(tmp_path: Path) -> None:
-    audio = tmp_path / "3-nilbits.wav"
+    audio = tmp_path / "3-cadderly.wav"
     audio.touch()
-    clip = tmp_path / "3-nilbits_segment_000.wav"
+    clip = tmp_path / "3-cadderly_segment_000.wav"
     clip.touch()
     mapping = [
         {
@@ -47,7 +47,7 @@ def test_offset_uses_padded_clip_start(tmp_path: Path) -> None:
 
 
 def test_offset_falls_back_to_speech_start_for_old_mappings(tmp_path: Path) -> None:
-    audio = tmp_path / "3-nilbits.wav"
+    audio = tmp_path / "3-cadderly.wav"
     audio.touch()
     clip = tmp_path / "seg.wav"
     clip.touch()
@@ -106,7 +106,7 @@ def test_silent_track_writes_empty_transcript(tmp_path: Path) -> None:
 
 
 def test_mapping_with_only_missing_files_is_still_an_error(tmp_path: Path) -> None:
-    audio = tmp_path / "3-nilbits.wav"
+    audio = tmp_path / "3-cadderly.wav"
     audio.touch()
     with (
         patch(
