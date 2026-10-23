@@ -180,6 +180,28 @@ WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_FP16 = get_bool_env("WHISPER_FP16", False)
 WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "en")
 
+# Which engine runs the model. 'openai' is stock openai-whisper (CPU, CUDA or
+# MPS via WHISPER_DEVICE) and the default everywhere. 'mlx' is mlx-whisper on
+# the Apple Silicon GPU (`make install EXTRAS=dev,mac`, then `make
+# setup-whisper`). The runtime is part of the inference fingerprint, so output
+# cached by one runtime is never reused by the other.
+WHISPER_RUNTIMES = ("openai", "mlx")
+WHISPER_RUNTIME = os.getenv("WHISPER_RUNTIME", "openai").strip().lower() or "openai"
+if WHISPER_RUNTIME not in WHISPER_RUNTIMES:
+    raise ValueError(
+        f"WHISPER_RUNTIME must be one of {', '.join(WHISPER_RUNTIMES)}; got {WHISPER_RUNTIME!r}"
+    )
+
+# mlx-converted checkpoints, pinned by commit so a moving upstream cannot change
+# what a run means. Local copies live in models/mlx/<WHISPER_MODEL>/.
+MLX_WHISPER_MODELS: dict[str, tuple[str, str]] = {
+    "large-v3-turbo": (
+        "mlx-community/whisper-large-v3-turbo",
+        "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+    ),
+}
+MLX_WEIGHTS_FILENAME = "weights.safetensors"
+
 
 def _parse_temperature(raw: str) -> float | tuple[float, ...]:
     """A scalar decodes once; a comma list enables whisper's own fallback, which
@@ -196,6 +218,10 @@ def _parse_temperature(raw: str) -> float | tuple[float, ...]:
 
 WHISPER_TEMPERATURE = _parse_temperature(os.getenv("WHISPER_TEMPERATURE", "0.0"))
 WHISPER_BEAM_SIZE = get_int_env("WHISPER_BEAM_SIZE", 1)
+if WHISPER_RUNTIME == "mlx" and WHISPER_BEAM_SIZE > 1:
+    raise ValueError(
+        "mlx-whisper has no beam search; use WHISPER_BEAM_SIZE=1 with WHISPER_RUNTIME=mlx"
+    )
 WHISPER_WORD_TIMESTAMPS = get_bool_env("WHISPER_WORD_TIMESTAMPS", False)
 WHISPER_CONDITION_ON_PREVIOUS = get_bool_env("WHISPER_CONDITION_ON_PREVIOUS", False)
 WHISPER_CARRY_INITIAL_PROMPT = get_bool_env("WHISPER_CARRY_INITIAL_PROMPT", True)
@@ -212,7 +238,26 @@ SAVE_JSON = get_bool_env("SAVE_JSON", True)
 
 
 def get_whisper_options() -> dict[str, Any]:
-    """Kwargs for whisper.Whisper.transcribe()."""
+    """Kwargs for the active runtime's ``transcribe()``.
+
+    The mlx runtime gets only what mlx-whisper honours. ``beam_size`` is
+    rejected at import (no beam search). ``carry_initial_prompt`` does not exist
+    there, so the prompt applies to each island's first 30 s window only.
+    ``fp16`` is always on: mlx weights are float16 and float32 would double
+    memory for no measured gain.
+    """
+    if WHISPER_RUNTIME == "mlx":
+        return {
+            "language": WHISPER_LANGUAGE,
+            "temperature": WHISPER_TEMPERATURE,
+            "condition_on_previous_text": WHISPER_CONDITION_ON_PREVIOUS,
+            "no_speech_threshold": WHISPER_NO_SPEECH_THRESHOLD,
+            "logprob_threshold": WHISPER_LOGPROB_THRESHOLD,
+            "compression_ratio_threshold": WHISPER_COMPRESSION_RATIO_THRESHOLD,
+            "word_timestamps": WHISPER_WORD_TIMESTAMPS,
+            "initial_prompt": WHISPER_PROMPT or None,
+            "fp16": True,
+        }
     return {
         "language": WHISPER_LANGUAGE,
         "temperature": WHISPER_TEMPERATURE,
@@ -228,15 +273,52 @@ def get_whisper_options() -> dict[str, Any]:
     }
 
 
+def mlx_model_dir(model_name: str | None = None) -> Path:
+    """Where the mlx checkpoint for ``model_name`` (default WHISPER_MODEL) lives."""
+    return WHISPER_MODELS_DIR / "mlx" / (model_name or WHISPER_MODEL)
+
+
+def get_model_weights_path() -> Path:
+    """The weights file the active runtime loads (for sizing and cache identity)."""
+    if WHISPER_RUNTIME == "mlx":
+        return mlx_model_dir() / MLX_WEIGHTS_FILENAME
+    return WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+
+
 def _model_file_identity() -> dict[str, int] | None:
-    """Size and mtime of the checkpoint, so swapping the .pt under the same
+    """Size and mtime of the checkpoint, so swapping the weights under the same
     name invalidates cached results instead of being a silent hit."""
-    model_path = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
     try:
-        stat = model_path.stat()
+        stat = get_model_weights_path().stat()
     except OSError:
         return None
     return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+
+
+def _inference_fingerprint_settings() -> dict[str, Any]:
+    """Settings that decide what the model writes.
+
+    The default runtime keeps its original keys, byte for byte, so completed
+    sessions stay valid after this setting was introduced. Any other runtime
+    adds its name and its own checkpoint identity, which makes its fingerprint
+    differ from every openai one: cached output never crosses runtimes.
+    """
+    if WHISPER_RUNTIME == "openai":
+        return {
+            "whisper_model": WHISPER_MODEL,
+            "whisper_model_file": _model_file_identity(),
+            "whisper_device": WHISPER_DEVICE,
+            "whisper_options": get_whisper_options(),
+        }
+    repo, revision = MLX_WHISPER_MODELS.get(WHISPER_MODEL, (None, None))
+    return {
+        "whisper_runtime": WHISPER_RUNTIME,
+        "whisper_model": WHISPER_MODEL,
+        "whisper_model_repo": repo,
+        "whisper_model_revision": revision,
+        "whisper_model_file": _model_file_identity(),
+        "whisper_options": get_whisper_options(),
+    }
 
 
 def get_stage_fingerprint_settings() -> dict[str, dict[str, Any]]:
@@ -255,12 +337,7 @@ def get_stage_fingerprint_settings() -> dict[str, dict[str, Any]]:
             "min_silence_duration": VAD_MIN_SILENCE_DURATION,
             "padding_seconds": PADDING_SECONDS,
         },
-        "inference": {
-            "whisper_model": WHISPER_MODEL,
-            "whisper_model_file": _model_file_identity(),
-            "whisper_device": WHISPER_DEVICE,
-            "whisper_options": get_whisper_options(),
-        },
+        "inference": _inference_fingerprint_settings(),
         "vtt": {
             "dedupe_window_seconds": DEDUPE_WINDOW_SECONDS,
         },

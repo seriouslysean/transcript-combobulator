@@ -21,7 +21,9 @@ from transcript_combobulator.config import (
     WHISPER_DEVICE,
     WHISPER_MODEL,
     WHISPER_MODELS_DIR,
+    WHISPER_RUNTIME,
     get_whisper_options,
+    mlx_model_dir,
 )
 from transcript_combobulator.logging_config import get_logger
 from transcript_combobulator.pipeline_cache import ChunkCheckpoint
@@ -107,19 +109,25 @@ def collapse_repetition(text: str, threshold: int = _REPETITION_THRESHOLD) -> st
     return " ".join(out)
 
 
-def load_whisper_model(model_name: Optional[str] = None) -> whisper.Whisper:
+def load_whisper_model(model_name: Optional[str] = None) -> Any:
     """Load a whisper model from the local models dir, once per worker process.
 
     The name is resolved here so ``load_whisper_model()`` and
     ``load_whisper_model('large-v3-turbo')`` share one cache entry instead of
     holding two 1.6 GB models. Raises WhisperError if the file is missing;
-    run `make setup-whisper`.
+    run `make setup-whisper`. The returned object has the whisper
+    ``transcribe(audio, **get_whisper_options())`` interface whichever
+    WHISPER_RUNTIME is active.
     """
     return _load_whisper_model(model_name or WHISPER_MODEL)
 
 
 @lru_cache(maxsize=None)
-def _load_whisper_model(model_name: str) -> whisper.Whisper:
+def _load_whisper_model(model_name: str) -> Any:
+    if WHISPER_RUNTIME == "mlx":
+        from transcript_combobulator.whisper_mlx import load_mlx_whisper_model
+
+        return load_mlx_whisper_model(mlx_model_dir(model_name))
     model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
     if not model_path.exists():
         raise WhisperError(
@@ -223,7 +231,7 @@ def transcribe_segment(
     audio_path: Path,
     output_path: Optional[Path] = None,
     offset: float = 0.0,
-    model: Optional[whisper.Whisper] = None,
+    model: Optional[Any] = None,
     timing: Optional[dict[str, Any]] = None,
 ) -> list[dict[str, Any]]:
     """Transcribe a single audio file, optionally writing a VTT."""
