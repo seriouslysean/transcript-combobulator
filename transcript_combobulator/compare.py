@@ -252,7 +252,12 @@ def main(argv: list[str] | None = None) -> None:
 
     from transcript_combobulator.config import WHISPER_PROMPT
 
-    report = compare(load(args.ref), load(args.hyp), WHISPER_PROMPT)
+    ref, hyp = load(args.ref), load(args.hyp)
+    for name, t in (("reference", ref), ("hypothesis", hyp)):
+        if not any(t.lines.values()):
+            print(f"Error: no speaker lines in the {name}", file=sys.stderr)
+            sys.exit(2)
+    report = compare(ref, hyp, WHISPER_PROMPT)
     if args.json:
         args.json.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "per_speaker"}, indent=1))

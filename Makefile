@@ -115,10 +115,11 @@ sample-ami: ## Fetch the 4-speaker AMI sample (checksum-verified) into tmp/input
 
 # The reference was made with .env.ami-sample on CPU. Any change in output fails: use it
 # for changes that should not change words (runtime, refactor, dependency bump).
-SAMPLE_ENV ?= .env.ami-sample
+# SAMPLE_ENV=<env> overrides it.
 check-sample: sample-ami ## Transcribe the AMI sample and fail if it differs from samples/ami/
-	$(VENV_CMD) ENV_FILE=$(SAMPLE_ENV) combobulator run tmp/input/ami-en2002b --session ami-en2002b
-	$(VENV_CMD) ENV_FILE=$(SAMPLE_ENV) combobulator compare --ref samples/ami/EN2002b-reference.txt \
+	env_file="$${SAMPLE_ENV:-.env.ami-sample}"; \
+	$(VENV_CMD) ENV_FILE="$$env_file" combobulator run tmp/input/ami-en2002b --session ami-en2002b && \
+	$(VENV_CMD) ENV_FILE="$$env_file" combobulator compare --ref samples/ami/EN2002b-reference.txt \
 		--hyp tmp/output/ami-en2002b/ami-en2002b-combined.txt --strict
 
 test: ## Run the whole suite, including real whisper/VAD inference

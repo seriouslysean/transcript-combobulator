@@ -140,6 +140,17 @@ def test_main_refuses_a_missing_file(tmp_path: Path) -> None:
     assert e.value.code == 2
 
 
+@pytest.mark.parametrize("empty", ["ref", "hyp"])
+def test_main_refuses_a_file_with_no_speaker_lines(empty: str, tmp_path: Path) -> None:
+    a = _write(tmp_path / "a.txt", LINES)
+    blank = tmp_path / "blank.txt"
+    blank.write_text("not a transcript\n", encoding="utf-8")
+    ref, hyp = (blank, a) if empty == "ref" else (a, blank)
+    with pytest.raises(SystemExit) as e:
+        main(["--ref", str(ref), "--hyp", str(hyp), "--strict"])
+    assert e.value.code == 2
+
+
 def test_combines_own_output_reads_the_same_with_and_without_timestamps(
     tmp_path: Path,
 ) -> None:

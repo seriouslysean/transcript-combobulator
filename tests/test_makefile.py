@@ -1,5 +1,6 @@
 """Shell-injection regression tests for the Makefile."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -46,13 +47,20 @@ def test_run_single_filename_with_space(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("var", ["ref", "hyp", "json"])
 def test_compare_transcripts_injection_no_exec(var: str, tmp_path: Path) -> None:
+    # Through the environment: make expands $(...) in command-line values itself.
     marker = tmp_path / "marker"
-    args = {"ref": "a.txt", "hyp": "b.txt", var: f"x`touch {marker}`$(touch {marker})*"}
-    result = _run_make(
-        "CLI=echo", "compare-transcripts", *(f"{k}={v}" for k, v in args.items())
+    payload = f"x`touch {marker}`$(touch {marker})*"
+    env = {**os.environ, "ref": "a.txt", "hyp": "b.txt", var: payload}
+    result = subprocess.run(
+        ["make", "CLI=echo", "compare-transcripts"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        env=env,
     )
     assert not marker.exists(), result.stderr
     assert result.returncode == 0, result.stderr
+    assert payload in result.stdout
 
 
 def test_compare_transcripts_splits_file_lists() -> None:
