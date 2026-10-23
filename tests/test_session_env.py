@@ -301,6 +301,47 @@ def test_an_absent_dm_does_not_count(tmp_path: Path) -> None:
     assert "dm" in result.as_json()["speakers"][0]["provisional"]
 
 
+def test_an_explicit_dm_false_is_never_guessed(tmp_path: Path) -> None:
+    b = make_bundle(tmp_path / "b", [DANICA_T, IVAN_T])
+    result = build(
+        b,
+        speakers=speakers_file(tmp_path / "s.json", {**DANICA, "dm": False}, IVAN),
+    )
+    assert rows(result.path)[0][0] == "3-ivan"  # danica is larger but says she is not
+    assert rows(result.path)[1][2] == 'Regis "Rumblebelly"'
+    assert "dm" in result.as_json()["speakers"][0]["provisional"]
+
+
+@pytest.mark.parametrize("present", [[DANICA_T], [DANICA_T, IVAN_T]])
+def test_when_every_track_says_dm_false_there_is_no_dm_row(
+    tmp_path: Path, present: list[dict[str, Any]]
+) -> None:
+    b = make_bundle(tmp_path / "b", present)
+    result = build(
+        b,
+        speakers=speakers_file(
+            tmp_path / "s.json", {**DANICA, "dm": False}, {**IVAN, "dm": False}
+        ),
+    )
+    assert [r[2] for r in rows(result.path)] == [
+        'Regis "Rumblebelly"',
+        "Wulfgar",
+    ][: len(present)]
+    assert not any(s["dm"] for s in result.as_json()["speakers"])
+    assert result.provisional == []
+    assert any("no DM track" in w for w in result.warnings)
+
+
+def test_dm_flag_naming_a_dm_false_track_is_refused(tmp_path: Path) -> None:
+    b = make_bundle(tmp_path / "b", [DANICA_T, IVAN_T])
+    with pytest.raises(SessionEnvError, match="--dm 2"):
+        build(
+            b,
+            speakers=speakers_file(tmp_path / "s.json", {**DANICA, "dm": False}, IVAN),
+            dm="2",
+        )
+
+
 # ── the speakers file ──
 
 
