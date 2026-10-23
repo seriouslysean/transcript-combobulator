@@ -33,14 +33,18 @@ MIN_RUN = 4
 GATE_WORDS_DIFFERENT_PCT = 1.5
 GATE_LOST_SPANS_PCT = 0.5
 GATE_LONGEST_LOST = 10
-CANNED = frozenset({'thank you', 'thanks for watching', 'thank you for watching', 'you', 'bye'})
+CANNED = frozenset(
+    {"thank you", "thanks for watching", "thank you for watching", "you", "bye"}
+)
 
 # A speaker line when the Summary header is missing: a label of up to 31 characters,
 # quotes allowed (Milo "Maestro" Fairweather).
 _SPEAKER_RE = re.compile(r'^([A-Za-z][A-Za-z .\'"“”-]{0,30}?):\s(.*)$')
 # combine's INCLUDE_TIMESTAMPS suffix (`` [00:00:15.000 --> 00:00:25.380]``), so both modes
 # compare the same words.
-_TIMESTAMP_RE = re.compile(r'\s\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]$')
+_TIMESTAMP_RE = re.compile(
+    r"\s\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]$"
+)
 
 
 def normalize(text: str) -> str:
@@ -68,30 +72,32 @@ def load(paths: Iterable[Path]) -> Transcript:
     """Read combined transcript files, in order, into one Transcript."""
     out = Transcript()
     for path in paths:
-        lines = path.read_text(encoding='utf-8').splitlines()
+        lines = path.read_text(encoding="utf-8").splitlines()
         labels: list[str] = []
         i = 0
-        if lines and lines[0].strip() == 'Summary:':
+        if lines and lines[0].strip() == "Summary:":
             i = 1
             while i < len(lines) and lines[i].strip():
-                parts = [p.strip() for p in lines[i].split(' - ', 2)]
+                parts = [p.strip() for p in lines[i].split(" - ", 2)]
                 if len(parts) == 3:
                     labels.append(parts[1])
-                    if parts[1] != 'DM' and parts[1] not in out.cast:
+                    if parts[1] != "DM" and parts[1] not in out.cast:
                         out.cast.append(parts[1])
                 i += 1
         # Longest label first, so "Jo Jo" is not read as "Jo" plus "Jo: ...".
         prefixes = sorted(labels, key=len, reverse=True)
         for raw in lines[i:]:
             line = raw.strip()
-            speaker = next((lab for lab in prefixes if line.startswith(f'{lab}: ')), None)
+            speaker = next(
+                (lab for lab in prefixes if line.startswith(f"{lab}: ")), None
+            )
             if speaker is not None:
-                text = line[len(speaker) + 2:]
+                text = line[len(speaker) + 2 :]
             elif not prefixes and (m := _SPEAKER_RE.match(line)):
                 speaker, text = m.group(1), m.group(2)
             else:
                 continue
-            out.lines.setdefault(speaker, []).append(_TIMESTAMP_RE.sub('', text))
+            out.lines.setdefault(speaker, []).append(_TIMESTAMP_RE.sub("", text))
     return out
 
 
@@ -105,34 +111,50 @@ def spans(ref: Sequence[str], hyp: Sequence[str]) -> tuple[list[int], list[int],
     lost: list[int] = []
     extra: list[int] = []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        if tag in ('delete', 'replace') and i2 - i1 >= MIN_RUN and j2 - j1 <= 0.25 * (i2 - i1):
+        if (
+            tag in ("delete", "replace")
+            and i2 - i1 >= MIN_RUN
+            and j2 - j1 <= 0.25 * (i2 - i1)
+        ):
             lost.append(i2 - i1)
-        if tag in ('insert', 'replace') and j2 - j1 >= MIN_RUN and i2 - i1 <= 0.25 * (j2 - j1):
+        if (
+            tag in ("insert", "replace")
+            and j2 - j1 >= MIN_RUN
+            and i2 - i1 <= 0.25 * (j2 - j1)
+        ):
             extra.append(j2 - j1)
     return lost, extra, sm.ratio()
 
 
 def prompt_grams(prompt: str) -> set[tuple[str, ...]]:
     w = normalize(prompt).split() if prompt else []
-    return {tuple(w[i:i + MIN_RUN]) for i in range(len(w) - MIN_RUN + 1)}
+    return {tuple(w[i : i + MIN_RUN]) for i in range(len(w) - MIN_RUN + 1)}
 
 
 def artifacts(lines: Iterable[str], grams: set[tuple[str, ...]]) -> dict[str, int]:
     counts = dict.fromkeys(
-        ('echo_lines', 'bare_canned_lines', 'lines_100_words_plus', 'loop_remnant_lines'), 0
+        (
+            "echo_lines",
+            "bare_canned_lines",
+            "lines_100_words_plus",
+            "loop_remnant_lines",
+        ),
+        0,
     )
     for text in lines:
         norm = normalize(text)
         w = norm.split()
-        runs = [tuple(w[i:i + MIN_RUN]) for i in range(len(w) - MIN_RUN + 1)]
-        counts['echo_lines'] += any(r in grams for r in runs)
-        counts['bare_canned_lines'] += norm in CANNED
-        counts['lines_100_words_plus'] += len(w) >= 100
-        counts['loop_remnant_lines'] += len(w) >= 20 and max(Counter(runs).values()) >= 5
+        runs = [tuple(w[i : i + MIN_RUN]) for i in range(len(w) - MIN_RUN + 1)]
+        counts["echo_lines"] += any(r in grams for r in runs)
+        counts["bare_canned_lines"] += norm in CANNED
+        counts["lines_100_words_plus"] += len(w) >= 100
+        counts["loop_remnant_lines"] += (
+            len(w) >= 20 and max(Counter(runs).values()) >= 5
+        )
     return counts
 
 
-def compare(ref: Transcript, hyp: Transcript, prompt: str = '') -> dict[str, Any]:
+def compare(ref: Transcript, hyp: Transcript, prompt: str = "") -> dict[str, Any]:
     """The full report as a JSON-ready dict."""
     per: dict[str, dict[str, Any]] = {}
     tot: Counter[str] = Counter()
@@ -143,65 +165,102 @@ def compare(ref: Transcript, hyp: Transcript, prompt: str = '') -> dict[str, Any
         rw, hw = words(rl), words(hl)
         lost, extra, ratio = spans(rw, hw)
         per[sp] = {
-            'ref_words': len(rw), 'hyp_words': len(hw), 'ref_lines': len(rl), 'hyp_lines': len(hl),
-            'words_different_pct': round(100 * (1 - ratio), 2),
-            'lost_spans': len(lost), 'lost_words': sum(lost), 'lost_longest': max(lost, default=0),
-            'extra_spans': len(extra), 'extra_words': sum(extra),
+            "ref_words": len(rw),
+            "hyp_words": len(hw),
+            "ref_lines": len(rl),
+            "hyp_lines": len(hl),
+            "words_different_pct": round(100 * (1 - ratio), 2),
+            "lost_spans": len(lost),
+            "lost_words": sum(lost),
+            "lost_longest": max(lost, default=0),
+            "extra_spans": len(extra),
+            "extra_words": sum(extra),
         }
         all_ref += rw
         all_hyp += hw
-        for k in ('ref_words', 'hyp_words', 'ref_lines', 'hyp_lines', 'lost_spans', 'lost_words',
-                  'extra_spans', 'extra_words'):
+        for k in (
+            "ref_words",
+            "hyp_words",
+            "ref_lines",
+            "hyp_lines",
+            "lost_spans",
+            "lost_words",
+            "extra_spans",
+            "extra_words",
+        ):
             tot[k] += per[sp][k]
-        tot['lost_longest'] = max(tot['lost_longest'], per[sp]['lost_longest'])
-    pooled = 100 * (1 - difflib.SequenceMatcher(None, all_ref, all_hyp, autojunk=False).ratio())
-    lost_pct = 100 * tot['lost_spans'] / max(1, tot['ref_lines'])
+        tot["lost_longest"] = max(tot["lost_longest"], per[sp]["lost_longest"])
+    pooled = 100 * (
+        1 - difflib.SequenceMatcher(None, all_ref, all_hyp, autojunk=False).ratio()
+    )
+    lost_pct = 100 * tot["lost_spans"] / max(1, tot["ref_lines"])
     grams = prompt_grams(prompt)
 
     def name_count(t: Transcript, name: str) -> int:
-        pat = re.compile(r'\b' + re.escape(name) + r'\b', re.I)
+        pat = re.compile(r"\b" + re.escape(name) + r"\b", re.I)
         return sum(len(pat.findall(line)) for ls in t.lines.values() for line in ls)
 
     return {
-        'pooled_words_different_pct': round(pooled, 2),
-        'lost_spans_pct_of_ref_lines': round(lost_pct, 2),
-        'totals': dict(tot),
-        'per_speaker': per,
-        'ref_artifacts': artifacts((t for ls in ref.lines.values() for t in ls), grams),
-        'hyp_artifacts': artifacts((t for ls in hyp.lines.values() for t in ls), grams),
-        'names_ref_hyp': {n: [name_count(ref, n), name_count(hyp, n)] for n in ref.cast},
-        'gate': {
-            f'words_different_le_{GATE_WORDS_DIFFERENT_PCT}': pooled <= GATE_WORDS_DIFFERENT_PCT,
-            f'lost_spans_le_{GATE_LOST_SPANS_PCT}pct': lost_pct <= GATE_LOST_SPANS_PCT,
-            f'lost_none_over_{GATE_LONGEST_LOST}_words': tot['lost_longest'] <= GATE_LONGEST_LOST,
+        "pooled_words_different_pct": round(pooled, 2),
+        "lost_spans_pct_of_ref_lines": round(lost_pct, 2),
+        "totals": dict(tot),
+        "per_speaker": per,
+        "ref_artifacts": artifacts((t for ls in ref.lines.values() for t in ls), grams),
+        "hyp_artifacts": artifacts((t for ls in hyp.lines.values() for t in ls), grams),
+        "names_ref_hyp": {
+            n: [name_count(ref, n), name_count(hyp, n)] for n in ref.cast
+        },
+        "gate": {
+            f"words_different_le_{GATE_WORDS_DIFFERENT_PCT}": pooled
+            <= GATE_WORDS_DIFFERENT_PCT,
+            f"lost_spans_le_{GATE_LOST_SPANS_PCT}pct": lost_pct <= GATE_LOST_SPANS_PCT,
+            f"lost_none_over_{GATE_LONGEST_LOST}_words": tot["lost_longest"]
+            <= GATE_LONGEST_LOST,
         },
     }
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog='combobulator compare', description=__doc__,
+        prog="combobulator compare",
+        description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--ref', nargs='+', type=Path, required=True, help='Reference combined files, in order')
-    parser.add_argument('--hyp', nargs='+', type=Path, required=True, help='New combined files, in order')
-    parser.add_argument('--json', type=Path, help='Also write the full report here')
-    parser.add_argument('--strict', action='store_true', help='Exit 1 when any gate fails')
+    parser.add_argument(
+        "--ref",
+        nargs="+",
+        type=Path,
+        required=True,
+        help="Reference combined files, in order",
+    )
+    parser.add_argument(
+        "--hyp",
+        nargs="+",
+        type=Path,
+        required=True,
+        help="New combined files, in order",
+    )
+    parser.add_argument("--json", type=Path, help="Also write the full report here")
+    parser.add_argument(
+        "--strict", action="store_true", help="Exit 1 when any gate fails"
+    )
     args = parser.parse_args(argv)
     for p in [*args.ref, *args.hyp]:
         if not p.is_file():
-            print(f'Error: not a file: {p}', file=sys.stderr)
+            print(f"Error: not a file: {p}", file=sys.stderr)
             sys.exit(2)
 
     from transcript_combobulator.config import WHISPER_PROMPT
 
     report = compare(load(args.ref), load(args.hyp), WHISPER_PROMPT)
     if args.json:
-        args.json.write_text(json.dumps(report, indent=1), encoding='utf-8')
-    print(json.dumps({k: v for k, v in report.items() if k != 'per_speaker'}, indent=1))
-    for sp, v in report['per_speaker'].items():
-        print(f"{sp:10} words {v['ref_words']:6} vs {v['hyp_words']:6}  "
-              f"different {v['words_different_pct']:5}%  lost {v['lost_spans']} "
-              f"({v['lost_words']} words, longest {v['lost_longest']})  extra {v['extra_spans']}")
-    if args.strict and not all(report['gate'].values()):
+        args.json.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    print(json.dumps({k: v for k, v in report.items() if k != "per_speaker"}, indent=1))
+    for sp, v in report["per_speaker"].items():
+        print(
+            f"{sp:10} words {v['ref_words']:6} vs {v['hyp_words']:6}  "
+            f"different {v['words_different_pct']:5}%  lost {v['lost_spans']} "
+            f"({v['lost_words']} words, longest {v['lost_longest']})  extra {v['extra_spans']}"
+        )
+    if args.strict and not all(report["gate"].values()):
         sys.exit(1)

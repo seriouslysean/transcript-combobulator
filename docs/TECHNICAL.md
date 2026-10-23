@@ -28,8 +28,9 @@ Implementation details for developers and advanced users.
 - `PADDING_SECONDS=0.3` - Audio padding around segments
 
 ### Whisper Configuration
+- `WHISPER_RUNTIME=openai` - Engine: `openai` (stock openai-whisper, the default) or `mlx` (mlx-whisper on the Apple Silicon GPU; needs `make install EXTRAS=dev,mac` and `make setup-whisper`). Part of the inference cache fingerprint
 - `WHISPER_MODEL=large-v3-turbo` - Model size/speed tradeoff
-- `WHISPER_DEVICE=cpu` - Processing device
+- `WHISPER_DEVICE=cpu` - Processing device for the `openai` runtime (`cpu`, `cuda`, `mps`); ignored by `mlx`
 - `WHISPER_LANGUAGE=en` - Language code
 - `WHISPER_TEMPERATURE=0.0` - Deterministic output
 - `WHISPER_WORD_TIMESTAMPS=false` - Disabled for performance
@@ -53,14 +54,14 @@ Implementation details for developers and advanced users.
 Handles dynamic user positions (Discord Craig bot assigns numbers by join order):
 
 ```bash
-# Audio file: 3-nilbits.flac
-# Directory: 3-nilbits/
-# Username extraction: nilbits
-# Environment mapping: TRANSCRIPT_2_USERNAME="nilbits"
+# Audio file: 3-cadderly.flac
+# Directory: 3-cadderly/
+# Username extraction: cadderly
+# Environment mapping: TRANSCRIPT_2_USERNAME="cadderly"
 ```
 
 Patterns supported:
-- `{number}-{username}` (e.g., "3-nilbits", the input stem)
+- `{number}-{username}` (e.g., "3-cadderly", the input stem)
 - Direct username match (directory name in username mapping)
 
 ## Performance Optimizations

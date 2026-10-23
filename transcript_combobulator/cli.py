@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 COMMANDS = {
     "run": "Full pipeline for a session folder (convert, VAD, transcribe, combine)",
@@ -17,6 +16,7 @@ COMMANDS = {
     "combine": "Merge a session's per-speaker VTTs into one transcript",
     "filter-vtt": "Rewrite a speaker's VTT from its saved JSON above a confidence",
     "compare": "Compare two combined transcripts of one session, per speaker",
+    "session-env": "Write a session's env file from a recording bundle and a speakers file",
     "setup-model": "Download WHISPER_MODEL into models/ without loading it",
     "samples": "Build sample and test audio from samples/",
 }
@@ -45,15 +45,21 @@ def main(argv: list[str] | None = None) -> None:
 
         run_main(rest)
     elif command == "file":
-        parser = argparse.ArgumentParser(prog="combobulator file", description=COMMANDS["file"])
+        parser = argparse.ArgumentParser(
+            prog="combobulator file", description=COMMANDS["file"]
+        )
         parser.add_argument("input_file")
-        parser.add_argument("--force", action="store_true", help="Ignore completed output")
+        parser.add_argument(
+            "--force", action="store_true", help="Ignore completed output"
+        )
         opts = parser.parse_args(rest)
         from transcript_combobulator.pipeline import process_file
 
         process_file(opts.input_file, force=opts.force)
     elif command == "combine":
-        parser = argparse.ArgumentParser(prog="combobulator combine", description=COMMANDS["combine"])
+        parser = argparse.ArgumentParser(
+            prog="combobulator combine", description=COMMANDS["combine"]
+        )
         parser.add_argument("session", help="Session name under tmp/output/")
         opts = parser.parse_args(rest)
         from transcript_combobulator.combine import combine_transcripts_from_env
@@ -69,6 +75,10 @@ def main(argv: list[str] | None = None) -> None:
         from transcript_combobulator.compare import main as compare_main
 
         compare_main(rest)
+    elif command == "session-env":
+        from transcript_combobulator.session_env import main as session_env_main
+
+        session_env_main(rest)
     elif command == "setup-model":
         from transcript_combobulator.model_setup import main as setup_main
 

@@ -12,7 +12,9 @@ from transcript_combobulator.cli import COMMANDS, main
 def _run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "transcript_combobulator", *args],
-        capture_output=True, text=True, cwd=cwd,
+        capture_output=True,
+        text=True,
+        cwd=cwd,
     )
 
 
@@ -40,7 +42,12 @@ def test_help_does_not_import_torch() -> None:
     result = _run("--help")
     assert result.returncode == 0
     probe = subprocess.run(
-        [sys.executable, "-c", "import sys, transcript_combobulator.cli as c; c.main(['--help']); print('torch' in sys.modules)"],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            "-c",
+            "import sys, transcript_combobulator.cli as c; c.main(['--help']); print('torch' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
     )
     assert probe.stdout.strip().endswith("False"), probe.stdout

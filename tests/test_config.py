@@ -14,7 +14,11 @@ def _root_dir_seen_from(cwd: Path, extra_env: dict[str, str] | None = None) -> s
     if extra_env:
         env.update(extra_env)
     result = subprocess.run(
-        [sys.executable, "-c", "from transcript_combobulator.config import ROOT_DIR; print(ROOT_DIR)"],
+        [
+            sys.executable,
+            "-c",
+            "from transcript_combobulator.config import ROOT_DIR; print(ROOT_DIR)",
+        ],
         cwd=cwd,
         env=env,
         capture_output=True,
@@ -42,7 +46,11 @@ def test_relative_env_file_resolves_against_repo_when_absent_from_cwd(
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT), "ENV_FILE": ".env.jfk-sample"}
     env.pop("PROJECT_ROOT", None)
     result = subprocess.run(
-        [sys.executable, "-c", "import os, transcript_combobulator.config; print(os.environ['WHISPER_MODEL'])"],
+        [
+            sys.executable,
+            "-c",
+            "import os, transcript_combobulator.config; print(os.environ['WHISPER_MODEL'])",
+        ],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -78,3 +86,53 @@ def test_temperature_scalar_or_fallback_tuple() -> None:
     assert _parse_temperature("0.0, 0.2,0.4") == (0.0, 0.2, 0.4)
     assert _parse_temperature("") == 0.0
     assert _parse_temperature("warm") == 0.0
+
+
+class TestOutputPathForInput:
+    """Per-speaker output lands under the session folder (issue #22)."""
+
+    def _dirs(self, tmp_path, monkeypatch):
+        from transcript_combobulator import config
+
+        input_dir = tmp_path / "tmp" / "input"
+        output_dir = tmp_path / "tmp" / "output"
+        monkeypatch.setattr(config, "INPUT_DIR", input_dir)
+        monkeypatch.setattr(config, "OUTPUT_DIR", output_dir)
+        return input_dir, output_dir
+
+    def test_named_session_wins_for_audio_anywhere(self, tmp_path, monkeypatch):
+        from transcript_combobulator.config import (
+            get_output_path_for_input,
+            vtt_path_for_input,
+        )
+
+        _, output_dir = self._dirs(tmp_path, monkeypatch)
+        track = tmp_path / "craig-export" / "1-cadderly.flac"
+        assert (
+            get_output_path_for_input(track, "s11") == output_dir / "s11" / "1-cadderly"
+        )
+        assert (
+            vtt_path_for_input(track, "s11")
+            == output_dir / "s11" / "1-cadderly" / "1-cadderly.vtt"
+        )
+
+    def test_symlink_under_input_dir_keeps_its_session(self, tmp_path, monkeypatch):
+        from transcript_combobulator.config import get_output_path_for_input
+
+        input_dir, output_dir = self._dirs(tmp_path, monkeypatch)
+        real = tmp_path / "archive" / "2-danica.flac"
+        real.parent.mkdir()
+        real.write_bytes(b"audio")
+        link = input_dir / "s11" / "2-danica.flac"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(real)
+        assert get_output_path_for_input(link) == output_dir / "s11" / "2-danica"
+
+    def test_without_session_outside_input_dir_falls_back_to_stem(
+        self, tmp_path, monkeypatch
+    ):
+        from transcript_combobulator.config import get_output_path_for_input
+
+        _, output_dir = self._dirs(tmp_path, monkeypatch)
+        track = tmp_path / "elsewhere" / "3-ivan.flac"
+        assert get_output_path_for_input(track) == output_dir / "3-ivan"

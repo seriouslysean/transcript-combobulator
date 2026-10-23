@@ -7,14 +7,13 @@ import pytest
 
 from transcript_combobulator.combine import (
     CombineError,
-    validate_speaker_mapping,
     TranscriptConfig,
     _normalize_for_dedup,
     combine_transcripts,
     parse_vtt_file,
     should_skip_content,
+    validate_speaker_mapping,
 )
-
 
 VTT_SAMPLE = """WEBVTT
 
@@ -30,7 +29,7 @@ This is a test.
 
 
 def _write_vtt(path: Path, content: str) -> None:
-    path.write_text(content, encoding='utf-8')
+    path.write_text(content, encoding="utf-8")
 
 
 class TestNormalizeForDedup:
@@ -118,7 +117,9 @@ class TestCombineTranscripts:
         out = tmp_path / "combined.txt"
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+                TranscriptConfig(
+                    name="Alice", label="Alice", description="", transcript_path=vtt
+                )
             ],
             output_path=out,
         )
@@ -136,7 +137,9 @@ class TestCombineTranscripts:
         out = tmp_path / "combined.txt"
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+                TranscriptConfig(
+                    name="Alice", label="Alice", description="", transcript_path=vtt
+                )
             ],
             output_path=out,
         )
@@ -171,57 +174,95 @@ class TestValidateSpeakerMapping:
     """Up-front TRANSCRIPT_N_* validation shared with the combine step."""
 
     def test_every_dir_mapped_once_returns_mapping(self, monkeypatch):
-        _set_mapping(monkeypatch, ["nilbits", "dezfrost"])
-        mapping = validate_speaker_mapping(["1-nilbits", "2-dezfrost"])
-        assert set(mapping) == {"nilbits", "dezfrost"}
+        _set_mapping(monkeypatch, ["cadderly", "wulfgar"])
+        mapping = validate_speaker_mapping(["1-cadderly", "2-wulfgar"])
+        assert set(mapping) == {"cadderly", "wulfgar"}
 
     def test_no_mapping_configured(self, monkeypatch):
         _set_mapping(monkeypatch, [])
         with pytest.raises(CombineError, match="No transcript mappings found"):
-            validate_speaker_mapping(["1-nilbits"])
+            validate_speaker_mapping(["1-cadderly"])
 
     def test_unmapped_dir_names_all_reported(self, monkeypatch):
-        _set_mapping(monkeypatch, ["nilbits"])
-        with pytest.raises(CombineError, match="2-dezfrost.*3-hereticjd"):
-            validate_speaker_mapping(["1-nilbits", "2-dezfrost", "3-hereticjd"])
+        _set_mapping(monkeypatch, ["cadderly"])
+        with pytest.raises(CombineError, match="2-wulfgar.*3-bruenor"):
+            validate_speaker_mapping(["1-cadderly", "2-wulfgar", "3-bruenor"])
 
     def test_ambiguous_token_match(self, monkeypatch):
-        _set_mapping(monkeypatch, ["dez", "frost"])
+        _set_mapping(monkeypatch, ["wulf", "gar"])
         with pytest.raises(CombineError, match="Ambiguous username match"):
-            validate_speaker_mapping(["2-dez-frost"])
+            validate_speaker_mapping(["2-wulf-gar"])
 
     def test_username_must_match_as_whole_token(self, monkeypatch):
-        """'dez' must not silently claim dezfrost's lines."""
-        _set_mapping(monkeypatch, ["dez"])
+        """'wulf' must not silently claim wulfgar's lines."""
+        _set_mapping(monkeypatch, ["wulf"])
         with pytest.raises(CombineError, match="No mapping found"):
-            validate_speaker_mapping(["5-dezfrost"])
+            validate_speaker_mapping(["5-wulfgar"])
 
     def test_token_match_accepts_craig_and_converted_dir_names(self, monkeypatch):
-        _set_mapping(monkeypatch, ["nilbits", "burger_bear"])
-        mapping = validate_speaker_mapping(["3-nilbits", "3-nilbits_16khz", "2-burger_bear"])
-        assert set(mapping) == {"nilbits", "burger_bear"}
+        _set_mapping(monkeypatch, ["cadderly", "catti_brie"])
+        mapping = validate_speaker_mapping(
+            ["3-cadderly", "3-cadderly_16khz", "2-catti_brie"]
+        )
+        assert set(mapping) == {"cadderly", "catti_brie"}
         with pytest.raises(CombineError, match="No mapping found"):
-            validate_speaker_mapping(["3-nilbits2"])
+            validate_speaker_mapping(["3-cadderly2"])
 
     def test_incomplete_entry_is_skipped_and_leaves_dir_unmapped(self, monkeypatch):
-        _set_mapping(monkeypatch, ["nilbits"])
+        _set_mapping(monkeypatch, ["cadderly"])
         monkeypatch.setenv("TRANSCRIPT_1_DESCRIPTION", "")
         with pytest.raises(CombineError, match="No transcript mappings found"):
-            validate_speaker_mapping(["1-nilbits"])
+            validate_speaker_mapping(["1-cadderly"])
+
+
+def test_quote_marks_in_speaker_fields_survive(tmp_path, monkeypatch):
+    """A nickname in quotes keeps both quote marks, in the summary and on each line."""
+    from dotenv import dotenv_values
+
+    from transcript_combobulator.combine import combine_transcripts_from_env
+
+    env = tmp_path / "session.env"
+    env.write_text(
+        'TRANSCRIPT_1_USERNAME="regis"\n'
+        'TRANSCRIPT_1_NAME="Danica"\n'
+        "TRANSCRIPT_1_LABEL='Cadderly \"the Chosen\" Bonaduce'\n"
+        "TRANSCRIPT_1_DESCRIPTION='Human Cleric'\n"
+        'TRANSCRIPT_2_USERNAME="catti_brie"\n'
+        'TRANSCRIPT_2_NAME="Ivan"\n'
+        "TRANSCRIPT_2_LABEL='Pikel \"Doo-dad\" Bouldershoulder'\n"
+        'TRANSCRIPT_2_DESCRIPTION="Dwarf Druid"\n',
+        encoding="utf-8",
+    )
+    for key, value in dotenv_values(env).items():
+        monkeypatch.setenv(key, value or "")
+    monkeypatch.setenv("TRANSCRIPT_3_USERNAME", "")
+    monkeypatch.setenv("CHUNKS", "1")
+    for stem in ("1-regis", "4-catti_brie"):
+        (tmp_path / "night" / stem).mkdir(parents=True)
+        _write_vtt(
+            tmp_path / "night" / stem / f"{stem}.vtt",
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n",
+        )
+
+    text = combine_transcripts_from_env(tmp_path, "night")[0].read_text()
+
+    assert 'Danica - Cadderly "the Chosen" Bonaduce - Human Cleric' in text
+    assert 'Cadderly "the Chosen" Bonaduce: Roll for initiative.' in text
+    assert 'Pikel "Doo-dad" Bouldershoulder: Roll for initiative.' in text
 
 
 class TestCombineFromEnvExplicitFiles:
     """Batch runs hand combine the exact VTTs they produced."""
 
     def _session(self, tmp_path, monkeypatch):
-        _set_mapping(monkeypatch, ["nilbits"])
+        _set_mapping(monkeypatch, ["cadderly"])
         session = tmp_path / "night"
-        current = session / "3-nilbits"
-        stale = session / "3-nilbits-v0"
+        current = session / "3-cadderly"
+        stale = session / "3-cadderly-v0"
         for d in (current, stale):
             d.mkdir(parents=True)
             _write_vtt(
-                d / "3-nilbits.vtt",
+                d / "3-cadderly.vtt",
                 "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n",
             )
         monkeypatch.setenv("CHUNKS", "1")
@@ -232,7 +273,7 @@ class TestCombineFromEnvExplicitFiles:
 
         session, current, _ = self._session(tmp_path, monkeypatch)
         out = combine_transcripts_from_env(
-            tmp_path, "night", vtt_files=[current / "3-nilbits.vtt"]
+            tmp_path, "night", vtt_files=[current / "3-cadderly.vtt"]
         )
         assert out[0].read_text().count("Roll for initiative.") == 1
 

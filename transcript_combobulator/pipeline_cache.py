@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 #    padded clip start, so VTTs written by version 1 are lossy and shifted.
 PIPELINE_CACHE_VERSION = 3
 
-STAGES: tuple[str, ...] = ('conversion', 'vad', 'inference', 'vtt')
+STAGES: tuple[str, ...] = ("conversion", "vad", "inference", "vtt")
 FINAL_STAGE = STAGES[-1]
 
 
@@ -38,25 +38,29 @@ def get_progress_path(output_dir: Path, audio_stem: str) -> Path:
 
 
 def _digest(payload: dict[str, Any]) -> str:
-    serialized = json.dumps(payload, sort_keys=True, separators=(',', ':'))
-    return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def build_stage_fingerprints(input_path: Path) -> dict[str, str]:
     """Chained fingerprints: source identity, then each stage's settings."""
     stat = input_path.stat()
-    parent = _digest({
-        'cache_version': PIPELINE_CACHE_VERSION,
-        'source': {
-            'path': str(input_path.resolve()),
-            'size': stat.st_size,
-            'mtime_ns': stat.st_mtime_ns,
-        },
-    })
+    parent = _digest(
+        {
+            "cache_version": PIPELINE_CACHE_VERSION,
+            "source": {
+                "path": str(input_path.resolve()),
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            },
+        }
+    )
     settings = get_stage_fingerprint_settings()
     fingerprints: dict[str, str] = {}
     for stage in STAGES:
-        parent = _digest({'parent': parent, 'stage': stage, 'settings': settings[stage]})
+        parent = _digest(
+            {"parent": parent, "stage": stage, "settings": settings[stage]}
+        )
         fingerprints[stage] = parent
     return fingerprints
 
@@ -71,13 +75,13 @@ def load_manifest(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.is_file():
         return {}
     try:
-        with open(manifest_path, encoding='utf-8') as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest: dict[str, Any] = json.load(f)
-        if manifest.get('cache_version') != PIPELINE_CACHE_VERSION:
+        if manifest.get("cache_version") != PIPELINE_CACHE_VERSION:
             return {}
-        stages = manifest.get('stages')
+        stages = manifest.get("stages")
         return stages if isinstance(stages, dict) else {}
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError):
         logger.warning(f"Ignoring invalid pipeline manifest: {manifest_path}")
         return {}
 
@@ -85,9 +89,9 @@ def load_manifest(manifest_path: Path) -> dict[str, Any]:
 def stage_is_complete(stages: dict[str, Any], stage: str, fingerprint: str) -> bool:
     """A stage counts only if its fingerprint matches and its artifacts exist."""
     record = stages.get(stage)
-    if not isinstance(record, dict) or record.get('fingerprint') != fingerprint:
+    if not isinstance(record, dict) or record.get("fingerprint") != fingerprint:
         return False
-    artifacts = record.get('artifacts')
+    artifacts = record.get("artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         return False
     return all(isinstance(path, str) and Path(path).is_file() for path in artifacts)
@@ -100,17 +104,19 @@ def _write_manifest(manifest_path: Path, stages: dict[str, Any]) -> None:
     because a record that was meant to be dropped could later pass
     ``is_pipeline_complete``. So a failed write never leaves the old file.
     """
-    payload = {'cache_version': PIPELINE_CACHE_VERSION, 'stages': stages}
+    payload = {"cache_version": PIPELINE_CACHE_VERSION, "stages": stages}
     temporary_path = manifest_path.with_suffix(f"{manifest_path.suffix}.tmp")
     try:
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(temporary_path, 'w', encoding='utf-8') as f:
+        with open(temporary_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
         temporary_path.replace(manifest_path)
     except OSError as e:
         temporary_path.unlink(missing_ok=True)
         manifest_path.unlink(missing_ok=True)
-        logger.warning(f"Could not write pipeline manifest {manifest_path}: {e}; removed it")
+        logger.warning(
+            f"Could not write pipeline manifest {manifest_path}: {e}; removed it"
+        )
 
 
 def record_stage(
@@ -125,11 +131,11 @@ def record_stage(
     no longer valid once it has been redone.
     """
     stages = load_manifest(manifest_path)
-    for later in STAGES[STAGES.index(stage) + 1:]:
+    for later in STAGES[STAGES.index(stage) + 1 :]:
         stages.pop(later, None)
     stages[stage] = {
-        'fingerprint': fingerprint,
-        'artifacts': [str(path.resolve()) for path in artifacts],
+        "fingerprint": fingerprint,
+        "artifacts": [str(path.resolve()) for path in artifacts],
     }
     _write_manifest(manifest_path, stages)
 
@@ -138,7 +144,7 @@ def invalidate_stage(manifest_path: Path, stage: str) -> None:
     """Drop a stage record and every later one, keeping earlier stages."""
     stages = load_manifest(manifest_path)
     changed = False
-    for name in STAGES[STAGES.index(stage):]:
+    for name in STAGES[STAGES.index(stage) :]:
         if stages.pop(name, None) is not None:
             changed = True
     if changed:
@@ -148,7 +154,9 @@ def invalidate_stage(manifest_path: Path, stage: str) -> None:
 def is_pipeline_complete(input_path: Path, manifest_path: Path) -> bool:
     """Whether the whole pipeline is recorded complete for the current config."""
     fingerprints = build_stage_fingerprints(input_path)
-    return stage_is_complete(load_manifest(manifest_path), FINAL_STAGE, fingerprints[FINAL_STAGE])
+    return stage_is_complete(
+        load_manifest(manifest_path), FINAL_STAGE, fingerprints[FINAL_STAGE]
+    )
 
 
 def write_pipeline_manifest(
@@ -163,6 +171,7 @@ def write_pipeline_manifest(
 
 # ── per-chunk transcription checkpoint ──
 
+
 def load_chunk_checkpoint(progress_path: Path, key: str) -> dict[int, dict[str, Any]]:
     """Completed chunks {index: record} from a progress file written under ``key``.
 
@@ -174,10 +183,10 @@ def load_chunk_checkpoint(progress_path: Path, key: str) -> dict[int, dict[str, 
         return {}
     completed: dict[int, dict[str, Any]] = {}
     try:
-        with open(progress_path, encoding='utf-8') as f:
+        with open(progress_path, encoding="utf-8") as f:
             header_line = f.readline()
             header = json.loads(header_line) if header_line.strip() else {}
-            if header.get('key') != key:
+            if header.get("key") != key:
                 progress_path.unlink(missing_ok=True)
                 return {}
             for line in f:
@@ -188,10 +197,10 @@ def load_chunk_checkpoint(progress_path: Path, key: str) -> dict[int, dict[str, 
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     break
-                index = record.get('index')
-                if isinstance(index, int) and isinstance(record.get('segments'), list):
+                index = record.get("index")
+                if isinstance(index, int) and isinstance(record.get("segments"), list):
                     completed[index] = record
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError):
         logger.warning(f"Ignoring invalid progress file: {progress_path}")
         progress_path.unlink(missing_ok=True)
         return {}
@@ -207,14 +216,16 @@ class ChunkCheckpoint:
         self.completed = load_chunk_checkpoint(progress_path, key)
         progress_path.parent.mkdir(parents=True, exist_ok=True)
         new_file = not progress_path.is_file()
-        self._handle = open(progress_path, 'a', encoding='utf-8')
+        self._handle = open(progress_path, "a", encoding="utf-8")
         if new_file:
-            self._handle.write(json.dumps({'key': key}) + '\n')
+            self._handle.write(json.dumps({"key": key}) + "\n")
             self._handle.flush()
 
-    def record(self, index: int, segments: list[dict[str, Any]], timings: dict[str, Any]) -> None:
-        line = json.dumps({'index': index, 'segments': segments, 'timings': timings})
-        self._handle.write(line + '\n')
+    def record(
+        self, index: int, segments: list[dict[str, Any]], timings: dict[str, Any]
+    ) -> None:
+        line = json.dumps({"index": index, "segments": segments, "timings": timings})
+        self._handle.write(line + "\n")
         self._handle.flush()
 
     def close(self, *, remove: bool) -> None:

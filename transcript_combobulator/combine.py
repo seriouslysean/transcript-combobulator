@@ -9,23 +9,20 @@ import re
 import string
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Mapping, Optional
 
 from transcript_combobulator.config import (
     CHUNKS,
     DEDUPE_WINDOW_SECONDS,
     INCLUDE_TIMESTAMPS,
-    OUTPUT_DIR,
     SKIP_FILTERS,
 )
 from transcript_combobulator.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-_PUNCT_TRANS = str.maketrans('', '', string.punctuation)
-_TIME_RE = re.compile(
-    r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})'
-)
+_PUNCT_TRANS = str.maketrans("", "", string.punctuation)
+_TIME_RE = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})")
 
 
 class CombineError(Exception):
@@ -35,6 +32,7 @@ class CombineError(Exception):
 @dataclass
 class TranscriptEntry:
     """A single timestamped line spoken by one speaker."""
+
     timestamp: str
     start_time: float
     end_time: float
@@ -46,6 +44,7 @@ class TranscriptEntry:
 @dataclass
 class TranscriptConfig:
     """Mapping from a per-user VTT file to its display metadata."""
+
     name: str
     label: str
     description: str
@@ -54,13 +53,13 @@ class TranscriptConfig:
 
 def _normalize_for_dedup(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace. Used only for dedup comparison."""
-    return re.sub(r'\s+', ' ', text.strip().lower().translate(_PUNCT_TRANS))
+    return re.sub(r"\s+", " ", text.strip().lower().translate(_PUNCT_TRANS))
 
 
 def should_skip_content(content: str, skip_filters: list[str]) -> bool:
     """True if content matches any literal or /regex/ filter."""
     for pattern in skip_filters:
-        if pattern.startswith('/') and pattern.endswith('/'):
+        if pattern.startswith("/") and pattern.endswith("/"):
             if re.search(pattern[1:-1], content):
                 return True
         elif pattern in content:
@@ -70,8 +69,8 @@ def should_skip_content(content: str, skip_filters: list[str]) -> bool:
 
 def parse_timestamp_to_seconds(timestamp: str) -> float:
     """HH:MM:SS.mmm -> seconds."""
-    h, m, sec_ms = timestamp.split(':')
-    s, _, ms = sec_ms.partition('.')
+    h, m, sec_ms = timestamp.split(":")
+    s, _, ms = sec_ms.partition(".")
     return int(h) * 3600 + int(m) * 60 + int(s) + (int(ms) / 1000 if ms else 0)
 
 
@@ -84,14 +83,14 @@ def parse_vtt_file(
     skip_filters = skip_filters or []
 
     try:
-        content = file_path.read_text(encoding='utf-8')
+        content = file_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise CombineError(f"Transcript file not found: {file_path}")
     except Exception as e:
         raise CombineError(f"Failed to read transcript file {file_path}: {e}") from e
 
     entries: list[TranscriptEntry] = []
-    lines = content.split('\n')
+    lines = content.split("\n")
     i = 0
     while i < len(lines):
         match = _TIME_RE.match(lines[i].strip())
@@ -109,7 +108,7 @@ def parse_vtt_file(
         if not content_lines:
             continue
 
-        text = ' '.join(content_lines)
+        text = " ".join(content_lines)
         if should_skip_content(text, skip_filters):
             continue
         dedup_key = _normalize_for_dedup(text)
@@ -164,7 +163,7 @@ def combine_transcripts(
         if line not in seen_summary:
             summary_lines.append(line)
             seen_summary.add(line)
-    summary = '\n'.join(summary_lines)
+    summary = "\n".join(summary_lines)
 
     min_per_chunk = 5
     actual_chunks = 1 if len(deduped) < max(chunks, min_per_chunk) else chunks
@@ -183,8 +182,8 @@ def combine_transcripts(
             )
         )
         try:
-            with open(chunk_path, 'w', encoding='utf-8') as f:
-                f.write(summary + '\n\n')
+            with open(chunk_path, "w", encoding="utf-8") as f:
+                f.write(summary + "\n\n")
                 for entry in chunk_entries:
                     if include_timestamps:
                         f.write(
@@ -200,27 +199,40 @@ def combine_transcripts(
     return output_files
 
 
-def _load_username_mapping() -> dict[str, dict[str, str]]:
-    """Build username -> {name, label, description} from TRANSCRIPT_N_* env vars."""
+def load_speaker_mapping(
+    env: Optional[Mapping[str, Optional[str]]] = None,
+) -> dict[str, dict[str, str]]:
+    """Build username -> {name, label, description} from TRANSCRIPT_N_* variables.
+
+    Reads the process environment, or ``env`` when given (a parsed env file that
+    is not the one this process runs with). Values are used as python-dotenv
+    parsed them: it already removes the outer quotes, so quote marks left in a
+    value are part of the name.
+    """
+    source: Mapping[str, Optional[str]] = os.environ if env is None else env
+
+    def get(key: str) -> str:
+        return source.get(key) or ""
+
     mapping: dict[str, dict[str, str]] = {}
     i = 1
     while True:
-        username = os.getenv(f'TRANSCRIPT_{i}_USERNAME', '').strip().strip('"')
+        username = get(f"TRANSCRIPT_{i}_USERNAME").strip()
         if not username:
             break
 
-        name = (
-            os.getenv(f'TRANSCRIPT_{i}_NAME', '')
-            or os.getenv(f'TRANSCRIPT_{i}_PLAYER', '')
-        ).strip().strip('"')
+        name = (get(f"TRANSCRIPT_{i}_NAME") or get(f"TRANSCRIPT_{i}_PLAYER")).strip()
         label = (
-            os.getenv(f'TRANSCRIPT_{i}_LABEL', '')
-            or os.getenv(f'TRANSCRIPT_{i}_CHARACTER', '')
-        ).strip().strip('"')
-        description = os.getenv(f'TRANSCRIPT_{i}_DESCRIPTION', '').strip().strip('"')
+            get(f"TRANSCRIPT_{i}_LABEL") or get(f"TRANSCRIPT_{i}_CHARACTER")
+        ).strip()
+        description = get(f"TRANSCRIPT_{i}_DESCRIPTION").strip()
 
         if all([name, label, description]):
-            mapping[username] = {'name': name, 'label': label, 'description': description}
+            mapping[username] = {
+                "name": name,
+                "label": label,
+                "description": description,
+            }
         else:
             logger.warning(f"Incomplete configuration for TRANSCRIPT_{i}_* variables")
         i += 1
@@ -250,27 +262,32 @@ def _dedupe_entries(
     return kept
 
 
-def _match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
+def match_usernames(dir_name: str, mapping: dict[str, dict[str, str]]) -> list[str]:
     """Usernames that appear in a per-speaker dir name as a whole token.
 
-    Token boundaries are non-alphanumerics or the string ends, so 'dez' does
-    not claim '5-dezfrost' and 'nilbits' does not claim '3-nilbits2', while
-    '3-nilbits', '3-nilbits_16khz', and '2-burger_bear' still match.
+    Token boundaries are non-alphanumerics or the string ends, so 'wulf' does
+    not claim '5-wulfgar' and 'cadderly' does not claim '3-cadderly2', while
+    '3-cadderly', '3-cadderly_16khz', and '2-catti_brie' still match.
     """
     return [
-        u for u in mapping
-        if re.search(rf'(?<![A-Za-z0-9]){re.escape(u)}(?![A-Za-z0-9])', dir_name)
+        u
+        for u in mapping
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(u)}(?![A-Za-z0-9])", dir_name)
     ]
 
 
-def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, str]]:
+def validate_speaker_mapping(
+    dir_names: Iterable[str],
+    env: Optional[Mapping[str, Optional[str]]] = None,
+) -> dict[str, dict[str, str]]:
     """Check TRANSCRIPT_N_* covers every per-speaker directory name exactly once.
 
     Raises CombineError with the same messages the combine step would produce.
     Batch runs call this before transcription so a config typo fails in
     seconds rather than after hours of inference. Returns the loaded mapping.
+    ``env`` checks a parsed env file instead of the process environment.
     """
-    username_mapping = _load_username_mapping()
+    username_mapping = load_speaker_mapping(env)
     if not username_mapping:
         raise CombineError(
             "No transcript mappings found. Define TRANSCRIPT_N_USERNAME, "
@@ -279,7 +296,7 @@ def validate_speaker_mapping(dir_names: Iterable[str]) -> dict[str, dict[str, st
 
     unmapped_dirs: list[str] = []
     for dir_name in dir_names:
-        matches = _match_usernames(dir_name, username_mapping)
+        matches = match_usernames(dir_name, username_mapping)
         if not matches:
             unmapped_dirs.append(dir_name)
             continue
@@ -328,13 +345,13 @@ def combine_transcripts_from_env(
 
     transcript_configs: list[TranscriptConfig] = []
     for vtt_file in vtt_files:
-        matches = _match_usernames(vtt_file.parent.name, username_mapping)
+        matches = match_usernames(vtt_file.parent.name, username_mapping)
         m = username_mapping[matches[0]]
         transcript_configs.append(
             TranscriptConfig(
-                name=m['name'],
-                label=m['label'],
-                description=m['description'],
+                name=m["name"],
+                label=m["label"],
+                description=m["description"],
                 transcript_path=vtt_file,
             )
         )
@@ -347,7 +364,8 @@ def combine_transcripts_from_env(
     chunks = CHUNKS
 
     output_filename = (
-        f"{session_subdir}-combined.txt" if session_subdir
+        f"{session_subdir}-combined.txt"
+        if session_subdir
         else f"{output_dir.name}-combined.txt"
     )
     output_path = output_dir / output_filename

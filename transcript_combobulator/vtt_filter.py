@@ -18,8 +18,12 @@ from transcript_combobulator.whisper import WhisperError, regenerate_vtt_with_co
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="combobulator filter-vtt", description=__doc__)
-    parser.add_argument("input_file", help="Original input audio (locates the JSON and VTT)")
+    parser = argparse.ArgumentParser(
+        prog="combobulator filter-vtt", description=__doc__
+    )
+    parser.add_argument(
+        "input_file", help="Original input audio (locates the JSON and VTT)"
+    )
     parser.add_argument(
         "--threshold",
         type=float,
@@ -29,7 +33,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     input_file = Path(args.input_file).resolve()
-    json_path = get_output_path_for_input(input_file) / f"{input_file.stem}_transcription.json"
+    json_path = (
+        get_output_path_for_input(input_file) / f"{input_file.stem}_transcription.json"
+    )
     vtt_path = vtt_path_for_input(input_file)
     try:
         kept = regenerate_vtt_with_confidence(json_path, vtt_path, args.threshold)
