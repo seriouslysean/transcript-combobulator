@@ -69,3 +69,18 @@ def test_compare_transcripts_splits_file_lists() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "compare --ref a-1.txt a-2.txt --hyp b-1.txt b-2.txt" in result.stdout
+
+
+def test_check_sample_env_file_stays_out_of_the_recipe(tmp_path: Path) -> None:
+    marker = tmp_path / "marker"
+    payload = f'x"; touch {marker}; "`touch {marker}`'
+    result = subprocess.run(
+        ["make", "-n", "check-sample"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        env={**os.environ, "SAMPLE_ENV": payload},
+    )
+    assert not marker.exists(), result.stderr
+    assert result.returncode == 0, result.stderr
+    assert payload not in result.stdout

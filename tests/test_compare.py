@@ -141,10 +141,13 @@ def test_main_refuses_a_missing_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("empty", ["ref", "hyp"])
-def test_main_refuses_a_file_with_no_speaker_lines(empty: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize("text", ["not a transcript\n", "Bob: .\n"])
+def test_main_refuses_a_file_with_no_spoken_words(
+    empty: str, text: str, tmp_path: Path
+) -> None:
     a = _write(tmp_path / "a.txt", LINES)
     blank = tmp_path / "blank.txt"
-    blank.write_text("not a transcript\n", encoding="utf-8")
+    blank.write_text(text, encoding="utf-8")
     ref, hyp = (blank, a) if empty == "ref" else (a, blank)
     with pytest.raises(SystemExit) as e:
         main(["--ref", str(ref), "--hyp", str(hyp), "--strict"])

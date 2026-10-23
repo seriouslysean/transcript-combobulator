@@ -254,8 +254,8 @@ def main(argv: list[str] | None = None) -> None:
 
     ref, hyp = load(args.ref), load(args.hyp)
     for name, t in (("reference", ref), ("hypothesis", hyp)):
-        if not any(t.lines.values()):
-            print(f"Error: no speaker lines in the {name}", file=sys.stderr)
+        if not any(words(v) for v in t.lines.values()):
+            print(f"Error: no spoken words in the {name}", file=sys.stderr)
             sys.exit(2)
     report = compare(ref, hyp, WHISPER_PROMPT)
     if args.json:
