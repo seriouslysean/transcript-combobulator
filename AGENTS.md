@@ -15,6 +15,7 @@ transcript_combobulator/
 ├── audio_utils.py      # Validate + convert any audio to 16kHz mono WAV (ffmpeg, streaming)
 ├── vad.py              # Silero VAD (streamed, ONNX) → segment WAVs + mapping JSON
 ├── whisper.py          # Whisper model wrapping; VTT writing; dedup; repetition filter
+├── whisper_mlx.py      # WHISPER_RUNTIME=mlx: mlx-whisper (Apple GPU) behind whisper's transcribe()
 ├── transcribe.py       # Mapping JSON → per-segment whisper → VTT + JSON
 ├── pipeline_cache.py   # Per-stage completion records and per-chunk checkpoints
 ├── telemetry.py        # Per-run, per-file, and per-chunk timing reports
@@ -80,7 +81,7 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 | `make check-deps` | Verify Python 3.11+, `venv` module, and `ffmpeg` on the host |
 | `make setup` | Check deps, create venv from `$(PYTHON)`, `make install`, download whisper model |
 | `make install [EXTRAS=dev,mac]` | `pip install -e ".[EXTRAS]"` into `.venv` |
-| `make setup-whisper` | Download `WHISPER_MODEL` into `models/` (checksum-verified, no model load) |
+| `make setup-whisper` | Download `WHISPER_MODEL` into `models/` (checksum-verified, no model load); with `WHISPER_RUNTIME=mlx`, the pinned mlx checkpoint into `models/mlx/<model>/` |
 | `make run folder=path/ [force=1]` | Full parallel pipeline for one session; the only thing automation calls |
 | `make run-single file=path [force=1]` | Convert → VAD → transcribe one file, no combine |
 | `make combine-transcripts session=name` | Re-merge a session's per-speaker VTTs |
@@ -114,7 +115,7 @@ and everything after it, nothing before it:
 |---|---|
 | source file, `SAMPLE_RATE` | everything |
 | `VAD_*`, `PADDING_SECONDS` | VAD, inference, VTT |
-| `WHISPER_*`, model file size/mtime | inference, VTT |
+| `WHISPER_*` (including `WHISPER_RUNTIME`), model file size/mtime | inference, VTT |
 | `DEDUPE_*` | VTT only, rewritten from the saved JSON with no inference |
 
 A record is trusted only if its fingerprint matches and every artifact it
@@ -222,6 +223,44 @@ fails loudly.
   stock whisper, slow and correct, rather than patching the model or adding
   a second one. Do not reintroduce packing, encoder-context patches, or a
   detect-and-retry shim.
+- **`WHISPER_RUNTIME=mlx` runs the same model on the Apple GPU, for speed.**
+  It runs `large-v3-turbo` through mlx-whisper on the Apple GPU with the same islands
+  and the same decoding options, still one encoder pass per island, and
+  `WHISPER_DEVICE=mps` runs stock whisper on the GPU. Neither patches the
+  model, adds a second one, packs, or retries. The default stays stock
+  openai-whisper on the CPU; a campaign opts in with `WHISPER_RUNTIME=mlx`
+  or `WHISPER_DEVICE=mps` in its env file.
+  Measured on the Mac Studio (M5 Max, 128 GiB, macOS 27.0.1) on 5 x 30 min of
+  the 2026-10-04 session (379 islands) against the CPU run (14 m 09 s wall,
+  inference about 12 m 40 s): `mps` took 3 m 08 s with identical text (0 words
+  differ); `mlx` took 57 s of inference with one worker and 39 s with two
+  (4 workers: 38 s, no gain), 1.5% of words different (the loudness
+  normalisation noise floor was 1.7%), no prompt echoes, no lost islands, and
+  the same nine looping islands the CPU run has. The whole 13 h 53 m session
+  on `mlx` took 4 m 12 s with `PARALLEL_JOBS=2` (3 m 41 s with 4) against
+  1 h 06 m on the CPU: 0.9% of words different (WER 1.45%), 3 of 1813
+  islands lost (1 to 5 words each), bare "Thank you" 35 to 42, single-threaded
+  VAD now 118 s of the 458 s of work. At the level of session notes (notes
+  written cold from the whole transcript, graded against a 28-bullet human
+  reference): CPU transcript 22 of 28, mlx transcript
+  22 of 28, inside the 0.77 to 0.80 spread between runs on one transcript;
+  the proper-noun variants in the two transcripts are the same, name by name
+  and count by count. One run each, so a difference smaller than that
+  spread is not shown either way: this is a speed change, not a correctness
+  gain. What mlx-whisper does not have:
+  `carry_initial_prompt` (the prompt reaches only the first 30 s window of an
+  island; 59 of 1813 islands, 3.3%, are longer), beam search, and anything
+  but fp16. Both GPU runtimes share the GPU: with a 90 GB llama.cpp model
+  loaded, its generation fell from 72 to 34 tokens/s while one mlx worker
+  ran, and to 26 with two. A Neural Engine runtime (WhisperKit) left it
+  alone (72 to 71) but ran 4.7x slower than mlx and differed in 6.5% of
+  words with 19 islands lost; faster-whisper has no Metal backend. Output
+  cached by one runtime is never reused by the other: the runtime, the
+  pinned mlx checkpoint and its file identity are in the inference
+  fingerprint, while the default runtime's fingerprint is unchanged, so
+  finished sessions stay valid. Setup: `make install EXTRAS=dev,mac`, then
+  `WHISPER_RUNTIME=mlx make setup-whisper`. Not measured here: any other
+  model size on mlx.
 - **`WHISPER_MODEL` stays `large-v3-turbo`, by measurement.** small.en on the
   same 11.5 h session, judged at the level of session notes against an
   80-item skeleton built from turbo: 56 intact, 21 degraded, 3 lost,
@@ -264,6 +303,10 @@ fails loudly.
   `MEMORY_GUARD_FRACTION` of physical RAM; it never raises the count. An 8 GB
   Pi with `large-v3-turbo` lands on 1 worker. `TORCH_THREADS=0` auto-splits
   threads across the active workers.
+- mlx-whisper is pinned in the `mac` extra (`mlx-whisper==0.4.3`; `pip check`
+  is clean next to `torch==2.11.0`). `whisper_mlx.py` relies on its
+  `ModelHolder`, so a bump must keep `tests/test_whisper_runtime.py` green and
+  rerun the slow mlx test.
 - `transcript_combobulator.whisper.load_whisper_model` loads by file path on purpose. Loading by
   name makes whisper sha256 the whole checkpoint per worker per run.
 - On macOS, `multiprocessing.set_start_method("spawn")` is mandatory for torch.

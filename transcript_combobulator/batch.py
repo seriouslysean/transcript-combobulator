@@ -393,20 +393,20 @@ def main(argv: list[str] | None = None) -> None:
         VAD_MIN_SPEECH_DURATION,
         VAD_THRESHOLD,
         WHISPER_BEAM_SIZE,
-        WHISPER_CARRY_INITIAL_PROMPT,
         WHISPER_COMPRESSION_RATIO_THRESHOLD,
         WHISPER_CONDITION_ON_PREVIOUS,
         WHISPER_DEVICE,
-        WHISPER_FP16,
         WHISPER_LANGUAGE,
         WHISPER_LOGPROB_THRESHOLD,
         WHISPER_MODEL,
-        WHISPER_MODELS_DIR,
         WHISPER_NO_SPEECH_THRESHOLD,
         WHISPER_PROMPT,
+        WHISPER_RUNTIME,
         WHISPER_TEMPERATURE,
         WHISPER_WORD_TIMESTAMPS,
         WORKER_NICE,
+        get_model_weights_path,
+        get_whisper_options,
     )
 
     session_name = args.session or target_dir.name
@@ -425,7 +425,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     max_workers = min(max(1, PARALLEL_JOBS), len(files))
-    model_file = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+    whisper_options = get_whisper_options()
+    model_file = get_model_weights_path()
     model_bytes = model_file.stat().st_size if model_file.exists() else 0
     max_workers, memory_warning = _memory_capped_workers(
         max_workers, model_bytes, _total_memory_bytes(), MEMORY_GUARD_FRACTION
@@ -625,15 +626,19 @@ def main(argv: list[str] | None = None) -> None:
         "configuration": {
             "sample_rate": SAMPLE_RATE,
             "whisper": {
+                "runtime": WHISPER_RUNTIME,
                 "model": WHISPER_MODEL,
-                "device": WHISPER_DEVICE,
-                "fp16": WHISPER_FP16,
+                "device": "metal" if WHISPER_RUNTIME == "mlx" else WHISPER_DEVICE,
+                # The effective values: mlx always runs fp16 and has no prompt carry.
+                "fp16": whisper_options["fp16"],
                 "language": WHISPER_LANGUAGE,
                 "temperature": WHISPER_TEMPERATURE,
                 "beam_size": WHISPER_BEAM_SIZE,
                 "word_timestamps": WHISPER_WORD_TIMESTAMPS,
                 "condition_on_previous_text": WHISPER_CONDITION_ON_PREVIOUS,
-                "carry_initial_prompt": WHISPER_CARRY_INITIAL_PROMPT,
+                "carry_initial_prompt": bool(
+                    whisper_options.get("carry_initial_prompt", False)
+                ),
                 "prompt_configured": bool(WHISPER_PROMPT),
                 "no_speech_threshold": WHISPER_NO_SPEECH_THRESHOLD,
                 "logprob_threshold": WHISPER_LOGPROB_THRESHOLD,

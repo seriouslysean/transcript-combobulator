@@ -116,7 +116,8 @@ _OFFICIAL_MODEL_NAMES = {
     "large-v3-turbo",
     "turbo",
 }
-_VALID_DEVICES = {"cpu", "cuda", "mps"}
+_VALID_DEVICES = {"cpu", "cuda", "mps", "metal"}
+_WHISPER_RUNTIMES = {"openai", "mlx"}
 _RUN_STATUSES = {"completed", "failed"}
 _FILE_STATUSES = {"processed", "cached", "error"}
 _CHUNK_STATUSES = {"processed", "empty", "error", "resumed"}
@@ -214,6 +215,7 @@ def _sanitize_whisper_config(source: Any) -> dict[str, Any]:
     model = source.get("model")
     if isinstance(model, str):
         safe["model"] = model if model in _OFFICIAL_MODEL_NAMES else "custom"
+    safe.update(_copy_enum(source, "runtime", _WHISPER_RUNTIMES))
     device = source.get("device")
     if isinstance(device, str):
         safe["device"] = device if device in _VALID_DEVICES else "custom"

@@ -43,6 +43,13 @@ make setup PYTHON=/usr/bin/python3.12
 pyenv users: the committed `.python-version` selects 3.14.3 through the
 pyenv shim (`pyenv install 3.14.3` once).
 
+Apple Silicon can run Whisper on the GPU instead of the CPU. `WHISPER_DEVICE=mps`
+needs nothing extra. `WHISPER_RUNTIME=mlx` is faster still: `make install
+EXTRAS=dev,mac`, then `WHISPER_RUNTIME=mlx make setup-whisper` (downloads the
+pinned mlx checkpoint, about 1.5 GB, to `models/mlx/`), and set
+`WHISPER_RUNTIME=mlx` in the campaign env. See AGENTS.md for the measurements and
+the differences from stock whisper. The default stays `openai` on the CPU.
+
 Low-memory hosts (for example an 8 GB Raspberry Pi) should set
 `PARALLEL_JOBS=1` and a smaller `WHISPER_MODEL` in `.env`; each worker holds a
 full copy of the model in RAM. `models/` can be pre-seeded by copying the `.pt`
