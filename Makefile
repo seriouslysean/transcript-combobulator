@@ -119,6 +119,11 @@ sample-ami: ## Fetch the 4-speaker AMI sample (checksum-verified) into tmp/input
 check-sample: sample-ami ## Transcribe the AMI sample and fail if it differs from samples/ami/
 	env_file="$${SAMPLE_ENV:-.env.ami-sample}"; \
 	$(VENV_CMD) ENV_FILE="$$env_file" combobulator run tmp/input/ami-en2002b --session ami-en2002b && \
+	echo "Accuracy on this excerpt only (no gate):" && \
+	{ ( $(VENV_CMD) ENV_FILE="$$env_file" combobulator compare --ref samples/ami/EN2002b-human.txt \
+		--hyp tmp/output/ami-en2002b/ami-en2002b-combined.txt --wer ) || \
+		echo "The accuracy report failed; the drift check still runs." >&2; } && \
+	echo "Drift against this project's own output (the gate):" && \
 	$(VENV_CMD) ENV_FILE="$$env_file" combobulator compare --ref samples/ami/EN2002b-reference.txt \
 		--hyp tmp/output/ami-en2002b/ami-en2002b-combined.txt --strict
 

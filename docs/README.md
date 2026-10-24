@@ -132,7 +132,7 @@ make compare-transcripts ref="old-1.txt old-2.txt" hyp="new-1.txt new-2.txt"  # 
 # Dev
 make test-fast                          # Suite without real inference (seconds)
 make test                               # Whole suite (minutes)
-make check-sample                       # Transcribe the 4-speaker AMI sample; fail if any word changed (samples/ami/NOTICE.md)
+make check-sample                       # Transcribe the 4-speaker AMI sample; print WER against AMI's human transcript; fail if any word changed (samples/ami/NOTICE.md)
 make lint                               # ruff check and format check
 make format                             # ruff format
 make typecheck                          # mypy --strict

@@ -43,8 +43,13 @@ _SPEAKER_RE = re.compile(r'^([A-Za-z][A-Za-z .\'"“”-]{0,30}?):\s(.*)$')
 # combine's INCLUDE_TIMESTAMPS suffix (`` [00:00:15.000 --> 00:00:25.380]``), so both modes
 # compare the same words.
 _TIMESTAMP_RE = re.compile(
-    r"\s\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]$"
+    r"\s\[(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})\]$"
 )
+
+
+def _seconds(clock: str) -> float:
+    h, m, sec = clock.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(sec)
 
 
 def normalize(text: str) -> str:
@@ -66,6 +71,8 @@ class Transcript:
 
     lines: dict[str, list[str]] = field(default_factory=dict)
     cast: list[str] = field(default_factory=list)
+    # Each line's (start, end) seconds when it carries combine's timestamp suffix.
+    times: dict[str, list[tuple[float, float] | None]] = field(default_factory=dict)
 
 
 def load(paths: Iterable[Path]) -> Transcript:
@@ -97,7 +104,11 @@ def load(paths: Iterable[Path]) -> Transcript:
                 speaker, text = m.group(1), m.group(2)
             else:
                 continue
+            ts = _TIMESTAMP_RE.search(text)
             out.lines.setdefault(speaker, []).append(_TIMESTAMP_RE.sub("", text))
+            out.times.setdefault(speaker, []).append(
+                (_seconds(ts.group(1)), _seconds(ts.group(2))) if ts else None
+            )
     return out
 
 
@@ -220,6 +231,90 @@ def compare(ref: Transcript, hyp: Transcript, prompt: str = "") -> dict[str, Any
     }
 
 
+def accuracy(ref: Transcript, hyp: Transcript, slack: float = 1.0) -> dict[str, Any]:
+    """Word error rate against a human reference, per speaker and pooled.
+
+    Substitutions, deletions and insertions come from jiwer's alignment over whisper-normalised
+    words. ``other_speaker_words`` counts insertions that another speaker's reference line says
+    within ``slack`` seconds of the hypothesis line: a sign of speech picked up from someone
+    else's microphone. It needs timestamps on both sides (``None`` without them), and is only
+    a sign: a common word can match by chance.
+    """
+    import jiwer
+
+    def heard(sp: str, t: tuple[float, float] | None) -> set[str]:
+        if t is None:
+            return set()
+        near: set[str] = set()
+        for other, lines in ref.lines.items():
+            if other == sp:
+                continue
+            for text, rt in zip(lines, ref.times.get(other, []), strict=True):
+                if rt and rt[0] - slack <= t[1] and t[0] <= rt[1] + slack:
+                    near.update(normalize(text).split())
+        return near
+
+    timed = any(t for v in ref.times.values() for t in v) and any(
+        t for v in hyp.times.values() for t in v
+    )
+    per: dict[str, dict[str, Any]] = {}
+    tot: Counter[str] = Counter()
+    for sp in sorted(ref.lines.keys() | hyp.lines.keys()):
+        rw = words(ref.lines.get(sp, []))
+        hyp_lines = hyp.lines.get(sp, [])
+        hyp_times = hyp.times.get(sp, [None] * len(hyp_lines))
+        hw: list[str] = []
+        line_of: list[int] = []
+        for n, text in enumerate(hyp_lines):
+            w = normalize(text).split()
+            hw += w
+            line_of += [n] * len(w)
+        c = Counter(hits=0, substitutions=0, deletions=0, insertions=0)
+        other = 0
+        if rw and hw:
+            out = jiwer.process_words(" ".join(rw), " ".join(hw))
+            c.update(
+                hits=out.hits,
+                substitutions=out.substitutions,
+                deletions=out.deletions,
+                insertions=out.insertions,
+            )
+            for chunk in out.alignments[0]:
+                if chunk.type == "insert":
+                    for j in range(chunk.hyp_start_idx, chunk.hyp_end_idx):
+                        other += hw[j] in heard(sp, hyp_times[line_of[j]])
+        else:
+            c.update(deletions=len(rw), insertions=len(hw))
+        errors = c["substitutions"] + c["deletions"] + c["insertions"]
+        per[sp] = {
+            "ref_words": len(rw),
+            "hyp_words": len(hw),
+            **c,
+            "other_speaker_words": other if timed else None,
+            "wer_pct": round(100 * errors / max(1, len(rw)), 2),
+        }
+        tot.update(
+            {k: v for k, v in per[sp].items() if k != "wer_pct" and v is not None}
+        )
+    errors = tot["substitutions"] + tot["deletions"] + tot["insertions"]
+    return {
+        "wer_pct": round(100 * errors / max(1, tot["ref_words"]), 2),
+        "wer_pct_without_other_speaker_words": (
+            round(
+                100 * (errors - tot["other_speaker_words"]) / max(1, tot["ref_words"]),
+                2,
+            )
+            if timed
+            else None
+        ),
+        "totals": {
+            **tot,
+            "other_speaker_words": tot["other_speaker_words"] if timed else None,
+        },
+        "per_speaker": per,
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="combobulator compare",
@@ -244,7 +339,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--strict", action="store_true", help="Exit 1 when any gate fails"
     )
+    parser.add_argument(
+        "--wer",
+        action="store_true",
+        help="Score against a human reference instead: word error rate, no gate",
+    )
     args = parser.parse_args(argv)
+    if args.wer and args.strict:
+        parser.error("--wer reports accuracy and has no gate; drop --strict")
     for p in [*args.ref, *args.hyp]:
         if not p.is_file():
             print(f"Error: not a file: {p}", file=sys.stderr)
@@ -257,6 +359,25 @@ def main(argv: list[str] | None = None) -> None:
         if not any(words(v) for v in t.lines.values()):
             print(f"Error: no spoken words in the {name}", file=sys.stderr)
             sys.exit(2)
+    if args.wer:
+        acc = accuracy(ref, hyp)
+        if args.json:
+            args.json.write_text(json.dumps(acc, indent=1), encoding="utf-8")
+        without = acc["wer_pct_without_other_speaker_words"]
+        print(
+            f"WER against the human reference: {acc['wer_pct']}% "
+            + (
+                f"({without}% without words another speaker said)"
+                if without is not None
+                else "(words another speaker said not counted: no timestamps)"
+            )
+        )
+        for sp, v in acc["per_speaker"].items():
+            print(
+                f"{sp:10} ref {v['ref_words']:6}  wer {v['wer_pct']:6}%  sub {v['substitutions']}  "
+                f"del {v['deletions']}  ins {v['insertions']} (other speakers {'n/a' if v['other_speaker_words'] is None else v['other_speaker_words']})"
+            )
+        return
     report = compare(ref, hyp, WHISPER_PROMPT)
     if args.json:
         args.json.write_text(json.dumps(report, indent=1), encoding="utf-8")

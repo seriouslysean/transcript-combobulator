@@ -3,10 +3,15 @@
 
 import argparse
 import hashlib
+import json
+import re
 import shutil
 import subprocess
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import soundfile as sf
@@ -201,6 +206,139 @@ def create_ami_sample(root_dir: Path | None = None) -> Path:
     return out_dir
 
 
+# AMI's manual annotations (same CC BY 4.0 licence), for a human reference of the excerpt.
+AMI_ANNOTATIONS_URL = (
+    "https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip"
+)
+AMI_ANNOTATIONS_SHA256 = (  # as served on 2026-10-23, 22,887,865 bytes
+    "b56e5babb2496b8795deeeda7e71178d7fbc9963f94276cf2a3f4b56ebbc9f9d"
+)
+_NITE = "{http://nite.sourceforge.net/}"
+_HREF_RE = re.compile(r"#id\(([^)]+)\)(?:\.\.id\(([^)]+)\))?$")
+
+
+def _clock(seconds: float) -> str:
+    ms = round(seconds * 1000)
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
+
+def ami_human_reference(zip_path: Path) -> tuple[str, dict[str, Any]]:
+    """The excerpt's human transcript, in combine's format, and a sidecar of what it came from.
+
+    One line per AMI segment (a speaker turn), labelled like EN2002b-reference.txt. Kept: words
+    that start and end inside the window, punctuation joined to the word before. Dropped:
+    truncated words, vocal sounds, gaps, disfluency markers and conversion errors. Times are
+    seconds from the excerpt's start.
+    """
+    start, end = AMI_START_SECONDS, AMI_START_SECONDS + AMI_SECONDS
+    with zipfile.ZipFile(zip_path) as z:
+        meetings = ET.fromstring(z.read("corpusResources/meetings.xml"))
+        meeting = next(
+            m for m in meetings.iter("meeting") if m.get("observation") == AMI_MEETING
+        )
+        speakers = sorted(
+            meeting.iter("speaker"), key=lambda e: int(e.get("channel", ""))
+        )
+        mapping: dict[str, dict[str, Any]] = {}
+        turns: list[tuple[float, float, str, str, list[list[Any]]]] = []
+        for sp in speakers:
+            agent, channel = sp.get("nxt_agent", ""), int(sp.get("channel", ""))
+            label = f"Speaker {'ABCD'[channel]}"
+            mapping[label] = {
+                "nxt_agent": agent,
+                "channel": channel,
+                "headset": f"{AMI_MEETING}.Headset-{channel}.wav",
+                "global_name": sp.get("global_name"),
+            }
+            words = ET.fromstring(z.read(f"words/{AMI_MEETING}.{agent}.words.xml"))
+            order = [e for e in words if e.get(f"{_NITE}id")]
+            index = {e.get(f"{_NITE}id"): i for i, e in enumerate(order)}
+            segs = ET.fromstring(z.read(f"segments/{AMI_MEETING}.{agent}.segments.xml"))
+            for seg in segs.iter("segment"):
+                text: list[str] = []
+                kept: list[list[Any]] = []
+                times: list[float] = []
+                for child in seg.iter(f"{_NITE}child"):
+                    m = _HREF_RE.search(child.get("href", ""))
+                    if not m:
+                        continue
+                    a = index[m.group(1)]
+                    b = index[m.group(2) or m.group(1)]
+                    for e in order[a : b + 1]:
+                        if e.tag != "w" or e.get("trunc") == "true":
+                            continue
+                        t0, t1 = (
+                            float(e.get("starttime", "")),
+                            float(e.get("endtime", "")),
+                        )
+                        if not (start <= t0 and t1 <= end):
+                            continue
+                        if e.get("punc") == "true":
+                            if text:
+                                text[-1] += e.text or ""
+                            continue
+                        text.append(e.text or "")
+                        kept.append([e.get(f"{_NITE}id", ""), t0, t1])
+                        times += [t0, t1]
+                if text:
+                    turns.append(
+                        (
+                            min(times) - start,
+                            max(times) - start,
+                            label,
+                            " ".join(text),
+                            kept,
+                        )
+                    )
+    turns.sort(key=lambda t: (t[0], t[2]))
+    header = ["Summary:"] + [
+        f"Participant {lab[-1]} - {lab} - AMI {AMI_MEETING} headset {v['channel']}"
+        for lab, v in mapping.items()
+    ]
+    body = [
+        f"{lab}: {text} [{_clock(t0)} --> {_clock(t1)}]"
+        for t0, t1, lab, text, _ in turns
+    ]
+    sidecar = {
+        "source": AMI_ANNOTATIONS_URL,
+        "sha256": AMI_ANNOTATIONS_SHA256,
+        "meeting": AMI_MEETING,
+        "window_seconds": [start, end],
+        "speakers": mapping,
+        "lines": [
+            {
+                "speaker": lab,
+                "start": round(t0 + start, 3),
+                "end": round(t1 + start, 3),
+                "words": kept,
+            }
+            for t0, t1, lab, _, kept in turns
+        ],
+    }
+    return "\n".join(header + [""] + body) + "\n", sidecar
+
+
+def create_ami_human_reference(root_dir: Path | None = None) -> Path:
+    """Fetch AMI's annotations into tmp/cache/ami/ and write samples/ami/EN2002b-human.{txt,json}."""
+    root_dir = root_dir or Path(__file__).parent.parent
+    src = download_verified(
+        AMI_ANNOTATIONS_URL,
+        root_dir / "tmp" / "cache" / "ami" / "ami_public_manual_1.6.2.zip",
+        AMI_ANNOTATIONS_SHA256,
+    )
+    text, sidecar = ami_human_reference(src)
+    out = root_dir / "samples" / "ami" / f"{AMI_MEETING}-human.txt"
+    out.write_text(text, encoding="utf-8")
+    out.with_suffix(".json").write_text(
+        json.dumps(sidecar, indent=1) + "\n", encoding="utf-8"
+    )
+    print(f"Created {out}")
+    return out
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="combobulator samples",
@@ -217,7 +355,18 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help=f"Fetch the AMI {AMI_MEETING} excerpt instead (network)",
     )
+    parser.add_argument(
+        "--ami-human",
+        action="store_true",
+        help=f"Rebuild samples/ami/{AMI_MEETING}-human.txt from AMI's annotations (network)",
+    )
     args = parser.parse_args(argv)
+    if args.ami_human:
+        try:
+            create_ami_human_reference()
+        except SampleError as e:
+            raise SystemExit(f"Error: {e}") from None
+        return
     if args.ami:
         try:
             create_ami_sample()
