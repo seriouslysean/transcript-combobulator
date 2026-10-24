@@ -213,8 +213,15 @@ fails loudly.
   swung between 0.9 and 3.9 GB run to run, which is why only the ONNX build is used.
 - **The package `__init__.py` imports nothing.** The batch parent only needs config,
   combine, and telemetry; importing the package must not load torch.
-- **One encoder pass per VAD island is the floor on stock whisper, by
-  decision.** Whisper encodes a fixed 30 s window, so short islands pay full
+- **The engine is chosen by measured correctness.** Stock openai-whisper
+  `large-v3-turbo` is the default because it has beaten every alternative
+  measured so far, not because other engines are ruled out. A candidate
+  (another model, runtime or ASR engine) replaces it only by doing better on
+  real sessions: fewer inserted lines (prompt echoes, repeat loops, filler on
+  silence), less dropped speech, more names heard right, and cue times that
+  land on the speech. Speed counts only once correctness is at least equal.
+- **One encoder pass per VAD island is the floor on stock whisper.** Whisper
+  encodes a fixed 30 s window, so short islands pay full
   price (utilisation ~24% on a real session). Packing islands into one clip
   was measured at 2.45x on a 2.9 h track with identical words, but whisper
   places segment boundaries from what it hears, never from splices: 56 of
@@ -222,11 +229,9 @@ fails loudly.
   time, up to 509 s early. Stock `word_timestamps` doubles decode cost and
   still misassigned 9 of 128. WhisperX and faster-whisper pack the same way
   and fix time with a separate wav2vec2 forced-alignment model; whisper.cpp
-  shrinks the encoder per clip (`audio_ctx`, ~3x on short clips). Both are
-  outside stock openai-whisper and were ruled out: this project stays on
-  stock whisper, slow and correct, rather than patching the model or adding
-  a second one. Do not reintroduce packing, encoder-context patches, or a
-  detect-and-retry shim.
+  shrinks the encoder per clip (`audio_ctx`, ~3x on short clips). Those are
+  speed changes. They were not adopted because they bring no correctness
+  gain, and packing without a separate aligner misplaces cues.
 - **`WHISPER_RUNTIME=mlx` runs the same model on the Apple GPU, for speed.**
   It runs `large-v3-turbo` through mlx-whisper on the Apple GPU with the same islands
   and the same decoding options, still one encoder pass per island, and
