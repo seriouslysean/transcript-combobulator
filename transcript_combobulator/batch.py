@@ -55,7 +55,7 @@ _GIB = float(1 << 30)
 def _total_memory_bytes() -> int | None:
     """Physical RAM via sysconf (Linux and macOS); None if unavailable."""
     try:
-        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
     except (AttributeError, OSError, ValueError):
         return None
 
@@ -103,6 +103,7 @@ def _resolve_log_file(configured: str, output_dir: Path, session_name: str) -> P
     path = Path(configured)
     if not path.is_absolute():
         from transcript_combobulator.config import ROOT_DIR
+
         path = ROOT_DIR / path
     return path
 
@@ -135,7 +136,9 @@ def _worker(
     # so no stream handler is ever added in a worker.
     log_handler = None
     if log_file:
-        log_handler = add_file_handler(Path(log_file), context={'audio_file': status_key})
+        log_handler = add_file_handler(
+            Path(log_file), context={"audio_file": status_key}
+        )
     else:
         logging.disable(logging.CRITICAL)
 
@@ -149,6 +152,7 @@ def _worker(
     file_metrics: dict[str, Any] = {}
     try:
         from transcript_combobulator.pipeline import process_file
+
         process_file(
             file_path,
             status_dict=status_dict,
@@ -157,13 +161,13 @@ def _worker(
             metrics=file_metrics,
             session=session,
         )
-        result_status = 'cached' if file_metrics.get('cache_hit') else 'done'
+        result_status = "cached" if file_metrics.get("cache_hit") else "done"
         return (Path(file_path).name, result_status, "", file_metrics)
     except Exception as e:
-        file_metrics.setdefault('file', Path(file_path).name)
-        file_metrics.setdefault('status', 'error')
-        file_metrics.setdefault('error_type', type(e).__name__)
-        file_metrics.setdefault('error', str(e))
+        file_metrics.setdefault("file", Path(file_path).name)
+        file_metrics.setdefault("status", "error")
+        file_metrics.setdefault("error_type", type(e).__name__)
+        file_metrics.setdefault("error", str(e))
         return (Path(file_path).name, "error", str(e), file_metrics)
     finally:
         sys.stdout = old_stdout
@@ -261,15 +265,15 @@ def _build_file_metrics_table(file_metrics: list[dict[str, Any]]) -> Table:
     table.add_column("Chunks", justify="right")
     table.add_column("xRT", justify="right")
 
-    for metrics in sorted(file_metrics, key=lambda item: str(item.get('file', ''))):
-        stages = metrics.get('stages', {})
-        transcription = metrics.get('transcription', {})
+    for metrics in sorted(file_metrics, key=lambda item: str(item.get("file", ""))):
+        stages = metrics.get("stages", {})
+        transcription = metrics.get("transcription", {})
         inference_seconds = sum(
-            float(chunk.get('timings', {}).get('inference_seconds', 0.0))
-            for chunk in transcription.get('chunks', [])
+            float(chunk.get("timings", {}).get("inference_seconds", 0.0))
+            for chunk in transcription.get("chunks", [])
         )
-        audio_seconds = metrics.get('input_audio_seconds')
-        total_seconds = metrics.get('total_seconds')
+        audio_seconds = metrics.get("input_audio_seconds")
+        total_seconds = metrics.get("total_seconds")
         x_realtime = (
             audio_seconds / total_seconds
             if isinstance(audio_seconds, (int, float))
@@ -277,25 +281,25 @@ def _build_file_metrics_table(file_metrics: list[dict[str, Any]]) -> Table:
             and total_seconds
             else None
         )
-        status = str(metrics.get('status', 'unknown'))
+        status = str(metrics.get("status", "unknown"))
         status_style = {
-            'processed': 'green',
-            'cached': 'green',
-            'error': 'red bold',
-        }.get(status, '')
+            "processed": "green",
+            "cached": "green",
+            "error": "red bold",
+        }.get(status, "")
         table.add_row(
-            str(metrics.get('file', '-')),
+            str(metrics.get("file", "-")),
             Text(status, style=status_style),
             _format_duration(float(audio_seconds))
             if isinstance(audio_seconds, (int, float))
-            else '-',
+            else "-",
             _format_metric_seconds(total_seconds),
-            _format_metric_seconds(stages.get('conversion_seconds')),
-            _format_metric_seconds(stages.get('vad_seconds')),
-            _format_metric_seconds(transcription.get('model_load_seconds')),
+            _format_metric_seconds(stages.get("conversion_seconds")),
+            _format_metric_seconds(stages.get("vad_seconds")),
+            _format_metric_seconds(transcription.get("model_load_seconds")),
             _format_metric_seconds(inference_seconds),
-            str(metrics.get('vad', {}).get('chunk_count', '-')),
-            f"{x_realtime:.2f}x" if x_realtime is not None else '-',
+            str(metrics.get("vad", {}).get("chunk_count", "-")),
+            f"{x_realtime:.2f}x" if x_realtime is not None else "-",
         )
     return table
 
@@ -312,27 +316,29 @@ def _build_run_metrics_table(
         f"{summary['files_cached']} cached, {summary['files_failed']} failed"
     )
     table.add_row("Files", file_status)
-    table.add_row("Input audio", _format_duration(summary['input_audio_seconds']))
-    table.add_row("Processing wall time", _format_duration(summary['processing_seconds']))
+    table.add_row("Input audio", _format_duration(summary["input_audio_seconds"]))
+    table.add_row(
+        "Processing wall time", _format_duration(summary["processing_seconds"])
+    )
     table.add_row(
         "Audio throughput",
         f"{summary['audio_x_realtime']:.2f}x realtime"
-        if summary['audio_x_realtime'] is not None
-        else '-',
+        if summary["audio_x_realtime"] is not None
+        else "-",
     )
     table.add_row(
         "Real-time factor",
         f"{summary['real_time_factor']:.4f}"
-        if summary['real_time_factor'] is not None
-        else '-',
+        if summary["real_time_factor"] is not None
+        else "-",
     )
-    table.add_row("VAD chunks", str(summary['vad_chunks']))
-    table.add_row("Transcript segments", str(summary['transcript_segments']))
+    table.add_row("VAD chunks", str(summary["vad_chunks"]))
+    table.add_row("Transcript segments", str(summary["transcript_segments"]))
     table.add_row(
         "Inference throughput",
         f"{summary['inference_x_realtime']:.2f}x realtime"
-        if summary['inference_x_realtime'] is not None
-        else '-',
+        if summary["inference_x_realtime"] is not None
+        else "-",
     )
     table.add_row(
         "Metrics report",
@@ -353,9 +359,14 @@ def _publish_metrics_report(
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="combobulator run", description="Batch-process a session folder with live progress")
+    parser = argparse.ArgumentParser(
+        prog="combobulator run",
+        description="Batch-process a session folder with live progress",
+    )
     parser.add_argument("target_dir", type=str, help="Directory containing audio files")
-    parser.add_argument("--session", type=str, default=None, help="Session name for combine step")
+    parser.add_argument(
+        "--session", type=str, default=None, help="Session name for combine step"
+    )
     parser.add_argument("--force", action="store_true", help="Ignore completed output")
     args = parser.parse_args(argv)
 
@@ -382,20 +393,20 @@ def main(argv: list[str] | None = None) -> None:
         VAD_MIN_SPEECH_DURATION,
         VAD_THRESHOLD,
         WHISPER_BEAM_SIZE,
-        WHISPER_CARRY_INITIAL_PROMPT,
         WHISPER_COMPRESSION_RATIO_THRESHOLD,
         WHISPER_CONDITION_ON_PREVIOUS,
         WHISPER_DEVICE,
-        WHISPER_FP16,
         WHISPER_LANGUAGE,
         WHISPER_LOGPROB_THRESHOLD,
         WHISPER_MODEL,
-        WHISPER_MODELS_DIR,
         WHISPER_NO_SPEECH_THRESHOLD,
         WHISPER_PROMPT,
+        WHISPER_RUNTIME,
         WHISPER_TEMPERATURE,
         WHISPER_WORD_TIMESTAMPS,
         WORKER_NICE,
+        get_model_weights_path,
+        get_whisper_options,
     )
 
     session_name = args.session or target_dir.name
@@ -414,7 +425,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     max_workers = min(max(1, PARALLEL_JOBS), len(files))
-    model_file = WHISPER_MODELS_DIR / f"{WHISPER_MODEL}.pt"
+    whisper_options = get_whisper_options()
+    model_file = get_model_weights_path()
     model_bytes = model_file.stat().st_size if model_file.exists() else 0
     max_workers, memory_warning = _memory_capped_workers(
         max_workers, model_bytes, _total_memory_bytes(), MEMORY_GUARD_FRACTION
@@ -434,7 +446,10 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Log file: {log_file}")
     run_logger.info(
         "Run start: %d files in %s, %d workers, %d torch threads each",
-        len(files), target_dir, max_workers, torch_threads,
+        len(files),
+        target_dir,
+        max_workers,
+        torch_threads,
     )
     started_at = utc_now_iso()
     run_started = time.perf_counter()
@@ -449,7 +464,11 @@ def main(argv: list[str] | None = None) -> None:
     executor_ref: ProcessPoolExecutor | None = None
 
     def _shutdown_handler(signum: int, frame: FrameType | None) -> NoReturn:
-        label = "Cancelled." if signum == signal.SIGINT else f"Terminated (signal {signum})."
+        label = (
+            "Cancelled."
+            if signum == signal.SIGINT
+            else f"Terminated (signal {signum})."
+        )
         print(f"\n{label}")
         run_logger.warning(label)
         if executor_ref is not None:
@@ -467,7 +486,9 @@ def main(argv: list[str] | None = None) -> None:
     }
 
     try:
-        with Live(_build_table(file_names, status_dict, max_workers), refresh_per_second=4) as live:
+        with Live(
+            _build_table(file_names, status_dict, max_workers), refresh_per_second=4
+        ) as live:
             with ProcessPoolExecutor(
                 max_workers=max_workers,
                 initializer=_initialize_worker,
@@ -501,15 +522,19 @@ def main(argv: list[str] | None = None) -> None:
                                 # on a Pi). Record every unfinished file and
                                 # still write the metrics report and log.
                                 for pending in list(futures.values()):
-                                    completed_file_metrics.append({
-                                        'file': pending,
-                                        'status': 'error',
-                                        'error_type': type(e).__name__,
-                                        'error': str(e),
-                                    })
+                                    completed_file_metrics.append(
+                                        {
+                                            "file": pending,
+                                            "status": "error",
+                                            "error_type": type(e).__name__,
+                                            "error": str(e),
+                                        }
+                                    )
                                     status_dict[pending] = "error"
                                     errors.append((pending, f"worker died: {e}"))
-                                    run_logger.error("%s failed: worker died: %s", pending, e)
+                                    run_logger.error(
+                                        "%s failed: worker died: %s", pending, e
+                                    )
                                 futures.clear()
                                 break
                             completed_file_metrics.append(file_metrics)
@@ -537,9 +562,9 @@ def main(argv: list[str] | None = None) -> None:
 
     metrics_path = OUTPUT_DIR / session_name / f"{session_name}-metrics.json"
     combine_metrics: dict[str, Any] = {
-        'status': 'skipped' if errors else 'running',
-        'seconds': 0.0,
-        'output_files': [],
+        "status": "skipped" if errors else "running",
+        "seconds": 0.0,
+        "output_files": [],
     }
     combine_error: Optional[str] = None
 
@@ -557,76 +582,78 @@ def main(argv: list[str] | None = None) -> None:
                 session_name,
                 vtt_files=[vtt_path_for_input(f, session_name) for f in files],
             )
-            combine_metrics['status'] = 'completed'
-            combine_metrics['output_files'] = [str(path) for path in output_files]
+            combine_metrics["status"] = "completed"
+            combine_metrics["output_files"] = [str(path) for path in output_files]
             for path in output_files:
                 print(f"Combined transcript: {path}")
         except Exception as e:
             combine_error = str(e)
-            combine_metrics['status'] = 'error'
-            combine_metrics['error_type'] = type(e).__name__
-            combine_metrics['error'] = combine_error
+            combine_metrics["status"] = "error"
+            combine_metrics["error_type"] = type(e).__name__
+            combine_metrics["error"] = combine_error
             run_logger.error("Combine failed: %s", combine_error)
         finally:
-            combine_metrics['seconds'] = elapsed_seconds(
+            combine_metrics["seconds"] = elapsed_seconds(
                 combine_started, time.perf_counter()
             )
 
     wall_seconds = elapsed_seconds(run_started, time.perf_counter())
-    completed_file_metrics.sort(key=lambda item: str(item.get('file', '')))
+    completed_file_metrics.sort(key=lambda item: str(item.get("file", "")))
     summary = build_run_summary(
         completed_file_metrics,
         processing_seconds=processing_seconds,
         wall_seconds=wall_seconds,
         max_workers=max_workers,
     )
-    run_status = 'failed' if errors or combine_error else 'completed'
+    run_status = "failed" if errors or combine_error else "completed"
     report = {
-        'schema_version': TELEMETRY_SCHEMA_VERSION,
-        'run': {
-            'session': session_name,
-            'status': run_status,
-            'started_at': started_at,
-            'finished_at': utc_now_iso(),
-            'target_dir': str(target_dir),
-            'environment_file': os.environ.get('ENV_FILE') or '.env',
-            'force': args.force,
+        "schema_version": TELEMETRY_SCHEMA_VERSION,
+        "run": {
+            "session": session_name,
+            "status": run_status,
+            "started_at": started_at,
+            "finished_at": utc_now_iso(),
+            "target_dir": str(target_dir),
+            "environment_file": os.environ.get("ENV_FILE") or ".env",
+            "force": args.force,
         },
-        'runtime': {
-            'parallel_jobs_configured': PARALLEL_JOBS,
-            'active_workers': max_workers,
-            'torch_threads_per_worker': torch_threads,
-            'worker_nice': WORKER_NICE,
+        "runtime": {
+            "parallel_jobs_configured": PARALLEL_JOBS,
+            "active_workers": max_workers,
+            "torch_threads_per_worker": torch_threads,
+            "worker_nice": WORKER_NICE,
         },
-        'configuration': {
-            'sample_rate': SAMPLE_RATE,
-            'whisper': {
-                'model': WHISPER_MODEL,
-                'device': WHISPER_DEVICE,
-                'fp16': WHISPER_FP16,
-                'language': WHISPER_LANGUAGE,
-                'temperature': WHISPER_TEMPERATURE,
-                'beam_size': WHISPER_BEAM_SIZE,
-                'word_timestamps': WHISPER_WORD_TIMESTAMPS,
-                'condition_on_previous_text': WHISPER_CONDITION_ON_PREVIOUS,
-                'carry_initial_prompt': WHISPER_CARRY_INITIAL_PROMPT,
-                'prompt_configured': bool(WHISPER_PROMPT),
-                'no_speech_threshold': WHISPER_NO_SPEECH_THRESHOLD,
-                'logprob_threshold': WHISPER_LOGPROB_THRESHOLD,
-                'compression_ratio_threshold': (
-                    WHISPER_COMPRESSION_RATIO_THRESHOLD
+        "configuration": {
+            "sample_rate": SAMPLE_RATE,
+            "whisper": {
+                "runtime": WHISPER_RUNTIME,
+                "model": WHISPER_MODEL,
+                "device": "metal" if WHISPER_RUNTIME == "mlx" else WHISPER_DEVICE,
+                # The effective values: mlx always runs fp16 and has no prompt carry.
+                "fp16": whisper_options["fp16"],
+                "language": WHISPER_LANGUAGE,
+                "temperature": WHISPER_TEMPERATURE,
+                "beam_size": WHISPER_BEAM_SIZE,
+                "word_timestamps": WHISPER_WORD_TIMESTAMPS,
+                "condition_on_previous_text": WHISPER_CONDITION_ON_PREVIOUS,
+                "carry_initial_prompt": bool(
+                    whisper_options.get("carry_initial_prompt", False)
                 ),
+                "prompt_configured": bool(WHISPER_PROMPT),
+                "no_speech_threshold": WHISPER_NO_SPEECH_THRESHOLD,
+                "logprob_threshold": WHISPER_LOGPROB_THRESHOLD,
+                "compression_ratio_threshold": (WHISPER_COMPRESSION_RATIO_THRESHOLD),
             },
-            'vad': {
-                'threshold': VAD_THRESHOLD,
-                'min_speech_duration': VAD_MIN_SPEECH_DURATION,
-                'min_silence_duration': VAD_MIN_SILENCE_DURATION,
-                'padding_seconds': PADDING_SECONDS,
+            "vad": {
+                "threshold": VAD_THRESHOLD,
+                "min_speech_duration": VAD_MIN_SPEECH_DURATION,
+                "min_silence_duration": VAD_MIN_SILENCE_DURATION,
+                "padding_seconds": PADDING_SECONDS,
             },
         },
-        'summary': summary,
-        'files': completed_file_metrics,
-        'combine': combine_metrics,
+        "summary": summary,
+        "files": completed_file_metrics,
+        "combine": combine_metrics,
     }
     published_metrics_path, metrics_error = _publish_metrics_report(
         metrics_path, report
@@ -640,7 +667,9 @@ def main(argv: list[str] | None = None) -> None:
 
     run_logger.info(
         "Run end: status=%s wall=%.1fs metrics=%s",
-        run_status, wall_seconds, published_metrics_path or 'not written',
+        run_status,
+        wall_seconds,
+        published_metrics_path or "not written",
     )
     remove_file_handler(parent_log_handler)
 

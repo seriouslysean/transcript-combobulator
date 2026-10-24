@@ -7,14 +7,13 @@ import pytest
 
 from transcript_combobulator.combine import (
     CombineError,
-    validate_speaker_mapping,
     TranscriptConfig,
     _normalize_for_dedup,
     combine_transcripts,
     parse_vtt_file,
     should_skip_content,
+    validate_speaker_mapping,
 )
-
 
 VTT_SAMPLE = """WEBVTT
 
@@ -30,7 +29,7 @@ This is a test.
 
 
 def _write_vtt(path: Path, content: str) -> None:
-    path.write_text(content, encoding='utf-8')
+    path.write_text(content, encoding="utf-8")
 
 
 class TestNormalizeForDedup:
@@ -118,7 +117,9 @@ class TestCombineTranscripts:
         out = tmp_path / "combined.txt"
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+                TranscriptConfig(
+                    name="Alice", label="Alice", description="", transcript_path=vtt
+                )
             ],
             output_path=out,
         )
@@ -136,7 +137,9 @@ class TestCombineTranscripts:
         out = tmp_path / "combined.txt"
         combine_transcripts(
             transcript_configs=[
-                TranscriptConfig(name="Alice", label="Alice", description="", transcript_path=vtt)
+                TranscriptConfig(
+                    name="Alice", label="Alice", description="", transcript_path=vtt
+                )
             ],
             output_path=out,
         )
@@ -198,7 +201,9 @@ class TestValidateSpeakerMapping:
 
     def test_token_match_accepts_craig_and_converted_dir_names(self, monkeypatch):
         _set_mapping(monkeypatch, ["cadderly", "catti_brie"])
-        mapping = validate_speaker_mapping(["3-cadderly", "3-cadderly_16khz", "2-catti_brie"])
+        mapping = validate_speaker_mapping(
+            ["3-cadderly", "3-cadderly_16khz", "2-catti_brie"]
+        )
         assert set(mapping) == {"cadderly", "catti_brie"}
         with pytest.raises(CombineError, match="No mapping found"):
             validate_speaker_mapping(["3-cadderly2"])

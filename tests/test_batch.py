@@ -2,16 +2,15 @@
 """Test batch processing utilities."""
 
 import json
-import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 import pytest
 from rich.console import Console
 
 from transcript_combobulator.batch import (
-    _build_table,
     _build_file_metrics_table,
     _build_run_metrics_table,
+    _build_table,
     _calculate_torch_threads,
     _estimate_worker_bytes,
     _format_duration,
@@ -185,6 +184,7 @@ class TestConfigSettings:
     def test_parallel_jobs_default(self):
         """PARALLEL_JOBS defaults to 2."""
         from transcript_combobulator.config import PARALLEL_JOBS
+
         # The default is 2 unless overridden by env
         assert isinstance(PARALLEL_JOBS, int)
         assert PARALLEL_JOBS >= 1
@@ -192,6 +192,7 @@ class TestConfigSettings:
     def test_torch_threads_default(self):
         """TORCH_THREADS defaults to 0 (auto-detect)."""
         from transcript_combobulator.config import TORCH_THREADS
+
         assert isinstance(TORCH_THREADS, int)
         assert TORCH_THREADS >= 0
 
@@ -209,11 +210,12 @@ class TestProcessSingleFile:
 
     def test_status_dict_updates(self):
         """Verify _update_status writes to shared dict when provided."""
-        from transcript_combobulator.pipeline import process_file as main
-
         # We can't easily run the full pipeline without audio files,
         # but we can verify the function signature accepts status_dict/status_key
         import inspect
+
+        from transcript_combobulator.pipeline import process_file as main
+
         sig = inspect.signature(main)
         params = list(sig.parameters.keys())
         assert "status_dict" in params
@@ -222,7 +224,9 @@ class TestProcessSingleFile:
     def test_main_still_works_without_status_dict(self):
         """main() should accept being called without status_dict (backward compat)."""
         import inspect
+
         from transcript_combobulator.pipeline import process_file as main
+
         sig = inspect.signature(main)
         # Both params should have defaults (None)
         assert sig.parameters["status_dict"].default is None
@@ -235,10 +239,21 @@ class TestProcessSingleFile:
         input_file = tmp_path / "speaker.wav"
         input_file.touch()
         statuses = {}
-        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=tmp_path), \
-             patch("transcript_combobulator.pipeline.get_manifest_path", return_value=tmp_path / "manifest.json"), \
-             patch("transcript_combobulator.pipeline.is_pipeline_complete", return_value=True), \
-             patch("transcript_combobulator.pipeline.process_audio") as process_audio:
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=tmp_path,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.get_manifest_path",
+                return_value=tmp_path / "manifest.json",
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=True,
+            ),
+            patch("transcript_combobulator.pipeline.process_audio") as process_audio,
+        ):
             metrics = main(str(input_file), statuses, "speaker.wav")
 
         assert statuses["speaker.wav"] == "cached"
@@ -260,12 +275,28 @@ class TestProcessSingleFile:
             "json_file": str(tmp_path / "speaker.json"),
             "mapping_file": str(tmp_path / "speaker_mapping.json"),
         }
-        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=tmp_path), \
-             patch("transcript_combobulator.pipeline.is_pipeline_complete", return_value=True), \
-             patch("transcript_combobulator.pipeline.needs_conversion", return_value=False), \
-             patch("transcript_combobulator.pipeline.process_audio", return_value=(tmp_path, [])) as process_audio, \
-             patch("transcript_combobulator.pipeline.transcribe_segments", return_value=transcription), \
-             patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=tmp_path,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=True,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=False
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                return_value=(tmp_path, []),
+            ) as process_audio,
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                return_value=transcription,
+            ),
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
             main(str(input_file), force=True)
 
         assert output_file.exists()
@@ -291,26 +322,33 @@ class TestProcessSingleFile:
             from transcript_combobulator.pipeline_cache import load_manifest
 
             stages = load_manifest(manifest)
-            assert 'vtt' not in stages
-            assert all(record.get('fingerprint') != 'old' for record in stages.values())
+            assert "vtt" not in stages
+            assert all(record.get("fingerprint") != "old" for record in stages.values())
             raise RuntimeError("interrupted")
 
-        with patch(
-            "transcript_combobulator.pipeline.get_output_path_for_input",
-            return_value=output_dir,
-        ), patch(
-            "transcript_combobulator.pipeline.is_pipeline_complete", return_value=True
-        ), patch(
-            "transcript_combobulator.pipeline.needs_conversion", return_value=False
-        ), patch(
-            "transcript_combobulator.pipeline.process_audio",
-            side_effect=fail_after_manifest_invalidation,
-        ), pytest.raises(RuntimeError, match="interrupted"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=output_dir,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=True,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=False
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                side_effect=fail_after_manifest_invalidation,
+            ),
+            pytest.raises(RuntimeError, match="interrupted"),
+        ):
             main(str(input_file), force=True)
 
         from transcript_combobulator.pipeline_cache import load_manifest
 
-        assert 'vtt' not in load_manifest(manifest)
+        assert "vtt" not in load_manifest(manifest)
 
     def test_cache_miss_replaces_existing_normalized_audio(self, tmp_path):
         """A changed normalized source replaces the prior derived WAV."""
@@ -329,19 +367,28 @@ class TestProcessSingleFile:
             "mapping_file": str(output_dir / "speaker_mapping.json"),
         }
 
-        with patch(
-            "transcript_combobulator.pipeline.get_output_path_for_input",
-            return_value=output_dir,
-        ), patch(
-            "transcript_combobulator.pipeline.is_pipeline_complete", return_value=False
-        ), patch(
-            "transcript_combobulator.pipeline.needs_conversion", return_value=False
-        ), patch(
-            "transcript_combobulator.pipeline.process_audio", return_value=(output_dir, [])
-        ), patch(
-            "transcript_combobulator.pipeline.transcribe_segments",
-            return_value=transcription,
-        ), patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=output_dir,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=False,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=False
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                return_value=(output_dir, []),
+            ),
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                return_value=transcription,
+            ),
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
             main(str(input_file))
 
         assert output_file.read_bytes() == b"new audio"
@@ -368,22 +415,32 @@ class TestProcessSingleFile:
             assert not destination.exists()
             destination.touch()
 
-        with patch(
-            "transcript_combobulator.pipeline.get_output_path_for_input",
-            return_value=output_dir,
-        ), patch(
-            "transcript_combobulator.pipeline.is_pipeline_complete", return_value=False
-        ), patch(
-            "transcript_combobulator.pipeline.needs_conversion", return_value=True
-        ), patch(
-            "transcript_combobulator.pipeline.convert_to_wav",
-            side_effect=convert_after_removal,
-        ), patch(
-            "transcript_combobulator.pipeline.process_audio", return_value=(output_dir, [])
-        ), patch(
-            "transcript_combobulator.pipeline.transcribe_segments",
-            return_value=transcription,
-        ), patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=output_dir,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=False,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=True
+            ),
+            patch(
+                "transcript_combobulator.pipeline.convert_to_wav",
+                side_effect=convert_after_removal,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                return_value=(output_dir, []),
+            ),
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                return_value=transcription,
+            ),
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
             main(str(input_file))
 
         assert output_file.exists()
@@ -393,9 +450,11 @@ class TestWorkerInitialization:
     """Tests for process-wide worker setup."""
 
     def test_applies_priority_and_torch_limits_once(self):
-        with patch("transcript_combobulator.batch.os.nice") as nice, patch(
-            "torch.set_num_threads"
-        ) as set_threads, patch("torch.set_num_interop_threads") as set_interop:
+        with (
+            patch("transcript_combobulator.batch.os.nice") as nice,
+            patch("torch.set_num_threads") as set_threads,
+            patch("torch.set_num_interop_threads") as set_interop,
+        ):
             _initialize_worker(torch_threads=3, worker_nice=10)
 
         nice.assert_called_once_with(10)
@@ -403,9 +462,10 @@ class TestWorkerInitialization:
         set_interop.assert_called_once_with(1)
 
     def test_zero_values_leave_process_defaults(self):
-        with patch("transcript_combobulator.batch.os.nice") as nice, patch(
-            "torch.set_num_threads"
-        ) as set_threads:
+        with (
+            patch("transcript_combobulator.batch.os.nice") as nice,
+            patch("torch.set_num_threads") as set_threads,
+        ):
             _initialize_worker(torch_threads=0, worker_nice=0)
 
         nice.assert_not_called()
@@ -572,7 +632,10 @@ class TestResolveLogFile:
     def test_relative_path_resolves_against_project_root(self, tmp_path):
         from transcript_combobulator.config import ROOT_DIR
 
-        assert _resolve_log_file("logs/run.log", tmp_path, "s") == ROOT_DIR / "logs" / "run.log"
+        assert (
+            _resolve_log_file("logs/run.log", tmp_path, "s")
+            == ROOT_DIR / "logs" / "run.log"
+        )
 
 
 class TestPartialTranscriptionFailsFile:
@@ -589,12 +652,30 @@ class TestPartialTranscriptionFailsFile:
             "mapping_file": str(tmp_path / "speaker_mapping.json"),
             "metrics": {"chunk_count": 200, "failed_chunk_count": failed, "chunks": []},
         }
-        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=tmp_path), \
-             patch("transcript_combobulator.pipeline.is_pipeline_complete", return_value=False), \
-             patch("transcript_combobulator.pipeline.needs_conversion", return_value=False), \
-             patch("transcript_combobulator.pipeline.process_audio", return_value=(tmp_path, [])), \
-             patch("transcript_combobulator.pipeline.transcribe_segments", return_value=transcription), \
-             patch("transcript_combobulator.pipeline.write_pipeline_manifest") as manifest:
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=tmp_path,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=False,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=False
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                return_value=(tmp_path, []),
+            ),
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                return_value=transcription,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.write_pipeline_manifest"
+            ) as manifest,
+        ):
             metrics = main(str(input_file))
         return metrics, manifest
 
@@ -622,12 +703,28 @@ class TestOutputPlacement:
             "mapping_file": str(tmp_path / "out_mapping.json"),
             "metrics": {"chunk_count": 0, "failed_chunk_count": 0, "chunks": []},
         }
-        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=tmp_path / "out") as out, \
-             patch("transcript_combobulator.pipeline.is_pipeline_complete", return_value=False), \
-             patch("transcript_combobulator.pipeline.needs_conversion", return_value=False), \
-             patch("transcript_combobulator.pipeline.process_audio", return_value=(tmp_path, [])), \
-             patch("transcript_combobulator.pipeline.transcribe_segments", return_value=transcription) as ts, \
-             patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=tmp_path / "out",
+            ) as out,
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=False,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=False
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                return_value=(tmp_path, []),
+            ),
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                return_value=transcription,
+            ) as ts,
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
             main(str(input_file), session=session)
         return out, ts
 
@@ -653,7 +750,10 @@ class TestStageReuse:
     """Completed stages are reused; only the changed stage and later rerun."""
 
     def _setup(self, tmp_path):
-        from transcript_combobulator.pipeline_cache import build_stage_fingerprints, record_stage
+        from transcript_combobulator.pipeline_cache import (
+            build_stage_fingerprints,
+            record_stage,
+        )
 
         input_file = tmp_path / "speaker.flac"
         input_file.write_bytes(b"audio")
@@ -664,9 +764,21 @@ class TestStageReuse:
         mapping = output_dir / "speaker_mapping.json"
         seg = output_dir / "speaker_segment_000.wav"
         seg.touch()
-        mapping.write_text(json.dumps({"segments": [
-            {"start_seconds": 1.0, "end_seconds": 2.0, "clip_start_seconds": 0.7, "clip_end_seconds": 2.3, "segment_file": str(seg)}
-        ]}))
+        mapping.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {
+                            "start_seconds": 1.0,
+                            "end_seconds": 2.0,
+                            "clip_start_seconds": 0.7,
+                            "clip_end_seconds": 2.3,
+                            "segment_file": str(seg),
+                        }
+                    ]
+                }
+            )
+        )
         manifest = output_dir / "speaker_pipeline_manifest.json"
         fps = build_stage_fingerprints(input_file)
         record_stage(manifest, "conversion", fps["conversion"], [wav])
@@ -683,12 +795,22 @@ class TestStageReuse:
             "mapping_file": str(output_dir / "speaker_mapping.json"),
             "metrics": {"chunk_count": 1, "failed_chunk_count": 0, "chunks": []},
         }
-        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=output_dir), \
-             patch("transcript_combobulator.pipeline.convert_to_wav") as convert, \
-             patch("transcript_combobulator.pipeline.needs_conversion", return_value=True), \
-             patch("transcript_combobulator.pipeline.process_audio") as vad, \
-             patch("transcript_combobulator.pipeline.transcribe_segments", return_value=transcription) as ts, \
-             patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=output_dir,
+            ),
+            patch("transcript_combobulator.pipeline.convert_to_wav") as convert,
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=True
+            ),
+            patch("transcript_combobulator.pipeline.process_audio") as vad,
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                return_value=transcription,
+            ) as ts,
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
             metrics = main(str(input_file))
 
         convert.assert_not_called()
@@ -699,22 +821,33 @@ class TestStageReuse:
         assert metrics["vad"]["chunk_count"] == 1
 
     def test_presentation_only_change_rewrites_vtt_without_inference(self, tmp_path):
-        from transcript_combobulator.pipeline_cache import record_stage
         from transcript_combobulator.pipeline import process_file as main
+        from transcript_combobulator.pipeline_cache import record_stage
 
         input_file, output_dir, manifest, fps = self._setup(tmp_path)
         json_path = output_dir / "speaker_transcription.json"
-        json_path.write_text(json.dumps({"segments": [
-            {"start": 1.0, "end": 2.0, "text": "Hello", "confidence": 90.0}
-        ]}))
+        json_path.write_text(
+            json.dumps(
+                {
+                    "segments": [
+                        {"start": 1.0, "end": 2.0, "text": "Hello", "confidence": 90.0}
+                    ]
+                }
+            )
+        )
         vtt = output_dir / "speaker.vtt"
         vtt.touch()
         record_stage(manifest, "inference", fps["inference"], [json_path, vtt])
 
-        with patch("transcript_combobulator.pipeline.get_output_path_for_input", return_value=output_dir), \
-             patch("transcript_combobulator.pipeline.process_audio") as vad, \
-             patch("transcript_combobulator.pipeline.transcribe_segments") as ts, \
-             patch("transcript_combobulator.pipeline.write_pipeline_manifest"):
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=output_dir,
+            ),
+            patch("transcript_combobulator.pipeline.process_audio") as vad,
+            patch("transcript_combobulator.pipeline.transcribe_segments") as ts,
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
             metrics = main(str(input_file))
 
         vad.assert_not_called()

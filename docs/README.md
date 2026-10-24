@@ -43,6 +43,13 @@ make setup PYTHON=/usr/bin/python3.12
 pyenv users: the committed `.python-version` selects 3.14.3 through the
 pyenv shim (`pyenv install 3.14.3` once).
 
+Apple Silicon can run Whisper on the GPU instead of the CPU. `WHISPER_DEVICE=mps`
+needs nothing extra. `WHISPER_RUNTIME=mlx` is faster still: `make install
+EXTRAS=dev,mac`, then `WHISPER_RUNTIME=mlx make setup-whisper` (downloads the
+pinned mlx checkpoint, about 1.5 GB, to `models/mlx/`), and set
+`WHISPER_RUNTIME=mlx` in the campaign env. See AGENTS.md for the measurements and
+the differences from stock whisper. The default stays `openai` on the CPU.
+
 Low-memory hosts (for example an 8 GB Raspberry Pi) should set
 `PARALLEL_JOBS=1` and a smaller `WHISPER_MODEL` in `.env`; each worker holds a
 full copy of the model in RAM. `models/` can be pre-seeded by copying the `.pt`
@@ -120,11 +127,15 @@ make run-single file=path/to/file.flac  # One file, no combine
 # Post-processing
 make combine-transcripts session=name   # Re-merge per-speaker VTTs
 make filter-vtt file=path/to/file.flac threshold=60  # Re-emit a VTT above a confidence, no inference
+make compare-transcripts ref="old-1.txt old-2.txt" hyp="new-1.txt new-2.txt"  # Per-speaker differences between two runs
 
 # Dev
 make test-fast                          # Suite without real inference (seconds)
 make test                               # Whole suite (minutes)
-make lint                               # mypy --strict
+make check-sample                       # Transcribe the 4-speaker AMI sample; print WER against AMI's human transcript; fail if any word changed (samples/ami/NOTICE.md)
+make lint                               # ruff check and format check
+make format                             # ruff format
+make typecheck                          # mypy --strict
 make clean-output                       # Delete every session's outputs under tmp/output
 ```
 
@@ -140,7 +151,7 @@ ENV_FILE=/path/to/.env.campaign /path/to/repo/.venv/bin/combobulator run /srv/cr
 ```
 
 `combobulator --help` lists the other commands (`file`, `combine`,
-`filter-vtt`, `session-env`, `setup-model`, `samples`); every Makefile target wraps one.
+`filter-vtt`, `session-env`, `compare`, `setup-model`, `samples`); every Makefile target wraps one.
 `session-env` writes a session's own env from a recording bundle
 ([recording-bundle.md](recording-bundle.md)) and a speakers file.
 Defaults in `.env`:

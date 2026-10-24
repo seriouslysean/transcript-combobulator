@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 # Streaming block size for the two-pass peak normalisation (samples).
 _NORMALIZE_BLOCK = 16000 * 60
 
-SUPPORTED_FORMATS = {'.wav', '.flac', '.mp3', '.m4a', '.ogg', '.aac', '.opus'}
+SUPPORTED_FORMATS = {".wav", ".flac", ".mp3", ".m4a", ".ogg", ".aac", ".opus"}
 
 
 class AudioValidationError(Exception):
@@ -36,11 +36,11 @@ def validate_audio_file(file_path: Path) -> dict[str, Any]:
     try:
         with sf.SoundFile(str(file_path)) as f:
             return {
-                'sample_rate': f.samplerate,
-                'channels': f.channels,
-                'duration': f.frames / f.samplerate,
-                'format': file_path.suffix.lower(),
-                'frames': f.frames,
+                "sample_rate": f.samplerate,
+                "channels": f.channels,
+                "duration": f.frames / f.samplerate,
+                "format": file_path.suffix.lower(),
+                "frames": f.frames,
             }
     except Exception as e:
         raise AudioValidationError(f"Failed to read audio file {file_path}: {e}") from e
@@ -53,9 +53,9 @@ def needs_conversion(file_path: Path, target_sample_rate: int = 16000) -> bool:
     except AudioValidationError:
         return True
     return bool(
-        info['format'] != '.wav'
-        or info['sample_rate'] != target_sample_rate
-        or info['channels'] != 1
+        info["format"] != ".wav"
+        or info["sample_rate"] != target_sample_rate
+        or info["channels"] != 1
     )
 
 
@@ -70,9 +70,9 @@ def convert_to_wav(
         try:
             info = validate_audio_file(output_path)
             if (
-                info['sample_rate'] == target_sample_rate
-                and info['format'] == '.wav'
-                and info['channels'] == 1
+                info["sample_rate"] == target_sample_rate
+                and info["format"] == ".wav"
+                and info["channels"] == 1
             ):
                 logger.info(f"Using existing converted file: {output_path}")
                 return
@@ -87,8 +87,10 @@ def convert_to_wav(
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         _convert_with_ffmpeg(
-            input_path, output_path, target_sample_rate,
-            timeout_seconds=max(600.0, 10.0 * float(input_info['duration'])),
+            input_path,
+            output_path,
+            target_sample_rate,
+            timeout_seconds=max(600.0, 10.0 * float(input_info["duration"])),
         )
 
         info = validate_audio_file(output_path)
@@ -113,7 +115,7 @@ def _convert_with_ffmpeg(
     normalisation divides by the post-downmix, post-resample absolute peak
     (plus 1e-8), which is the project's "normalized once" contract.
     """
-    ffmpeg = shutil.which('ffmpeg')
+    ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise AudioValidationError(
             "ffmpeg not found on PATH (Debian: apt install ffmpeg; macOS: brew install ffmpeg)"
@@ -122,9 +124,20 @@ def _convert_with_ffmpeg(
     try:
         subprocess.run(
             [
-                ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
-                '-i', str(input_path),
-                '-ac', '1', '-ar', str(target_sample_rate), '-c:a', 'pcm_f32le',
+                ffmpeg,
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(input_path),
+                "-ac",
+                "1",
+                "-ar",
+                str(target_sample_rate),
+                "-c:a",
+                "pcm_f32le",
                 str(raw_path),
             ],
             check=True,
@@ -144,18 +157,28 @@ def _convert_with_ffmpeg(
 
     try:
         peak = 0.0
-        for block in sf.blocks(str(raw_path), blocksize=_NORMALIZE_BLOCK, dtype='float32'):
+        for block in sf.blocks(
+            str(raw_path), blocksize=_NORMALIZE_BLOCK, dtype="float32"
+        ):
             if block.size:
                 peak = max(peak, float(np.abs(block).max()))
         scale = 1.0 / (peak + 1e-8)
         with sf.SoundFile(
-            str(output_path), 'w', samplerate=target_sample_rate, channels=1, subtype='PCM_16'
+            str(output_path),
+            "w",
+            samplerate=target_sample_rate,
+            channels=1,
+            subtype="PCM_16",
         ) as out:
-            for block in sf.blocks(str(raw_path), blocksize=_NORMALIZE_BLOCK, dtype='float32'):
+            for block in sf.blocks(
+                str(raw_path), blocksize=_NORMALIZE_BLOCK, dtype="float32"
+            ):
                 out.write(block * scale)
     finally:
         raw_path.unlink(missing_ok=True)
-    logger.info(f"Converted to mono {target_sample_rate}Hz, peak {peak:.4f} normalised to 1.0")
+    logger.info(
+        f"Converted to mono {target_sample_rate}Hz, peak {peak:.4f} normalised to 1.0"
+    )
 
 
 def get_audio_info_summary(file_path: Path) -> str:
