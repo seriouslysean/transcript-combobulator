@@ -237,8 +237,8 @@ def accuracy(ref: Transcript, hyp: Transcript, slack: float = 1.0) -> dict[str, 
     Substitutions, deletions and insertions come from jiwer's alignment over whisper-normalised
     words. ``other_speaker_words`` counts insertions that another speaker's reference line says
     within ``slack`` seconds of the hypothesis line: a sign of speech picked up from someone
-    else's microphone. It needs timestamps on both sides, and is only a sign: a common word
-    can match by chance.
+    else's microphone. It needs timestamps on both sides (``None`` without them), and is only
+    a sign: a common word can match by chance.
     """
     import jiwer
 
@@ -254,6 +254,9 @@ def accuracy(ref: Transcript, hyp: Transcript, slack: float = 1.0) -> dict[str, 
                     near.update(normalize(text).split())
         return near
 
+    timed = any(t for v in ref.times.values() for t in v) and any(
+        t for v in hyp.times.values() for t in v
+    )
     per: dict[str, dict[str, Any]] = {}
     tot: Counter[str] = Counter()
     for sp in sorted(ref.lines.keys() | hyp.lines.keys()):
@@ -287,17 +290,27 @@ def accuracy(ref: Transcript, hyp: Transcript, slack: float = 1.0) -> dict[str, 
             "ref_words": len(rw),
             "hyp_words": len(hw),
             **c,
-            "other_speaker_words": other,
+            "other_speaker_words": other if timed else None,
             "wer_pct": round(100 * errors / max(1, len(rw)), 2),
         }
-        tot.update({k: v for k, v in per[sp].items() if k != "wer_pct"})
+        tot.update(
+            {k: v for k, v in per[sp].items() if k != "wer_pct" and v is not None}
+        )
     errors = tot["substitutions"] + tot["deletions"] + tot["insertions"]
     return {
         "wer_pct": round(100 * errors / max(1, tot["ref_words"]), 2),
-        "wer_pct_without_other_speaker_words": round(
-            100 * (errors - tot["other_speaker_words"]) / max(1, tot["ref_words"]), 2
+        "wer_pct_without_other_speaker_words": (
+            round(
+                100 * (errors - tot["other_speaker_words"]) / max(1, tot["ref_words"]),
+                2,
+            )
+            if timed
+            else None
         ),
-        "totals": dict(tot),
+        "totals": {
+            **tot,
+            "other_speaker_words": tot["other_speaker_words"] if timed else None,
+        },
         "per_speaker": per,
     }
 
@@ -350,14 +363,19 @@ def main(argv: list[str] | None = None) -> None:
         acc = accuracy(ref, hyp)
         if args.json:
             args.json.write_text(json.dumps(acc, indent=1), encoding="utf-8")
+        without = acc["wer_pct_without_other_speaker_words"]
         print(
             f"WER against the human reference: {acc['wer_pct']}% "
-            f"({acc['wer_pct_without_other_speaker_words']}% without words another speaker said)"
+            + (
+                f"({without}% without words another speaker said)"
+                if without is not None
+                else "(words another speaker said not counted: no timestamps)"
+            )
         )
         for sp, v in acc["per_speaker"].items():
             print(
                 f"{sp:10} ref {v['ref_words']:6}  wer {v['wer_pct']:6}%  sub {v['substitutions']}  "
-                f"del {v['deletions']}  ins {v['insertions']} (other speakers {v['other_speaker_words']})"
+                f"del {v['deletions']}  ins {v['insertions']} (other speakers {'n/a' if v['other_speaker_words'] is None else v['other_speaker_words']})"
             )
         return
     report = compare(ref, hyp, WHISPER_PROMPT)

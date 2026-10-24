@@ -243,7 +243,7 @@ def ami_human_reference(zip_path: Path) -> tuple[str, dict[str, Any]]:
             meeting.iter("speaker"), key=lambda e: int(e.get("channel", ""))
         )
         mapping: dict[str, dict[str, Any]] = {}
-        turns: list[tuple[float, float, str, str, list[str]]] = []
+        turns: list[tuple[float, float, str, str, list[list[Any]]]] = []
         for sp in speakers:
             agent, channel = sp.get("nxt_agent", ""), int(sp.get("channel", ""))
             label = f"Speaker {'ABCD'[channel]}"
@@ -259,7 +259,7 @@ def ami_human_reference(zip_path: Path) -> tuple[str, dict[str, Any]]:
             segs = ET.fromstring(z.read(f"segments/{AMI_MEETING}.{agent}.segments.xml"))
             for seg in segs.iter("segment"):
                 text: list[str] = []
-                ids: list[str] = []
+                kept: list[list[Any]] = []
                 times: list[float] = []
                 for child in seg.iter(f"{_NITE}child"):
                     m = _HREF_RE.search(child.get("href", ""))
@@ -281,7 +281,7 @@ def ami_human_reference(zip_path: Path) -> tuple[str, dict[str, Any]]:
                                 text[-1] += e.text or ""
                             continue
                         text.append(e.text or "")
-                        ids.append(e.get(f"{_NITE}id", ""))
+                        kept.append([e.get(f"{_NITE}id", ""), t0, t1])
                         times += [t0, t1]
                 if text:
                     turns.append(
@@ -290,7 +290,7 @@ def ami_human_reference(zip_path: Path) -> tuple[str, dict[str, Any]]:
                             max(times) - start,
                             label,
                             " ".join(text),
-                            ids,
+                            kept,
                         )
                     )
     turns.sort(key=lambda t: (t[0], t[2]))
@@ -313,9 +313,9 @@ def ami_human_reference(zip_path: Path) -> tuple[str, dict[str, Any]]:
                 "speaker": lab,
                 "start": round(t0 + start, 3),
                 "end": round(t1 + start, 3),
-                "word_ids": ids,
+                "words": kept,
             }
-            for t0, t1, lab, _, ids in turns
+            for t0, t1, lab, _, kept in turns
         ],
     }
     return "\n".join(header + [""] + body) + "\n", sidecar

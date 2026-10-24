@@ -20,8 +20,8 @@ project.
   excerpt: `.env.ami-sample` with whisper `large-v3-turbo` on CPU, run on 2026-10-21.
 - `EN2002b-human.txt` is derived from AMI's word-level transcript by
   `combobulator samples --ami-human`, which downloads the annotations and checks a pinned
-  SHA-256. `EN2002b-human.json` records the source, each line's AMI word ids, and the speaker
-  mapping. Changes from AMI's annotation:
+  SHA-256. `EN2002b-human.json` records the source, each word's AMI id and original times, and the
+  speaker mapping. Changes from AMI's annotation:
   - Window: only words that start and end inside 240 to 540 s. Times are seconds from 240.
   - Speakers: each AMI agent is labelled by its headset channel from `meetings.xml`
     (channel 0 is Speaker A, and so on), the same order as the audio files.
@@ -63,13 +63,16 @@ each row one change from `.env.ami-sample`:
 | `VAD_MIN_SPEECH_DURATION=1.0` | 43.2% | 28.0% |
 | `VAD_MIN_SILENCE_DURATION=0.5` | 38.0% | 27.4% |
 
-Most of the spread is bleed: a higher threshold drops the quieter speech from other
-headsets. The column without those words moves far less, and one excerpt can't say whether
-the gain carries over to Discord tracks.
+The spread follows the bleed: from the default to 0.95, speaker A's inserted words that
+another speaker said fall from 58 to 3. The column without them moves far less. One excerpt
+can't say whether the gain carries over to Discord tracks.
 
 **About the bleed.** Each headset picks up the other speakers. Whisper writes much of that
 speech into the wrong speaker's lines, and Discord tracks normally do not have it. WER counts
 those words as insertions. `compare --wer` also reports how many inserted words another
 speaker's reference line says within 1 s (`other_speaker_words`), and the WER without them.
-That count is only a sign: a common word can match by chance.
+That count is only a sign: a common word can match by chance. With the default run's
+times shifted by 30 s, so that real bleed can't line up, it still counts 57 of the 187 words
+(at 0.95: 17 of 58). The column without them subtracts that chance share too. Without
+timestamps on both sides it is not counted.
 

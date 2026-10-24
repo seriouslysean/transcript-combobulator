@@ -87,41 +87,63 @@ def _ami_zip(path: Path) -> Path:
     words_a = (
         f"<nite:root {nite}>"
         + w("a1", -1.0, "before")  # starts before the window
+        + w("a0", -0.2, "edge")  # straddles the window's start
         + w("a2", 1.0, "hello")
         + w("a3", 1.4, ",", punc="true")
         + w("a4", 1.5, "wor", trunc="true")
         + '<vocalsound nite:id="a5" starttime="242" endtime="243" type="laugh"/>'
         + w("a6", 2.0, "world")
         + w("a7", 2.4, ".", punc="true")
+        + w("a8", samples.AMI_SECONDS - 0.2, "late")  # straddles the window's end
+        + w("a9", samples.AMI_SECONDS + 1.0, "after")
         + "</nite:root>"
     )
-    words_b = f"<nite:root {nite}>" + w("b1", 0.5, "hi") + "</nite:root>"
+    words_b = (
+        f"<nite:root {nite}>"
+        + w("b1", 0.5, "hi")
+        + w("b2", 3.0, "bye")
+        + "</nite:root>"
+    )
 
-    def segs(agent: str, first: str, last: str) -> str:
-        href = f"{m}.{agent}.words.xml#id({first})..id({last})"
+    def segs(agent: str, *spans: tuple[str, str]) -> str:
+        hrefs = [
+            f"{m}.{agent}.words.xml#id({first})..id({last})" for first, last in spans
+        ]
         return (
-            f'<nite:root {nite}><segment nite:id="s{agent}">'
-            f'<nite:child href="{href}"/></segment></nite:root>'
+            f"<nite:root {nite}>"
+            + "".join(
+                f'<segment nite:id="s{agent}{n}"><nite:child href="{h}"/></segment>'
+                for n, h in enumerate(hrefs)
+            )
+            + "</nite:root>"
         )
 
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("corpusResources/meetings.xml", meetings)
         z.writestr(f"words/{m}.A.words.xml", words_a)
         z.writestr(f"words/{m}.B.words.xml", words_b)
-        z.writestr(f"segments/{m}.A.segments.xml", segs("A", "a1", "a7"))
-        z.writestr(f"segments/{m}.B.segments.xml", segs("B", "b1", "b1"))
+        z.writestr(f"segments/{m}.A.segments.xml", segs("A", ("a1", "a9")))
+        z.writestr(
+            f"segments/{m}.B.segments.xml", segs("B", ("b1", "b1"), ("b2", "b2"))
+        )
     return path
 
 
 def test_the_ami_reference_maps_channels_and_filters_words(tmp_path: Path) -> None:
     text, sidecar = samples.ami_human_reference(_ami_zip(tmp_path / "ami.zip"))
     body = text.split("\n\n", 1)[1].splitlines()
-    # Channel picks the label, not the agent letter; lines sort by start time.
+    # Channel picks the label, not the agent letter; lines sort by start time; words that
+    # cross either edge of the window are dropped.
     assert body == [
         "Speaker A: hi [00:00:00.500 --> 00:00:00.900]",
         "Speaker B: hello, world. [00:00:01.000 --> 00:00:02.400]",
+        "Speaker A: bye [00:00:03.000 --> 00:00:03.400]",
     ]
     assert sidecar["speakers"]["Speaker B"]["nxt_agent"] == "A"
     assert sidecar["speakers"]["Speaker B"]["headset"].endswith("Headset-1.wav")
-    assert sidecar["lines"][1]["word_ids"] == ["a2", "a6"]
+    start = samples.AMI_START_SECONDS
+    assert sidecar["lines"][1]["words"] == [
+        ["a2", start + 1.0, start + 1.4],
+        ["a6", start + 2.0, start + 2.4],
+    ]
     assert sidecar["sha256"] == samples.AMI_ANNOTATIONS_SHA256

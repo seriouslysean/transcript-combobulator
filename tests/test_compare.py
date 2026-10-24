@@ -216,14 +216,25 @@ def test_accuracy_counts_errors_and_words_another_speaker_said(tmp_path: Path) -
     )
 
 
-def test_accuracy_without_timestamps_counts_no_other_speaker_words(
+def test_accuracy_without_timestamps_leaves_other_speaker_words_uncounted(
     tmp_path: Path,
 ) -> None:
     ref = load([_write(tmp_path / "a.txt", LINES)])
     hyp = load([_write(tmp_path / "b.txt", [*LINES, "DM: the guards"])])
     r = accuracy(ref, hyp)
     assert r["per_speaker"]["DM"]["insertions"] == 2
-    assert r["totals"]["other_speaker_words"] == 0
+    # Not counted rather than zero: without times there is nothing to match.
+    assert r["totals"]["other_speaker_words"] is None
+    assert r["wer_pct_without_other_speaker_words"] is None
+
+
+def test_accuracy_does_not_count_a_speakers_own_words_as_another_speakers(
+    tmp_path: Path,
+) -> None:
+    ref = _stamped(tmp_path / "ref.txt", [("Orsk: I check the gate", 0.0, 3.0)])
+    hyp = _stamped(tmp_path / "hyp.txt", [("Orsk: I check the gate gate", 0.0, 3.0)])
+    orsk = accuracy(load([ref]), load([hyp]))["per_speaker"]["Orsk"]
+    assert (orsk["insertions"], orsk["other_speaker_words"]) == (1, 0)
 
 
 def test_accuracy_scores_a_speaker_missing_from_one_side(tmp_path: Path) -> None:
