@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from transcript_combobulator.compare import compare, load, main
+from transcript_combobulator.compare import accuracy, compare, load, main
 
 SUMMARY = (
     "Summary:\n"
@@ -176,3 +176,80 @@ def test_combines_own_output_reads_the_same_with_and_without_timestamps(
     )
     t, p = load([stamped]), load([plain])
     assert t.lines == p.lines == {"DM": [LINES[0][4:]], "Orsk": [LINES[2][6:]]}
+
+
+def _stamped(path: Path, lines: list[tuple[str, float, float]]) -> Path:
+    def clock(s: float) -> str:
+        return f"00:00:{s:06.3f}"
+
+    return _write(
+        path,
+        [f"{text} [{clock(a)} --> {clock(b)}]" for text, a, b in lines],
+        summary="",
+    )
+
+
+def test_accuracy_counts_errors_and_words_another_speaker_said(tmp_path: Path) -> None:
+    ref = _stamped(
+        tmp_path / "ref.txt",
+        [("Orsk: I check the gate for traps", 0.0, 3.0), ("DM: roll for it", 3.5, 4.5)],
+    )
+    # "gate" misheard, and "roll" picked up from the DM's line inside the 1 s slack
+    hyp = _stamped(
+        tmp_path / "hyp.txt",
+        [
+            ("Orsk: I check the door for traps roll", 0.0, 3.2),
+            ("DM: roll for it", 3.5, 4.5),
+        ],
+    )
+    r = accuracy(load([ref]), load([hyp]))
+    orsk = r["per_speaker"]["Orsk"]
+    assert (orsk["substitutions"], orsk["deletions"], orsk["insertions"]) == (1, 0, 1)
+    assert orsk["other_speaker_words"] == 1
+    assert r["per_speaker"]["DM"]["wer_pct"] == 0.0
+    assert r["wer_pct"] == round(100 * 2 / 9, 2)
+    assert r["wer_pct_without_other_speaker_words"] == round(100 * 1 / 9, 2)
+    # Out of the slack, the same word is just an insertion.
+    assert (
+        accuracy(load([ref]), load([hyp]), slack=0.0)["totals"]["other_speaker_words"]
+        == 0
+    )
+
+
+def test_accuracy_without_timestamps_counts_no_other_speaker_words(
+    tmp_path: Path,
+) -> None:
+    ref = load([_write(tmp_path / "a.txt", LINES)])
+    hyp = load([_write(tmp_path / "b.txt", [*LINES, "DM: the guards"])])
+    r = accuracy(ref, hyp)
+    assert r["per_speaker"]["DM"]["insertions"] == 2
+    assert r["totals"]["other_speaker_words"] == 0
+
+
+def test_accuracy_scores_a_speaker_missing_from_one_side(tmp_path: Path) -> None:
+    ref = load([_write(tmp_path / "a.txt", LINES)])
+    hyp = load([_write(tmp_path / "b.txt", LINES[:2])])
+    orsk = accuracy(ref, hyp)["per_speaker"]["Orsk"]
+    assert orsk["deletions"] == orsk["ref_words"] > 0
+    assert orsk["wer_pct"] == 100.0
+
+
+def test_main_wer_prints_accuracy_and_refuses_strict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    a, b = _write(tmp_path / "a.txt", LINES), _write(tmp_path / "b.txt", LINES[:3])
+    out = tmp_path / "r.json"
+    main(["--ref", str(a), "--hyp", str(b), "--wer", "--json", str(out)])
+    assert "WER against the human reference" in capsys.readouterr().out
+    assert json.loads(out.read_text())["per_speaker"]["DM"]["deletions"] > 0
+    with pytest.raises(SystemExit) as e:
+        main(["--ref", str(a), "--hyp", str(b), "--wer", "--strict"])
+    assert e.value.code == 2
+    capsys.readouterr()
+
+
+def test_the_committed_human_reference_has_the_sample_speakers() -> None:
+    ami = Path(__file__).parent.parent / "samples" / "ami"
+    human = load([ami / "EN2002b-human.txt"])
+    assert set(human.lines) == set(load([ami / "EN2002b-reference.txt"]).lines)
+    assert all(t is not None for ts in human.times.values() for t in ts)

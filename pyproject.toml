@@ -23,6 +23,8 @@ dependencies = [
     # silero-vad does not declare onnxruntime; its ONNX build needs it.
     "onnxruntime==1.31.0",
     "rich==15.0.0",
+    # compare --wer: substitutions, deletions and insertions from a word alignment.
+    "jiwer==4.0.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

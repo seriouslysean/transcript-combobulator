@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -65,3 +66,62 @@ def test_a_stale_cached_file_is_replaced(
         ).read_bytes()
         == DATA
     )
+
+
+def _ami_zip(path: Path) -> Path:
+    """A two-speaker stand-in for AMI's annotation zip: one meeting, its words and segments."""
+    nite = 'xmlns:nite="http://nite.sourceforge.net/"'
+    m = samples.AMI_MEETING
+    meetings = (
+        f'<corpus {nite}><meeting observation="{m}">'
+        '<speaker nxt_agent="A" channel="1" global_name="MEE001"/>'
+        '<speaker nxt_agent="B" channel="0" global_name="FEE002"/>'
+        "</meeting></corpus>"
+    )
+    t = samples.AMI_START_SECONDS
+
+    def w(i: str, s: float, text: str, **attrs: str) -> str:
+        extra = "".join(f' {k}="{v}"' for k, v in attrs.items())
+        return f'<w nite:id="{i}" starttime="{t + s}" endtime="{t + s + 0.4}"{extra}>{text}</w>'
+
+    words_a = (
+        f"<nite:root {nite}>"
+        + w("a1", -1.0, "before")  # starts before the window
+        + w("a2", 1.0, "hello")
+        + w("a3", 1.4, ",", punc="true")
+        + w("a4", 1.5, "wor", trunc="true")
+        + '<vocalsound nite:id="a5" starttime="242" endtime="243" type="laugh"/>'
+        + w("a6", 2.0, "world")
+        + w("a7", 2.4, ".", punc="true")
+        + "</nite:root>"
+    )
+    words_b = f"<nite:root {nite}>" + w("b1", 0.5, "hi") + "</nite:root>"
+
+    def segs(agent: str, first: str, last: str) -> str:
+        href = f"{m}.{agent}.words.xml#id({first})..id({last})"
+        return (
+            f'<nite:root {nite}><segment nite:id="s{agent}">'
+            f'<nite:child href="{href}"/></segment></nite:root>'
+        )
+
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("corpusResources/meetings.xml", meetings)
+        z.writestr(f"words/{m}.A.words.xml", words_a)
+        z.writestr(f"words/{m}.B.words.xml", words_b)
+        z.writestr(f"segments/{m}.A.segments.xml", segs("A", "a1", "a7"))
+        z.writestr(f"segments/{m}.B.segments.xml", segs("B", "b1", "b1"))
+    return path
+
+
+def test_the_ami_reference_maps_channels_and_filters_words(tmp_path: Path) -> None:
+    text, sidecar = samples.ami_human_reference(_ami_zip(tmp_path / "ami.zip"))
+    body = text.split("\n\n", 1)[1].splitlines()
+    # Channel picks the label, not the agent letter; lines sort by start time.
+    assert body == [
+        "Speaker A: hi [00:00:00.500 --> 00:00:00.900]",
+        "Speaker B: hello, world. [00:00:01.000 --> 00:00:02.400]",
+    ]
+    assert sidecar["speakers"]["Speaker B"]["nxt_agent"] == "A"
+    assert sidecar["speakers"]["Speaker B"]["headset"].endswith("Headset-1.wav")
+    assert sidecar["lines"][1]["word_ids"] == ["a2", "a6"]
+    assert sidecar["sha256"] == samples.AMI_ANNOTATIONS_SHA256

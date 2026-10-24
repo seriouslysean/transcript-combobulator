@@ -1,0 +1,1874 @@
+{
+ "source": "https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip",
+ "sha256": "b56e5babb2496b8795deeeda7e71178d7fbc9963f94276cf2a3f4b56ebbc9f9d",
+ "meeting": "EN2002b",
+ "window_seconds": [
+  240,
+  540
+ ],
+ "speakers": {
+  "Speaker A": {
+   "nxt_agent": "A",
+   "channel": 0,
+   "headset": "EN2002b.Headset-0.wav",
+   "global_name": "FEO070"
+  },
+  "Speaker B": {
+   "nxt_agent": "B",
+   "channel": 1,
+   "headset": "EN2002b.Headset-1.wav",
+   "global_name": "MEE071"
+  },
+  "Speaker C": {
+   "nxt_agent": "C",
+   "channel": 2,
+   "headset": "EN2002b.Headset-2.wav",
+   "global_name": "FEO072"
+  },
+  "Speaker D": {
+   "nxt_agent": "D",
+   "channel": 3,
+   "headset": "EN2002b.Headset-3.wav",
+   "global_name": "MEE073"
+  }
+ },
+ "lines": [
+  {
+   "speaker": "Speaker B",
+   "start": 240.08,
+   "end": 247.54,
+   "word_ids": [
+    "EN2002b.B.words157",
+    "EN2002b.B.words158",
+    "EN2002b.B.words159",
+    "EN2002b.B.words160",
+    "EN2002b.B.words161",
+    "EN2002b.B.words162",
+    "EN2002b.B.words163",
+    "EN2002b.B.words164",
+    "EN2002b.B.words167",
+    "EN2002b.B.words170",
+    "EN2002b.B.words171",
+    "EN2002b.B.words172"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 242.14,
+   "end": 244.4,
+   "word_ids": [
+    "EN2002b.D.words446",
+    "EN2002b.D.words448"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 244.43,
+   "end": 250.92,
+   "word_ids": [
+    "EN2002b.A.words58",
+    "EN2002b.A.words59",
+    "EN2002b.A.words60",
+    "EN2002b.A.words61",
+    "EN2002b.A.words64",
+    "EN2002b.A.words65",
+    "EN2002b.A.words66",
+    "EN2002b.A.words69",
+    "EN2002b.A.words70",
+    "EN2002b.A.words71",
+    "EN2002b.A.words72",
+    "EN2002b.A.words73",
+    "EN2002b.A.words74",
+    "EN2002b.A.words76",
+    "EN2002b.A.words77",
+    "EN2002b.A.words78",
+    "EN2002b.A.words81",
+    "EN2002b.A.words82",
+    "EN2002b.A.words84"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 251.96,
+   "end": 252.25,
+   "word_ids": [
+    "EN2002b.C.words86"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 252.07,
+   "end": 252.33,
+   "word_ids": [
+    "EN2002b.D.words452"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 253.47,
+   "end": 255.38,
+   "word_ids": [
+    "EN2002b.A.words87",
+    "EN2002b.A.words90",
+    "EN2002b.A.words91"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 253.79,
+   "end": 259.19,
+   "word_ids": [
+    "EN2002b.C.words88",
+    "EN2002b.C.words89",
+    "EN2002b.C.words91",
+    "EN2002b.C.words92",
+    "EN2002b.C.words93",
+    "EN2002b.C.words94",
+    "EN2002b.C.words95",
+    "EN2002b.C.words96",
+    "EN2002b.C.words97",
+    "EN2002b.C.words98",
+    "EN2002b.C.words99",
+    "EN2002b.C.words100",
+    "EN2002b.C.words101",
+    "EN2002b.C.words102",
+    "EN2002b.C.words103",
+    "EN2002b.C.words105",
+    "EN2002b.C.words106",
+    "EN2002b.C.words107",
+    "EN2002b.C.words108",
+    "EN2002b.C.words109",
+    "EN2002b.C.words110",
+    "EN2002b.C.words111",
+    "EN2002b.C.words113",
+    "EN2002b.C.words114",
+    "EN2002b.C.words115",
+    "EN2002b.C.words116",
+    "EN2002b.C.words117",
+    "EN2002b.C.words118"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 259.41,
+   "end": 259.61,
+   "word_ids": [
+    "EN2002b.D.words454"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 260.45,
+   "end": 267.15,
+   "word_ids": [
+    "EN2002b.C.words120",
+    "EN2002b.C.words121",
+    "EN2002b.C.words122",
+    "EN2002b.C.words123",
+    "EN2002b.C.words124",
+    "EN2002b.C.words125",
+    "EN2002b.C.words126",
+    "EN2002b.C.words127",
+    "EN2002b.C.words128",
+    "EN2002b.C.words129",
+    "EN2002b.C.words132",
+    "EN2002b.C.words133",
+    "EN2002b.C.words134",
+    "EN2002b.C.words135",
+    "EN2002b.C.words136",
+    "EN2002b.C.words137",
+    "EN2002b.C.words139",
+    "EN2002b.C.words140"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 264.2,
+   "end": 268.57,
+   "word_ids": [
+    "EN2002b.B.words178",
+    "EN2002b.B.words179",
+    "EN2002b.B.words180",
+    "EN2002b.B.words181",
+    "EN2002b.B.words182",
+    "EN2002b.B.words183",
+    "EN2002b.B.words184"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 266.15,
+   "end": 302.61,
+   "word_ids": [
+    "EN2002b.A.words94",
+    "EN2002b.A.words96",
+    "EN2002b.A.words97",
+    "EN2002b.A.words98",
+    "EN2002b.A.words99",
+    "EN2002b.A.words100",
+    "EN2002b.A.words101",
+    "EN2002b.A.words104",
+    "EN2002b.A.words106",
+    "EN2002b.A.words107",
+    "EN2002b.A.words108",
+    "EN2002b.A.words109",
+    "EN2002b.A.words110",
+    "EN2002b.A.words111",
+    "EN2002b.A.words112",
+    "EN2002b.A.words113",
+    "EN2002b.A.words114",
+    "EN2002b.A.words115",
+    "EN2002b.A.words116",
+    "EN2002b.A.words117",
+    "EN2002b.A.words118",
+    "EN2002b.A.words119",
+    "EN2002b.A.words121",
+    "EN2002b.A.words122",
+    "EN2002b.A.words123",
+    "EN2002b.A.words124",
+    "EN2002b.A.words125",
+    "EN2002b.A.words126",
+    "EN2002b.A.words127",
+    "EN2002b.A.words128",
+    "EN2002b.A.words129",
+    "EN2002b.A.words130",
+    "EN2002b.A.words133",
+    "EN2002b.A.words136",
+    "EN2002b.A.words138",
+    "EN2002b.A.words139",
+    "EN2002b.A.words142",
+    "EN2002b.A.words143",
+    "EN2002b.A.words144",
+    "EN2002b.A.words145",
+    "EN2002b.A.words146",
+    "EN2002b.A.words147",
+    "EN2002b.A.words148",
+    "EN2002b.A.words150",
+    "EN2002b.A.words153",
+    "EN2002b.A.words156"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 266.76,
+   "end": 266.97,
+   "word_ids": [
+    "EN2002b.D.words457"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 275.34,
+   "end": 285.92,
+   "word_ids": [
+    "EN2002b.C.words142",
+    "EN2002b.C.words143",
+    "EN2002b.C.words145",
+    "EN2002b.C.words146",
+    "EN2002b.C.words147",
+    "EN2002b.C.words150",
+    "EN2002b.C.words151",
+    "EN2002b.C.words152",
+    "EN2002b.C.words153",
+    "EN2002b.C.words154",
+    "EN2002b.C.words155",
+    "EN2002b.C.words157",
+    "EN2002b.C.words158",
+    "EN2002b.C.words159",
+    "EN2002b.C.words160",
+    "EN2002b.C.words161",
+    "EN2002b.C.words162",
+    "EN2002b.C.words163",
+    "EN2002b.C.words164",
+    "EN2002b.C.words165",
+    "EN2002b.C.words166",
+    "EN2002b.C.words168",
+    "EN2002b.C.words169",
+    "EN2002b.C.words170",
+    "EN2002b.C.words173",
+    "EN2002b.C.words174",
+    "EN2002b.C.words175",
+    "EN2002b.C.words176",
+    "EN2002b.C.words177"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 275.48,
+   "end": 280.52,
+   "word_ids": [
+    "EN2002b.D.words461",
+    "EN2002b.D.words462",
+    "EN2002b.D.words464"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 283.05,
+   "end": 283.37,
+   "word_ids": [
+    "EN2002b.D.words467"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 286.21,
+   "end": 289.66,
+   "word_ids": [
+    "EN2002b.B.words190",
+    "EN2002b.B.words192",
+    "EN2002b.B.words194",
+    "EN2002b.B.words196"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 286.68,
+   "end": 292.0,
+   "word_ids": [
+    "EN2002b.D.words469",
+    "EN2002b.D.words470",
+    "EN2002b.D.words471",
+    "EN2002b.D.words472",
+    "EN2002b.D.words473",
+    "EN2002b.D.words474",
+    "EN2002b.D.words475",
+    "EN2002b.D.words476",
+    "EN2002b.D.words481",
+    "EN2002b.D.words482",
+    "EN2002b.D.words486"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 289.2,
+   "end": 294.06,
+   "word_ids": [
+    "EN2002b.C.words181",
+    "EN2002b.C.words183",
+    "EN2002b.C.words184",
+    "EN2002b.C.words186",
+    "EN2002b.C.words187",
+    "EN2002b.C.words189",
+    "EN2002b.C.words191",
+    "EN2002b.C.words193",
+    "EN2002b.C.words195",
+    "EN2002b.C.words196"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 293.53,
+   "end": 293.62,
+   "word_ids": [
+    "EN2002b.D.words488"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 296.84,
+   "end": 302.38,
+   "word_ids": [
+    "EN2002b.D.words490",
+    "EN2002b.D.words492",
+    "EN2002b.D.words493",
+    "EN2002b.D.words494",
+    "EN2002b.D.words495",
+    "EN2002b.D.words496",
+    "EN2002b.D.words497",
+    "EN2002b.D.words498",
+    "EN2002b.D.words501",
+    "EN2002b.D.words504"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 296.91,
+   "end": 303.47,
+   "word_ids": [
+    "EN2002b.C.words198",
+    "EN2002b.C.words202"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 304.1,
+   "end": 306.51,
+   "word_ids": [
+    "EN2002b.D.words506",
+    "EN2002b.D.words508",
+    "EN2002b.D.words509",
+    "EN2002b.D.words510",
+    "EN2002b.D.words511",
+    "EN2002b.D.words512",
+    "EN2002b.D.words513",
+    "EN2002b.D.words514",
+    "EN2002b.D.words516",
+    "EN2002b.D.words517"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 305.46,
+   "end": 305.79,
+   "word_ids": [
+    "EN2002b.A.words158"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 307.64,
+   "end": 318.1,
+   "word_ids": [
+    "EN2002b.A.words160",
+    "EN2002b.A.words162",
+    "EN2002b.A.words163",
+    "EN2002b.A.words164",
+    "EN2002b.A.words165",
+    "EN2002b.A.words166",
+    "EN2002b.A.words167",
+    "EN2002b.A.words168",
+    "EN2002b.A.words169",
+    "EN2002b.A.words171",
+    "EN2002b.A.words172",
+    "EN2002b.A.words173",
+    "EN2002b.A.words176",
+    "EN2002b.A.words177",
+    "EN2002b.A.words178",
+    "EN2002b.A.words180",
+    "EN2002b.A.words182",
+    "EN2002b.A.words183",
+    "EN2002b.A.words186",
+    "EN2002b.A.words187",
+    "EN2002b.A.words188",
+    "EN2002b.A.words189",
+    "EN2002b.A.words190",
+    "EN2002b.A.words191",
+    "EN2002b.A.words192",
+    "EN2002b.A.words193",
+    "EN2002b.A.words196",
+    "EN2002b.A.words198",
+    "EN2002b.A.words199",
+    "EN2002b.A.words201"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 307.97,
+   "end": 308.08,
+   "word_ids": [
+    "EN2002b.D.words519"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 309.53,
+   "end": 309.86,
+   "word_ids": [
+    "EN2002b.D.words521"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 311.35,
+   "end": 313.87,
+   "word_ids": [
+    "EN2002b.B.words200",
+    "EN2002b.B.words201",
+    "EN2002b.B.words204"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 311.61,
+   "end": 311.86,
+   "word_ids": [
+    "EN2002b.D.words523"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 312.42,
+   "end": 312.8,
+   "word_ids": [
+    "EN2002b.C.words204"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 313.29,
+   "end": 314.54,
+   "word_ids": [
+    "EN2002b.D.words525",
+    "EN2002b.D.words527"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 316.21,
+   "end": 330.7,
+   "word_ids": [
+    "EN2002b.D.words529",
+    "EN2002b.D.words531",
+    "EN2002b.D.words532",
+    "EN2002b.D.words533",
+    "EN2002b.D.words534",
+    "EN2002b.D.words535",
+    "EN2002b.D.words536",
+    "EN2002b.D.words537",
+    "EN2002b.D.words538",
+    "EN2002b.D.words539",
+    "EN2002b.D.words540",
+    "EN2002b.D.words541",
+    "EN2002b.D.words543",
+    "EN2002b.D.words544",
+    "EN2002b.D.words545",
+    "EN2002b.D.words546",
+    "EN2002b.D.words547",
+    "EN2002b.D.words548",
+    "EN2002b.D.words549",
+    "EN2002b.D.words551",
+    "EN2002b.D.words552",
+    "EN2002b.D.words553",
+    "EN2002b.D.words554",
+    "EN2002b.D.words555",
+    "EN2002b.D.words556",
+    "EN2002b.D.words557",
+    "EN2002b.D.words559",
+    "EN2002b.D.words561",
+    "EN2002b.D.words563",
+    "EN2002b.D.words564",
+    "EN2002b.D.words565",
+    "EN2002b.D.words566",
+    "EN2002b.D.words568",
+    "EN2002b.D.words570",
+    "EN2002b.D.words571",
+    "EN2002b.D.words572",
+    "EN2002b.D.words574",
+    "EN2002b.D.words575",
+    "EN2002b.D.words576",
+    "EN2002b.D.words577",
+    "EN2002b.D.words579",
+    "EN2002b.D.words581",
+    "EN2002b.D.words583",
+    "EN2002b.D.words584",
+    "EN2002b.D.words585",
+    "EN2002b.D.words586",
+    "EN2002b.D.words587",
+    "EN2002b.D.words589"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 320.71,
+   "end": 321.19,
+   "word_ids": [
+    "EN2002b.C.words206"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 323.86,
+   "end": 328.1,
+   "word_ids": [
+    "EN2002b.C.words208",
+    "EN2002b.C.words210",
+    "EN2002b.C.words211",
+    "EN2002b.C.words213",
+    "EN2002b.C.words215",
+    "EN2002b.C.words216",
+    "EN2002b.C.words218",
+    "EN2002b.C.words220",
+    "EN2002b.C.words221",
+    "EN2002b.C.words222",
+    "EN2002b.C.words223",
+    "EN2002b.C.words224",
+    "EN2002b.C.words226"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 331.01,
+   "end": 345.74,
+   "word_ids": [
+    "EN2002b.A.words203",
+    "EN2002b.A.words204",
+    "EN2002b.A.words205",
+    "EN2002b.A.words206",
+    "EN2002b.A.words207",
+    "EN2002b.A.words208",
+    "EN2002b.A.words209",
+    "EN2002b.A.words210",
+    "EN2002b.A.words211",
+    "EN2002b.A.words212",
+    "EN2002b.A.words213",
+    "EN2002b.A.words214",
+    "EN2002b.A.words216",
+    "EN2002b.A.words217",
+    "EN2002b.A.words218",
+    "EN2002b.A.words220",
+    "EN2002b.A.words221",
+    "EN2002b.A.words222",
+    "EN2002b.A.words223",
+    "EN2002b.A.words224",
+    "EN2002b.A.words225",
+    "EN2002b.A.words226",
+    "EN2002b.A.words227",
+    "EN2002b.A.words228",
+    "EN2002b.A.words229",
+    "EN2002b.A.words230",
+    "EN2002b.A.words231",
+    "EN2002b.A.words232",
+    "EN2002b.A.words233",
+    "EN2002b.A.words234",
+    "EN2002b.A.words235",
+    "EN2002b.A.words236",
+    "EN2002b.A.words237"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 335.63,
+   "end": 335.91,
+   "word_ids": [
+    "EN2002b.D.words591"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 345.47,
+   "end": 349.09,
+   "word_ids": [
+    "EN2002b.C.words228",
+    "EN2002b.C.words229",
+    "EN2002b.C.words230",
+    "EN2002b.C.words231",
+    "EN2002b.C.words232",
+    "EN2002b.C.words233",
+    "EN2002b.C.words235",
+    "EN2002b.C.words236",
+    "EN2002b.C.words237",
+    "EN2002b.C.words238",
+    "EN2002b.C.words240",
+    "EN2002b.C.words241",
+    "EN2002b.C.words242",
+    "EN2002b.C.words243",
+    "EN2002b.C.words244",
+    "EN2002b.C.words245",
+    "EN2002b.C.words246",
+    "EN2002b.C.words247"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 346.95,
+   "end": 347.26,
+   "word_ids": [
+    "EN2002b.D.words593"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 347.47,
+   "end": 348.18,
+   "word_ids": [
+    "EN2002b.B.words208"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 348.21,
+   "end": 352.59,
+   "word_ids": [
+    "EN2002b.A.words239",
+    "EN2002b.A.words241",
+    "EN2002b.A.words243",
+    "EN2002b.A.words244",
+    "EN2002b.A.words246",
+    "EN2002b.A.words247",
+    "EN2002b.A.words248",
+    "EN2002b.A.words249",
+    "EN2002b.A.words251"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 349.73,
+   "end": 351.84,
+   "word_ids": [
+    "EN2002b.B.words210"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 350.6,
+   "end": 355.73,
+   "word_ids": [
+    "EN2002b.C.words249",
+    "EN2002b.C.words250",
+    "EN2002b.C.words251",
+    "EN2002b.C.words252",
+    "EN2002b.C.words253",
+    "EN2002b.C.words255",
+    "EN2002b.C.words257",
+    "EN2002b.C.words258",
+    "EN2002b.C.words259",
+    "EN2002b.C.words260",
+    "EN2002b.C.words261",
+    "EN2002b.C.words262",
+    "EN2002b.C.words264",
+    "EN2002b.C.words265",
+    "EN2002b.C.words266",
+    "EN2002b.C.words267",
+    "EN2002b.C.words268",
+    "EN2002b.C.words269",
+    "EN2002b.C.words270",
+    "EN2002b.C.words271",
+    "EN2002b.C.words272",
+    "EN2002b.C.words273",
+    "EN2002b.C.words274",
+    "EN2002b.C.words276",
+    "EN2002b.C.words277"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 351.95,
+   "end": 352.35,
+   "word_ids": [
+    "EN2002b.D.words595"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 355.59,
+   "end": 355.86,
+   "word_ids": [
+    "EN2002b.A.words253"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 356.11,
+   "end": 356.39,
+   "word_ids": [
+    "EN2002b.D.words597"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 357.38,
+   "end": 368.72,
+   "word_ids": [
+    "EN2002b.B.words213",
+    "EN2002b.B.words214",
+    "EN2002b.B.words215",
+    "EN2002b.B.words216",
+    "EN2002b.B.words217",
+    "EN2002b.B.words218",
+    "EN2002b.B.words220",
+    "EN2002b.B.words221",
+    "EN2002b.B.words222",
+    "EN2002b.B.words224",
+    "EN2002b.B.words225",
+    "EN2002b.B.words226",
+    "EN2002b.B.words227",
+    "EN2002b.B.words228",
+    "EN2002b.B.words229",
+    "EN2002b.B.words230",
+    "EN2002b.B.words231",
+    "EN2002b.B.words232",
+    "EN2002b.B.words233",
+    "EN2002b.B.words235",
+    "EN2002b.B.words236",
+    "EN2002b.B.words237",
+    "EN2002b.B.words238",
+    "EN2002b.B.words239",
+    "EN2002b.B.words241",
+    "EN2002b.B.words242",
+    "EN2002b.B.words244",
+    "EN2002b.B.words245",
+    "EN2002b.B.words246",
+    "EN2002b.B.words247",
+    "EN2002b.B.words248",
+    "EN2002b.B.words249",
+    "EN2002b.B.words250",
+    "EN2002b.B.words251",
+    "EN2002b.B.words253",
+    "EN2002b.B.words254",
+    "EN2002b.B.words255",
+    "EN2002b.B.words256",
+    "EN2002b.B.words257",
+    "EN2002b.B.words258",
+    "EN2002b.B.words260",
+    "EN2002b.B.words261",
+    "EN2002b.B.words262",
+    "EN2002b.B.words263",
+    "EN2002b.B.words264",
+    "EN2002b.B.words265",
+    "EN2002b.B.words266",
+    "EN2002b.B.words268"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 363.29,
+   "end": 363.61,
+   "word_ids": [
+    "EN2002b.D.words599"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 363.35,
+   "end": 363.69,
+   "word_ids": [
+    "EN2002b.A.words255"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 365.94,
+   "end": 372.89,
+   "word_ids": [
+    "EN2002b.D.words601",
+    "EN2002b.D.words604",
+    "EN2002b.D.words605",
+    "EN2002b.D.words607",
+    "EN2002b.D.words608",
+    "EN2002b.D.words609",
+    "EN2002b.D.words610",
+    "EN2002b.D.words611",
+    "EN2002b.D.words612",
+    "EN2002b.D.words613",
+    "EN2002b.D.words615",
+    "EN2002b.D.words616",
+    "EN2002b.D.words617",
+    "EN2002b.D.words618",
+    "EN2002b.D.words620"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 366.3,
+   "end": 389.01,
+   "word_ids": [
+    "EN2002b.C.words279",
+    "EN2002b.C.words281",
+    "EN2002b.C.words283",
+    "EN2002b.C.words285",
+    "EN2002b.C.words287",
+    "EN2002b.C.words288",
+    "EN2002b.C.words290",
+    "EN2002b.C.words293",
+    "EN2002b.C.words294",
+    "EN2002b.C.words295",
+    "EN2002b.C.words297",
+    "EN2002b.C.words298",
+    "EN2002b.C.words299",
+    "EN2002b.C.words300",
+    "EN2002b.C.words301",
+    "EN2002b.C.words302",
+    "EN2002b.C.words303",
+    "EN2002b.C.words304",
+    "EN2002b.C.words306",
+    "EN2002b.C.words307",
+    "EN2002b.C.words308",
+    "EN2002b.C.words309",
+    "EN2002b.C.words310",
+    "EN2002b.C.words311",
+    "EN2002b.C.words312",
+    "EN2002b.C.words313",
+    "EN2002b.C.words314",
+    "EN2002b.C.words315",
+    "EN2002b.C.words317",
+    "EN2002b.C.words318",
+    "EN2002b.C.words319",
+    "EN2002b.C.words320",
+    "EN2002b.C.words321",
+    "EN2002b.C.words322",
+    "EN2002b.C.words323",
+    "EN2002b.C.words324",
+    "EN2002b.C.words325",
+    "EN2002b.C.words327",
+    "EN2002b.C.words328",
+    "EN2002b.C.words330",
+    "EN2002b.C.words331",
+    "EN2002b.C.words333",
+    "EN2002b.C.words334",
+    "EN2002b.C.words336",
+    "EN2002b.C.words337",
+    "EN2002b.C.words338",
+    "EN2002b.C.words339",
+    "EN2002b.C.words341",
+    "EN2002b.C.words342",
+    "EN2002b.C.words343",
+    "EN2002b.C.words344",
+    "EN2002b.C.words346"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 370.97,
+   "end": 373.54,
+   "word_ids": [
+    "EN2002b.B.words270",
+    "EN2002b.B.words272",
+    "EN2002b.B.words274",
+    "EN2002b.B.words275"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 372.81,
+   "end": 375.8,
+   "word_ids": [
+    "EN2002b.A.words258",
+    "EN2002b.A.words260",
+    "EN2002b.A.words261",
+    "EN2002b.A.words262",
+    "EN2002b.A.words263",
+    "EN2002b.A.words264",
+    "EN2002b.A.words265",
+    "EN2002b.A.words266",
+    "EN2002b.A.words267",
+    "EN2002b.A.words268"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 380.13,
+   "end": 382.47,
+   "word_ids": [
+    "EN2002b.D.words622",
+    "EN2002b.D.words624",
+    "EN2002b.D.words626",
+    "EN2002b.D.words628"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 382.41,
+   "end": 382.7,
+   "word_ids": [
+    "EN2002b.A.words270"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 385.04,
+   "end": 386.24,
+   "word_ids": [
+    "EN2002b.B.words277",
+    "EN2002b.B.words278",
+    "EN2002b.B.words279",
+    "EN2002b.B.words280",
+    "EN2002b.B.words281",
+    "EN2002b.B.words282"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 388.37,
+   "end": 391.36,
+   "word_ids": [
+    "EN2002b.B.words284",
+    "EN2002b.B.words285",
+    "EN2002b.B.words286",
+    "EN2002b.B.words287",
+    "EN2002b.B.words288",
+    "EN2002b.B.words289",
+    "EN2002b.B.words290",
+    "EN2002b.B.words291",
+    "EN2002b.B.words292",
+    "EN2002b.B.words293",
+    "EN2002b.B.words294",
+    "EN2002b.B.words295",
+    "EN2002b.B.words296",
+    "EN2002b.B.words297"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 391.28,
+   "end": 391.71,
+   "word_ids": [
+    "EN2002b.C.words349"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 391.92,
+   "end": 392.22,
+   "word_ids": [
+    "EN2002b.D.words630"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 392.95,
+   "end": 394.2,
+   "word_ids": [
+    "EN2002b.B.words298",
+    "EN2002b.B.words299",
+    "EN2002b.B.words300"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 393.36,
+   "end": 398.42,
+   "word_ids": [
+    "EN2002b.C.words353",
+    "EN2002b.C.words355",
+    "EN2002b.C.words356",
+    "EN2002b.C.words357",
+    "EN2002b.C.words358",
+    "EN2002b.C.words359",
+    "EN2002b.C.words360",
+    "EN2002b.C.words361",
+    "EN2002b.C.words362"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 401.17,
+   "end": 401.54,
+   "word_ids": [
+    "EN2002b.A.words272"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 404.96,
+   "end": 410.95,
+   "word_ids": [
+    "EN2002b.C.words366",
+    "EN2002b.C.words367",
+    "EN2002b.C.words368",
+    "EN2002b.C.words369",
+    "EN2002b.C.words370",
+    "EN2002b.C.words371",
+    "EN2002b.C.words372",
+    "EN2002b.C.words373",
+    "EN2002b.C.words374",
+    "EN2002b.C.words375",
+    "EN2002b.C.words376",
+    "EN2002b.C.words377",
+    "EN2002b.C.words378",
+    "EN2002b.C.words379",
+    "EN2002b.C.words380",
+    "EN2002b.C.words381",
+    "EN2002b.C.words382",
+    "EN2002b.C.words383",
+    "EN2002b.C.words384",
+    "EN2002b.C.words385",
+    "EN2002b.C.words386"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 409.14,
+   "end": 409.48,
+   "word_ids": [
+    "EN2002b.D.words632"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 411.12,
+   "end": 416.21,
+   "word_ids": [
+    "EN2002b.D.words634",
+    "EN2002b.D.words636",
+    "EN2002b.D.words638",
+    "EN2002b.D.words640",
+    "EN2002b.D.words641",
+    "EN2002b.D.words643",
+    "EN2002b.D.words644",
+    "EN2002b.D.words645",
+    "EN2002b.D.words646",
+    "EN2002b.D.words647",
+    "EN2002b.D.words648",
+    "EN2002b.D.words650",
+    "EN2002b.D.words651",
+    "EN2002b.D.words653",
+    "EN2002b.D.words655",
+    "EN2002b.D.words656",
+    "EN2002b.D.words657"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 412.97,
+   "end": 415.05,
+   "word_ids": [
+    "EN2002b.C.words390",
+    "EN2002b.C.words391",
+    "EN2002b.C.words392",
+    "EN2002b.C.words393",
+    "EN2002b.C.words395"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 415.33,
+   "end": 417.84,
+   "word_ids": [
+    "EN2002b.B.words303",
+    "EN2002b.B.words305",
+    "EN2002b.B.words306",
+    "EN2002b.B.words307",
+    "EN2002b.B.words308",
+    "EN2002b.B.words310",
+    "EN2002b.B.words311",
+    "EN2002b.B.words313",
+    "EN2002b.B.words314",
+    "EN2002b.B.words315",
+    "EN2002b.B.words316",
+    "EN2002b.B.words317"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 417.51,
+   "end": 419.38,
+   "word_ids": [
+    "EN2002b.A.words274",
+    "EN2002b.A.words275",
+    "EN2002b.A.words276",
+    "EN2002b.A.words277",
+    "EN2002b.A.words278",
+    "EN2002b.A.words280"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 417.58,
+   "end": 424.47,
+   "word_ids": [
+    "EN2002b.C.words397",
+    "EN2002b.C.words399",
+    "EN2002b.C.words400",
+    "EN2002b.C.words402",
+    "EN2002b.C.words403",
+    "EN2002b.C.words404",
+    "EN2002b.C.words406",
+    "EN2002b.C.words408",
+    "EN2002b.C.words409",
+    "EN2002b.C.words411",
+    "EN2002b.C.words412",
+    "EN2002b.C.words413",
+    "EN2002b.C.words414",
+    "EN2002b.C.words415",
+    "EN2002b.C.words417",
+    "EN2002b.C.words419"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 417.94,
+   "end": 418.27,
+   "word_ids": [
+    "EN2002b.D.words659"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 419.68,
+   "end": 419.97,
+   "word_ids": [
+    "EN2002b.D.words661"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 420.46,
+   "end": 420.79,
+   "word_ids": [
+    "EN2002b.A.words282"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 421.32,
+   "end": 423.68,
+   "word_ids": [
+    "EN2002b.D.words663",
+    "EN2002b.D.words666"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 423.75,
+   "end": 426.0,
+   "word_ids": [
+    "EN2002b.B.words319",
+    "EN2002b.B.words320",
+    "EN2002b.B.words321",
+    "EN2002b.B.words322",
+    "EN2002b.B.words323",
+    "EN2002b.B.words324",
+    "EN2002b.B.words325"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 425.59,
+   "end": 437.86,
+   "word_ids": [
+    "EN2002b.D.words668",
+    "EN2002b.D.words671",
+    "EN2002b.D.words672",
+    "EN2002b.D.words673",
+    "EN2002b.D.words676",
+    "EN2002b.D.words678",
+    "EN2002b.D.words680",
+    "EN2002b.D.words683",
+    "EN2002b.D.words684",
+    "EN2002b.D.words685",
+    "EN2002b.D.words686",
+    "EN2002b.D.words687",
+    "EN2002b.D.words688",
+    "EN2002b.D.words690",
+    "EN2002b.D.words692",
+    "EN2002b.D.words694",
+    "EN2002b.D.words696",
+    "EN2002b.D.words698",
+    "EN2002b.D.words700",
+    "EN2002b.D.words701",
+    "EN2002b.D.words702",
+    "EN2002b.D.words704",
+    "EN2002b.D.words705",
+    "EN2002b.D.words707"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 426.09,
+   "end": 428.56,
+   "word_ids": [
+    "EN2002b.C.words422",
+    "EN2002b.C.words424",
+    "EN2002b.C.words426",
+    "EN2002b.C.words428",
+    "EN2002b.C.words429",
+    "EN2002b.C.words430",
+    "EN2002b.C.words431",
+    "EN2002b.C.words432"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 428.01,
+   "end": 435.67,
+   "word_ids": [
+    "EN2002b.B.words327",
+    "EN2002b.B.words330"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 430.81,
+   "end": 449.09,
+   "word_ids": [
+    "EN2002b.A.words286",
+    "EN2002b.A.words287",
+    "EN2002b.A.words289",
+    "EN2002b.A.words290",
+    "EN2002b.A.words293",
+    "EN2002b.A.words294",
+    "EN2002b.A.words295",
+    "EN2002b.A.words296",
+    "EN2002b.A.words297",
+    "EN2002b.A.words301",
+    "EN2002b.A.words302",
+    "EN2002b.A.words304",
+    "EN2002b.A.words307",
+    "EN2002b.A.words308",
+    "EN2002b.A.words309",
+    "EN2002b.A.words310",
+    "EN2002b.A.words311",
+    "EN2002b.A.words313",
+    "EN2002b.A.words316",
+    "EN2002b.A.words317",
+    "EN2002b.A.words318",
+    "EN2002b.A.words319"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 441.05,
+   "end": 445.95,
+   "word_ids": [
+    "EN2002b.B.words333",
+    "EN2002b.B.words334",
+    "EN2002b.B.words335",
+    "EN2002b.B.words336",
+    "EN2002b.B.words337",
+    "EN2002b.B.words338",
+    "EN2002b.B.words339",
+    "EN2002b.B.words340",
+    "EN2002b.B.words341",
+    "EN2002b.B.words342",
+    "EN2002b.B.words343",
+    "EN2002b.B.words344",
+    "EN2002b.B.words345",
+    "EN2002b.B.words346",
+    "EN2002b.B.words348"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 441.76,
+   "end": 442.51,
+   "word_ids": [
+    "EN2002b.C.words436"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 444.54,
+   "end": 450.64,
+   "word_ids": [
+    "EN2002b.D.words711",
+    "EN2002b.D.words712",
+    "EN2002b.D.words713",
+    "EN2002b.D.words716",
+    "EN2002b.D.words717",
+    "EN2002b.D.words718",
+    "EN2002b.D.words719",
+    "EN2002b.D.words720",
+    "EN2002b.D.words721",
+    "EN2002b.D.words722",
+    "EN2002b.D.words724",
+    "EN2002b.D.words725"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 449.5,
+   "end": 452.35,
+   "word_ids": [
+    "EN2002b.B.words352",
+    "EN2002b.B.words355"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 452.13,
+   "end": 460.24,
+   "word_ids": [
+    "EN2002b.C.words440",
+    "EN2002b.C.words441",
+    "EN2002b.C.words442",
+    "EN2002b.C.words443",
+    "EN2002b.C.words445",
+    "EN2002b.C.words447",
+    "EN2002b.C.words448",
+    "EN2002b.C.words450",
+    "EN2002b.C.words451",
+    "EN2002b.C.words452",
+    "EN2002b.C.words453",
+    "EN2002b.C.words454",
+    "EN2002b.C.words455",
+    "EN2002b.C.words456",
+    "EN2002b.C.words458",
+    "EN2002b.C.words459",
+    "EN2002b.C.words460",
+    "EN2002b.C.words461",
+    "EN2002b.C.words462",
+    "EN2002b.C.words463",
+    "EN2002b.C.words465",
+    "EN2002b.C.words466"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 454.39,
+   "end": 455.74,
+   "word_ids": [
+    "EN2002b.B.words357",
+    "EN2002b.B.words358"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 457.48,
+   "end": 458.02,
+   "word_ids": [
+    "EN2002b.B.words360"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 460.16,
+   "end": 465.75,
+   "word_ids": [
+    "EN2002b.B.words362",
+    "EN2002b.B.words363",
+    "EN2002b.B.words364",
+    "EN2002b.B.words365",
+    "EN2002b.B.words366",
+    "EN2002b.B.words367",
+    "EN2002b.B.words368",
+    "EN2002b.B.words372",
+    "EN2002b.B.words374",
+    "EN2002b.B.words375",
+    "EN2002b.B.words376"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 460.58,
+   "end": 460.84,
+   "word_ids": [
+    "EN2002b.D.words728"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 462.38,
+   "end": 471.18,
+   "word_ids": [
+    "EN2002b.D.words730",
+    "EN2002b.D.words731",
+    "EN2002b.D.words734",
+    "EN2002b.D.words735",
+    "EN2002b.D.words738",
+    "EN2002b.D.words739",
+    "EN2002b.D.words741",
+    "EN2002b.D.words742",
+    "EN2002b.D.words743",
+    "EN2002b.D.words744",
+    "EN2002b.D.words745",
+    "EN2002b.D.words746",
+    "EN2002b.D.words747",
+    "EN2002b.D.words748",
+    "EN2002b.D.words749",
+    "EN2002b.D.words750",
+    "EN2002b.D.words751",
+    "EN2002b.D.words752",
+    "EN2002b.D.words753",
+    "EN2002b.D.words754",
+    "EN2002b.D.words755",
+    "EN2002b.D.words756"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 463.74,
+   "end": 464.39,
+   "word_ids": [
+    "EN2002b.C.words471"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 472.98,
+   "end": 475.92,
+   "word_ids": [
+    "EN2002b.B.words379",
+    "EN2002b.B.words380",
+    "EN2002b.B.words381",
+    "EN2002b.B.words382",
+    "EN2002b.B.words383",
+    "EN2002b.B.words384",
+    "EN2002b.B.words385",
+    "EN2002b.B.words386",
+    "EN2002b.B.words387",
+    "EN2002b.B.words388",
+    "EN2002b.B.words391",
+    "EN2002b.B.words392"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 473.94,
+   "end": 478.98,
+   "word_ids": [
+    "EN2002b.D.words758",
+    "EN2002b.D.words760",
+    "EN2002b.D.words762",
+    "EN2002b.D.words764",
+    "EN2002b.D.words765",
+    "EN2002b.D.words766",
+    "EN2002b.D.words767",
+    "EN2002b.D.words769",
+    "EN2002b.D.words770",
+    "EN2002b.D.words771",
+    "EN2002b.D.words772",
+    "EN2002b.D.words773",
+    "EN2002b.D.words774",
+    "EN2002b.D.words775",
+    "EN2002b.D.words776",
+    "EN2002b.D.words777",
+    "EN2002b.D.words778",
+    "EN2002b.D.words779"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 474.85,
+   "end": 475.84,
+   "word_ids": [
+    "EN2002b.C.words474",
+    "EN2002b.C.words476",
+    "EN2002b.C.words478"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 479.0,
+   "end": 481.45,
+   "word_ids": [
+    "EN2002b.B.words395",
+    "EN2002b.B.words396",
+    "EN2002b.B.words397",
+    "EN2002b.B.words398",
+    "EN2002b.B.words399",
+    "EN2002b.B.words400",
+    "EN2002b.B.words401",
+    "EN2002b.B.words402"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 481.89,
+   "end": 495.23,
+   "word_ids": [
+    "EN2002b.C.words480",
+    "EN2002b.C.words482",
+    "EN2002b.C.words483",
+    "EN2002b.C.words485",
+    "EN2002b.C.words486",
+    "EN2002b.C.words487",
+    "EN2002b.C.words488",
+    "EN2002b.C.words489",
+    "EN2002b.C.words490",
+    "EN2002b.C.words492",
+    "EN2002b.C.words493",
+    "EN2002b.C.words494",
+    "EN2002b.C.words495",
+    "EN2002b.C.words496",
+    "EN2002b.C.words497",
+    "EN2002b.C.words498",
+    "EN2002b.C.words499",
+    "EN2002b.C.words500",
+    "EN2002b.C.words502",
+    "EN2002b.C.words504",
+    "EN2002b.C.words505",
+    "EN2002b.C.words506",
+    "EN2002b.C.words507",
+    "EN2002b.C.words508",
+    "EN2002b.C.words509",
+    "EN2002b.C.words510",
+    "EN2002b.C.words511",
+    "EN2002b.C.words512",
+    "EN2002b.C.words513",
+    "EN2002b.C.words514",
+    "EN2002b.C.words515",
+    "EN2002b.C.words516",
+    "EN2002b.C.words517",
+    "EN2002b.C.words518",
+    "EN2002b.C.words520",
+    "EN2002b.C.words521",
+    "EN2002b.C.words522",
+    "EN2002b.C.words523",
+    "EN2002b.C.words524",
+    "EN2002b.C.words525",
+    "EN2002b.C.words526",
+    "EN2002b.C.words528",
+    "EN2002b.C.words529",
+    "EN2002b.C.words530",
+    "EN2002b.C.words531",
+    "EN2002b.C.words532",
+    "EN2002b.C.words533",
+    "EN2002b.C.words534"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 481.94,
+   "end": 485.88,
+   "word_ids": [
+    "EN2002b.D.words781",
+    "EN2002b.D.words783",
+    "EN2002b.D.words785",
+    "EN2002b.D.words787",
+    "EN2002b.D.words789",
+    "EN2002b.D.words790",
+    "EN2002b.D.words792"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 483.22,
+   "end": 485.8,
+   "word_ids": [
+    "EN2002b.B.words404",
+    "EN2002b.B.words405",
+    "EN2002b.B.words406",
+    "EN2002b.B.words407",
+    "EN2002b.B.words408",
+    "EN2002b.B.words410"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 491.3,
+   "end": 493.66,
+   "word_ids": [
+    "EN2002b.D.words794",
+    "EN2002b.D.words796",
+    "EN2002b.D.words798",
+    "EN2002b.D.words800",
+    "EN2002b.D.words802",
+    "EN2002b.D.words804"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 492.25,
+   "end": 493.32,
+   "word_ids": [
+    "EN2002b.B.words412",
+    "EN2002b.B.words414",
+    "EN2002b.B.words416"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 495.34,
+   "end": 497.81,
+   "word_ids": [
+    "EN2002b.B.words418",
+    "EN2002b.B.words420",
+    "EN2002b.B.words421",
+    "EN2002b.B.words422",
+    "EN2002b.B.words423",
+    "EN2002b.B.words424",
+    "EN2002b.B.words426",
+    "EN2002b.B.words427",
+    "EN2002b.B.words428",
+    "EN2002b.B.words429",
+    "EN2002b.B.words430",
+    "EN2002b.B.words431",
+    "EN2002b.B.words432",
+    "EN2002b.B.words433"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 495.42,
+   "end": 496.39,
+   "word_ids": [
+    "EN2002b.D.words806",
+    "EN2002b.D.words808",
+    "EN2002b.D.words809"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 496.03,
+   "end": 496.18,
+   "word_ids": [
+    "EN2002b.A.words323"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 498.07,
+   "end": 498.27,
+   "word_ids": [
+    "EN2002b.D.words811"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 499.21,
+   "end": 502.85,
+   "word_ids": [
+    "EN2002b.B.words435",
+    "EN2002b.B.words436",
+    "EN2002b.B.words437",
+    "EN2002b.B.words438",
+    "EN2002b.B.words439",
+    "EN2002b.B.words441",
+    "EN2002b.B.words442",
+    "EN2002b.B.words444",
+    "EN2002b.B.words446",
+    "EN2002b.B.words447",
+    "EN2002b.B.words448",
+    "EN2002b.B.words449",
+    "EN2002b.B.words451",
+    "EN2002b.B.words452",
+    "EN2002b.B.words453",
+    "EN2002b.B.words454",
+    "EN2002b.B.words455",
+    "EN2002b.B.words456"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 501.3,
+   "end": 504.84,
+   "word_ids": [
+    "EN2002b.C.words536",
+    "EN2002b.C.words538",
+    "EN2002b.C.words539",
+    "EN2002b.C.words540",
+    "EN2002b.C.words541",
+    "EN2002b.C.words542",
+    "EN2002b.C.words543",
+    "EN2002b.C.words544"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 506.75,
+   "end": 507.21,
+   "word_ids": [
+    "EN2002b.C.words546"
+   ]
+  },
+  {
+   "speaker": "Speaker B",
+   "start": 508.61,
+   "end": 522.98,
+   "word_ids": [
+    "EN2002b.B.words460",
+    "EN2002b.B.words461",
+    "EN2002b.B.words462",
+    "EN2002b.B.words463",
+    "EN2002b.B.words465",
+    "EN2002b.B.words466",
+    "EN2002b.B.words467",
+    "EN2002b.B.words468",
+    "EN2002b.B.words469",
+    "EN2002b.B.words470",
+    "EN2002b.B.words472",
+    "EN2002b.B.words473",
+    "EN2002b.B.words475",
+    "EN2002b.B.words476",
+    "EN2002b.B.words477",
+    "EN2002b.B.words478",
+    "EN2002b.B.words479",
+    "EN2002b.B.words480",
+    "EN2002b.B.words481",
+    "EN2002b.B.words482",
+    "EN2002b.B.words483",
+    "EN2002b.B.words484",
+    "EN2002b.B.words485",
+    "EN2002b.B.words486",
+    "EN2002b.B.words488",
+    "EN2002b.B.words490",
+    "EN2002b.B.words492",
+    "EN2002b.B.words494",
+    "EN2002b.B.words496",
+    "EN2002b.B.words497",
+    "EN2002b.B.words498",
+    "EN2002b.B.words499",
+    "EN2002b.B.words500",
+    "EN2002b.B.words502",
+    "EN2002b.B.words503",
+    "EN2002b.B.words505",
+    "EN2002b.B.words506",
+    "EN2002b.B.words507",
+    "EN2002b.B.words508"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 513.63,
+   "end": 517.76,
+   "word_ids": [
+    "EN2002b.D.words813",
+    "EN2002b.D.words816",
+    "EN2002b.D.words817",
+    "EN2002b.D.words818",
+    "EN2002b.D.words819",
+    "EN2002b.D.words822",
+    "EN2002b.D.words824"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 522.48,
+   "end": 522.72,
+   "word_ids": [
+    "EN2002b.D.words827"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 526.11,
+   "end": 526.42,
+   "word_ids": [
+    "EN2002b.D.words829"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 526.6,
+   "end": 527.42,
+   "word_ids": [
+    "EN2002b.C.words550",
+    "EN2002b.C.words552",
+    "EN2002b.C.words553"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 530.15,
+   "end": 530.59,
+   "word_ids": [
+    "EN2002b.C.words555",
+    "EN2002b.C.words556"
+   ]
+  },
+  {
+   "speaker": "Speaker D",
+   "start": 530.52,
+   "end": 530.7,
+   "word_ids": [
+    "EN2002b.D.words831"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 534.3,
+   "end": 534.52,
+   "word_ids": [
+    "EN2002b.A.words326"
+   ]
+  },
+  {
+   "speaker": "Speaker A",
+   "start": 536.78,
+   "end": 539.57,
+   "word_ids": [
+    "EN2002b.A.words328",
+    "EN2002b.A.words329",
+    "EN2002b.A.words330",
+    "EN2002b.A.words332",
+    "EN2002b.A.words333",
+    "EN2002b.A.words334",
+    "EN2002b.A.words335"
+   ]
+  },
+  {
+   "speaker": "Speaker C",
+   "start": 537.74,
+   "end": 539.87,
+   "word_ids": [
+    "EN2002b.C.words558",
+    "EN2002b.C.words559",
+    "EN2002b.C.words560",
+    "EN2002b.C.words562",
+    "EN2002b.C.words564",
+    "EN2002b.C.words565"
+   ]
+  }
+ ]
+}
