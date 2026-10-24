@@ -7,7 +7,7 @@ coding agent, read this first.
 
 ```
 transcript_combobulator/
-├── cli.py              # `combobulator <command>`: run, file, combine, filter-vtt, setup-model, samples
+├── cli.py              # `combobulator <command>`: run, file, combine, filter-vtt, compare, setup-model, samples
 ├── __main__.py         # `python -m transcript_combobulator` → cli.main
 ├── batch.py            # Parallel session runner with rich progress UI (`run`)
 ├── pipeline.py         # Per-file pipeline: convert → VAD → transcribe, stage-level resume (`file`)
@@ -21,6 +21,7 @@ transcript_combobulator/
 ├── telemetry.py        # Per-run, per-file, and per-chunk timing reports
 ├── combine.py          # Merge per-speaker VTTs → one session transcript
 ├── vtt_filter.py       # Re-emit a speaker VTT from saved JSON above a confidence
+├── compare.py          # Two combined transcripts of one session, per speaker: words different, lost spans, artefacts
 ├── bundle.py           # Read + verify a recording bundle (docs/recording-bundle.md)
 ├── session_env.py      # Bundle + speakers file → one session's env (`session-env`)
 ├── samples.py          # Build sample/test audio from samples/
@@ -86,8 +87,11 @@ Always use the Makefile. `make help` lists every target; this is the full set:
 | `make run-single file=path [force=1]` | Convert → VAD → transcribe one file, no combine |
 | `make combine-transcripts session=name` | Re-merge a session's per-speaker VTTs |
 | `make filter-vtt file=path [threshold=50]` | Re-emit a speaker VTT from its saved JSON above a confidence; no inference |
+| `make compare-transcripts ref="…" hyp="…" [json=out]` | Compare two combined transcripts of one session per speaker; numbers only, `WHISPER_PROMPT` from `ENV_FILE` |
 | `make session-env bundle=dir output=env [speakers=json] [base=env] [dm=id] [tz=zone] [force=1]` | Write a recording bundle's session env, outside the bundle; no inference |
 | `make create-sample-files` | Populate `tmp/input/jfk-sample/` |
+| `make sample-ami` | Fetch the 4-speaker AMI sample into `tmp/input/ami-en2002b/` (network, checksum-verified) |
+| `make check-sample` | Transcribe the AMI sample; fail if any word differs from `samples/ami/EN2002b-reference.txt` |
 | `make test-fast` | pytest without the `slow` (real inference) tests |
 | `make test` | Whole suite; never touches `tmp/output` |
 | `make lint` | `ruff check` and `ruff format --check` |

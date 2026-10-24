@@ -127,10 +127,12 @@ make run-single file=path/to/file.flac  # One file, no combine
 # Post-processing
 make combine-transcripts session=name   # Re-merge per-speaker VTTs
 make filter-vtt file=path/to/file.flac threshold=60  # Re-emit a VTT above a confidence, no inference
+make compare-transcripts ref="old-1.txt old-2.txt" hyp="new-1.txt new-2.txt"  # Per-speaker differences between two runs
 
 # Dev
 make test-fast                          # Suite without real inference (seconds)
 make test                               # Whole suite (minutes)
+make check-sample                       # Transcribe the 4-speaker AMI sample; fail if any word changed (samples/ami/NOTICE.md)
 make lint                               # ruff check and format check
 make format                             # ruff format
 make typecheck                          # mypy --strict
@@ -149,7 +151,7 @@ ENV_FILE=/path/to/.env.campaign /path/to/repo/.venv/bin/combobulator run /srv/cr
 ```
 
 `combobulator --help` lists the other commands (`file`, `combine`,
-`filter-vtt`, `session-env`, `setup-model`, `samples`); every Makefile target wraps one.
+`filter-vtt`, `session-env`, `compare`, `setup-model`, `samples`); every Makefile target wraps one.
 `session-env` writes a session's own env from a recording bundle
 ([recording-bundle.md](recording-bundle.md)) and a speakers file.
 Defaults in `.env`:

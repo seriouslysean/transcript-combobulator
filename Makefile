@@ -1,5 +1,5 @@
 .PHONY: help check-deps setup install setup-whisper run run-single \
-        combine-transcripts filter-vtt session-env create-sample-files test test-fast lint format typecheck lint-pyrefly \
+        combine-transcripts filter-vtt session-env compare-transcripts create-sample-files sample-ami check-sample test test-fast lint format typecheck lint-pyrefly \
         clean-output clean-tmp
 
 ROOT_DIR := $(shell pwd)
@@ -99,10 +99,28 @@ session-env: ## Write a bundle's session env outside it: bundle=<dir> output=<en
 	if [ "$$force" = "1" ]; then set -- "$$@" --force; fi; \
 	$(CLI) session-env "$$@"
 
+compare-transcripts: ## Compare two combined transcripts of one session, per speaker: ref="a-1.txt a-2.txt" hyp="b-1.txt b-2.txt" [json=out.json]
+	if [ -z "$$ref" ] || [ -z "$$hyp" ]; then echo "Usage: make compare-transcripts ref=\"<ref files>\" hyp=\"<new files>\" [json=out.json]"; exit 1; fi
+	set -f; set -- --ref $$ref --hyp $$hyp; \
+	if [ -n "$$json" ]; then set -- "$$@" --json "$$json"; fi; \
+	$(CLI) compare "$$@"
+
 # ── Dev ──
 create-sample-files: ## Build tmp/input/jfk-sample/ from samples/
 	if [ ! -d "$(ROOT_DIR)/samples" ]; then echo "Samples directory not found at samples/"; exit 1; fi
 	$(CLI) samples
+
+sample-ami: ## Fetch the 4-speaker AMI sample (checksum-verified) into tmp/input/ami-en2002b/
+	$(VENV_CMD) combobulator samples --ami
+
+# The reference was made with .env.ami-sample on CPU. Any change in output fails: use it
+# for changes that should not change words (runtime, refactor, dependency bump).
+# SAMPLE_ENV=<env> overrides it.
+check-sample: sample-ami ## Transcribe the AMI sample and fail if it differs from samples/ami/
+	env_file="$${SAMPLE_ENV:-.env.ami-sample}"; \
+	$(VENV_CMD) ENV_FILE="$$env_file" combobulator run tmp/input/ami-en2002b --session ami-en2002b && \
+	$(VENV_CMD) ENV_FILE="$$env_file" combobulator compare --ref samples/ami/EN2002b-reference.txt \
+		--hyp tmp/output/ami-en2002b/ami-en2002b-combined.txt --strict
 
 test: ## Run the whole suite, including real whisper/VAD inference
 	$(VENV_CMD) python -m pytest tests/ -v
