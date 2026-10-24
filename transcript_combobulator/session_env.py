@@ -72,7 +72,9 @@ class Speaker:
     name: str
     label: str
     description: str
-    dm: bool
+    dm: (
+        bool | None
+    )  # None: the file does not say, so the largest-track guess may pick it
 
     def describe(self) -> str:
         return f"speakers entry {self.speaker_key or self.username}"
@@ -213,8 +215,8 @@ def load_speakers(path: Path) -> list[Speaker]:
             except SessionEnvError as e:
                 raise SessionEnvError(f"{where}: {key}: {e}") from None
             text[key] = value.strip()
-        dm = entry.get("dm", False)
-        if not isinstance(dm, bool):
+        dm = entry.get("dm")
+        if dm is not None and not isinstance(dm, bool):
             raise SessionEnvError(f"{where}: dm must be true or false")
         speakers.append(
             Speaker(
@@ -293,6 +295,7 @@ def _build_rows(
 
     warnings: list[str] = []
     marked = [tid for tid, s in found.items() if s.dm]
+    not_dm = {tid for tid, s in found.items() if s.dm is False}
     if len(marked) > 1:
         raise SessionEnvError(
             f'"dm": true on more than one present speaker: tracks {", ".join(sorted(marked))}'
@@ -307,23 +310,33 @@ def _build_rows(
             raise SessionEnvError(
                 f"--dm {dm} conflicts with the speakers file, which marks track {marked[0]} as DM"
             )
-        dm_id = dm
+        if dm in not_dm:
+            raise SessionEnvError(
+                f'--dm {dm} conflicts with the speakers file, which says "dm": false for that track'
+            )
+        dm_id: str | None = dm
     elif marked:
         dm_id = marked[0]
-    else:
-        dm_id = max(tracks, key=lambda t: t.size).track_id
+    elif candidates := [t for t in tracks if t.track_id not in not_dm]:
+        dm_id = max(candidates, key=lambda t: t.size).track_id
         guessed = True
         warnings.append(
             f"DM guessed from the largest track: {_where(by_track[dm_id].track)}; confirm or pass --dm"
         )
+    else:
+        dm_id = None
+        warnings.append(
+            'no DM track: every present speaker says "dm": false, so no row is labelled DM'
+        )
 
-    dm_row = by_track[dm_id]
-    dm_row.dm = True
-    if guessed:
-        dm_row.label, dm_row.description = "DM", f"Dungeon Master ({DM_GUESSED})"
-    elif dm_row.label.strip().lower() != "dm":
-        dm_row.label, dm_row.description = "DM", "Dungeon Master"
-    ordered = [dm_row] + [by_track[t.track_id] for t in tracks if t.track_id != dm_id]
+    if dm_id is not None:
+        dm_row = by_track[dm_id]
+        dm_row.dm = True
+        if guessed:
+            dm_row.label, dm_row.description = "DM", f"Dungeon Master ({DM_GUESSED})"
+        elif dm_row.label.strip().lower() != "dm":
+            dm_row.label, dm_row.description = "DM", "Dungeon Master"
+    ordered = sorted(by_track.values(), key=lambda r: not r.dm)
     labels = [r.label for r in ordered]
     if len(set(labels)) != len(labels):
         warnings.append(
@@ -524,7 +537,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--dm",
         metavar="TRACK_ID",
-        help="which track is the DM (default: the speakers file's, else the largest track, flagged)",
+        help='which track is the DM (default: the speakers file\'s, else the largest track not marked "dm": false, flagged)',
     )
     parser.add_argument(
         "--tz",
