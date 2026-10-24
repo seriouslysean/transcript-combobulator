@@ -13,7 +13,7 @@ EXTRAS ?= dev
 
 # The installed console script; ENV_FILE passes through from the environment.
 VENV_CMD = cd $(ROOT_DIR) && . .venv/bin/activate &&
-CLI = $(VENV_CMD) ENV_FILE=$(ENV_FILE) combobulator
+CLI = $(VENV_CMD) combobulator
 
 .SILENT:
 .DEFAULT_GOAL := help
