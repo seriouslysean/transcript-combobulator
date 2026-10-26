@@ -220,6 +220,20 @@ fails loudly.
   real sessions: fewer inserted lines (prompt echoes, repeat loops, filler on
   silence), less dropped speech, more names heard right, and cue times that
   land on the speech. Speed counts only once correctness is at least equal.
+- **Apple's SpeechAnalyzer is not a replacement, by measurement.**
+  `SpeechTranscriber` (en_US, `.transcription` preset, macOS 27) on the
+  1,864 VAD islands of one session (13,859 s of speech) ran at 83x
+  realtime on islands only, with no GPU use (0% in 148 of 149 samples).
+  The 11.4x for MPS whisper is the whole pipeline, so the speeds are not
+  like for like. With no ground truth, the 10.4% of words that differ is
+  disagreement with whisper, not Apple's error rate. Apple left 199 islands
+  (10.7%) empty and hit campaign names 65 times against 95. Part of the
+  gap is whisper's own filler (Apple 5 bare filler lines against 57 for
+  MPS whisper; 177 of the empty islands were 1 or 2 words in MPS), but
+  not the names. Untested: `contextualStrings` vocabulary hints, other
+  presets, a second session, CPU and Neural Engine use inside Apple's
+  speech processes. Worth reopening only for work where the GPU must stay
+  free.
 - **One encoder pass per VAD island is the floor on stock whisper.** Whisper
   encodes a fixed 30 s window, so short islands pay full
   price (utilisation ~24% on a real session). Packing islands into one clip
