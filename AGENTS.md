@@ -3,6 +3,12 @@
 Concrete rules for working on this codebase. If you're Claude Code or another
 coding agent, read this first.
 
+## Setup and checks
+
+- Install: `make setup` (venv, the `dev` extras, whisper model); see "Makefile Usage".
+- Before a PR: `make lint && make typecheck && make test-fast`. CI runs the same checks (`ruff check`, `ruff format --check`, `mypy`, `pytest -m "not slow"`) as separate jobs, plus a package build. Run `make test` when changing the audio pipeline.
+- Where things live: "Module Layout" below. `README.md` is the entry point, `docs/TECHNICAL.md` the technical reference.
+
 ## Module Layout
 
 ```
