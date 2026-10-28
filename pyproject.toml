@@ -41,7 +41,7 @@ dev = [
     "mypy==2.4.0",
     "pyrefly==1.4.0",
     "pytest==9.1.1",
-    "ruff==0.17.1",
+    "ruff==0.17.2",
 ]
 # Apple Silicon only; used when WHISPER_RUNTIME=mlx (the Apple GPU instead of the CPU).
 mac = [
