@@ -406,9 +406,9 @@ fails loudly.
    subcommand if a person or automation should call it.
 4. Load config only through `transcript_combobulator.config`. Never call `load_dotenv` or
    `os.getenv` for a setting anywhere else; add the constant to config.
-5. Add a test in `tests/test_<module>.py` using synthetic fixtures where
-   possible. Only use the slow whisper tests when actually testing whisper
-   behavior.
+5. Add a test in `tests/test_<module>.py` that fails if the feature breaks, or
+   extend one that already covers it. Use synthetic fixtures where possible, and
+   the slow whisper tests only when testing whisper behavior.
 6. Run `make lint`, `make typecheck` and `make test` before declaring done.
 
 ## Common Pitfalls
