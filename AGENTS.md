@@ -351,6 +351,7 @@ fails loudly.
 
 ## Testing
 
+- Before writing or changing a test, read https://github.com/splitleafhq/.github/blob/main/docs/testing.md.
 - `tests/conftest.py` session fixture creates `tmp/input/test_jfk*.wav` from
   the committed `samples/jfk.wav`. It is autouse, so every test needs working
   audio decoding (ffmpeg) even the pure-logic ones.
