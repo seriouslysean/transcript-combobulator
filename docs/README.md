@@ -40,8 +40,8 @@ interpreter:
 make setup PYTHON=/usr/bin/python3.12
 ```
 
-pyenv users: the committed `.python-version` selects 3.14.10 through the
-pyenv shim (`pyenv install 3.14.10` once).
+pyenv users: the committed `.python-version` selects 3.14 through the
+pyenv shim (`pyenv install 3.14` once).
 
 Apple Silicon can run Whisper on the GPU instead of the CPU. `WHISPER_DEVICE=mps`
 needs nothing extra. `WHISPER_RUNTIME=mlx` is faster still: `make install
