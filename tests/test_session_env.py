@@ -18,11 +18,6 @@ from transcript_combobulator.combine import (
     validate_speaker_mapping,
 )
 from transcript_combobulator.config import ROOT_DIR, read_env_file
-from transcript_combobulator.pipeline_cache import (
-    FINAL_STAGE,
-    get_manifest_path,
-    record_stage,
-)
 from transcript_combobulator.session_env import (
     SessionEnvError,
     SessionEnvResult,
@@ -669,9 +664,6 @@ def write_vtt(path: Path, lines: list[tuple[str, str]]) -> None:
         f"{when} --> {when[:-1]}9\n{text}\n" for when, text in lines
     )
     path.write_text(body)
-    record_stage(
-        get_manifest_path(path.parent, path.parent.name), FINAL_STAGE, "done", [path]
-    )
 
 
 def test_labels_can_be_fixed_after_transcription_by_recombining(

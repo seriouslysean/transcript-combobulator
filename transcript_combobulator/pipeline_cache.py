@@ -159,21 +159,37 @@ def is_pipeline_complete(input_path: Path, manifest_path: Path) -> bool:
     )
 
 
-def is_vtt_recorded_complete(vtt_path: Path) -> bool:
-    """Whether a finished run recorded this VTT in its folder's manifest.
+def is_vtt_unfinished(vtt_path: Path) -> bool:
+    """Whether this VTT was left by a run that failed or was interrupted.
 
-    Needs no input audio, so it cannot check the fingerprint against the
-    current config. It does catch a VTT left by a run that failed or was
-    interrupted: such a run drops or never writes the final record.
+    Such a run leaves its chunk checkpoint, or a current-version manifest
+    without a final record naming this VTT (non-forced runs drop that record
+    before any work). A folder with no manifest, or one from an older cache
+    version, predates these records and is not flagged. Needs no input
+    audio, so it cannot check the fingerprint against the current config.
     """
-    manifest_path = get_manifest_path(vtt_path.parent, vtt_path.parent.name)
+    output_dir, stem = vtt_path.parent, vtt_path.parent.name
+    if get_progress_path(output_dir, stem).is_file():
+        return True
+    manifest_path = get_manifest_path(output_dir, stem)
+    if not manifest_path.is_file():
+        return False
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        return True
+    if not isinstance(manifest, dict):
+        return True
+    if manifest.get("cache_version") != PIPELINE_CACHE_VERSION:
+        return False
     record = load_manifest(manifest_path).get(FINAL_STAGE)
     if not isinstance(record, dict):
-        return False
+        return True
     artifacts = record.get("artifacts")
     if not isinstance(artifacts, list) or str(vtt_path.resolve()) not in artifacts:
-        return False
-    return all(isinstance(path, str) and Path(path).is_file() for path in artifacts)
+        return True
+    return not all(isinstance(p, str) and Path(p).is_file() for p in artifacts)
 
 
 def write_pipeline_manifest(
