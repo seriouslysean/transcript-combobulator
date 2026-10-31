@@ -144,6 +144,9 @@ calls, so it fails fast and leaves a trail:
 - Before any worker starts, `transcript_combobulator.combine.validate_speaker_mapping` runs
   against the input stems before any worker starts. Same errors as the combine
   step, minutes earlier.
+- Two inputs whose stems match ignoring case (`1-cadderly.flac` and
+  `1-cadderly.wav`) exit 1 before any work: the stem names the output folder,
+  so both workers would write the same files. Bundles reject the same pair.
 - A missing `ENV_FILE` raises at import instead of silently loading nothing.
 - `LOG_FILE` (default empty) persists worker and parent logs to
   `tmp/output/<session>/<session>.log`; workers tag lines with their audio
