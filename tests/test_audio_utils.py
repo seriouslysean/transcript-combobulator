@@ -11,7 +11,6 @@ import soundfile as sf
 from transcript_combobulator.audio_utils import (
     AudioValidationError,
     convert_to_wav,
-    needs_conversion,
     validate_audio_file,
 )
 
@@ -28,7 +27,6 @@ def test_ffmpeg_conversion_yields_16k_mono_peak_normalized(tmp_path: Path) -> No
     src = tmp_path / "in.wav"
     _stereo_44k(src)
     out = tmp_path / "out.wav"
-    assert needs_conversion(src)
 
     convert_to_wav(src, out)
 
@@ -38,7 +36,6 @@ def test_ffmpeg_conversion_yields_16k_mono_peak_normalized(tmp_path: Path) -> No
     assert abs(info["duration"] - 2.0) < 0.002
     data, _ = sf.read(str(out), dtype="float32")
     assert 0.98 <= float(np.abs(data).max()) <= 1.0
-    assert not needs_conversion(out)
     assert not list(tmp_path.glob("*.unnormalized.wav"))
 
 
