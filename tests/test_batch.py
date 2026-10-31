@@ -81,6 +81,29 @@ class TestFindAudioFiles:
         assert files[0].name == "top.wav"
 
 
+class TestDuplicateStems:
+    """Two inputs naming one output folder must not both reach the workers."""
+
+    def test_run_rejects_shared_stem(self, tmp_path, capsys):
+        from transcript_combobulator.batch import main
+
+        (tmp_path / "jfk_1.flac").touch()
+        (tmp_path / "JFK_1.wav").touch()
+
+        # Stop the run where workers would start, in case the check is missing.
+        with (
+            patch(
+                "multiprocessing.Manager", side_effect=AssertionError("workers started")
+            ),
+            pytest.raises(SystemExit) as exit_info,
+        ):
+            main([str(tmp_path)])
+
+        assert exit_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "jfk_1.flac" in out and "JFK_1.wav" in out
+
+
 class TestBuildTable:
     """Tests for the rich progress table builder."""
 
