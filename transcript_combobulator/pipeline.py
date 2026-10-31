@@ -57,8 +57,10 @@ def process_file(
     metrics: Optional[dict[str, Any]] = None,
     session: Optional[str] = None,
 ) -> dict[str, Any]:
-    # Read through symlinks, but place output by the path as given.
+    # Read through symlinks, but place and name output by the path as given,
+    # so the VTT lands where vtt_path_for_input looks for it.
     input_file = Path(input_path).resolve()
+    stem = Path(input_path).stem
     setup_logging()
     file_metrics = metrics if metrics is not None else {}
     file_metrics.clear()
@@ -98,8 +100,8 @@ def process_file(
         with _timed_stage(file_metrics, "setup"):
             output_dir = get_output_path_for_input(Path(input_path), session)
             output_dir.mkdir(parents=True, exist_ok=True)
-            output_file = output_dir / f"{input_file.stem}.wav"
-            manifest_path = get_manifest_path(output_dir, input_file.stem)
+            output_file = output_dir / f"{stem}.wav"
+            manifest_path = get_manifest_path(output_dir, stem)
             file_metrics["output_dir"] = str(output_dir)
 
         with _timed_stage(file_metrics, "cache_check"):
@@ -112,10 +114,10 @@ def process_file(
             return file_metrics
 
         fingerprints = build_stage_fingerprints(input_file)
-        progress_path = get_progress_path(output_dir, input_file.stem)
-        mapping_path = output_dir / f"{input_file.stem}_mapping.json"
-        json_path = output_dir / f"{input_file.stem}_transcription.json"
-        vtt_path = output_dir / vtt_name_for_stem(input_file.stem)
+        progress_path = get_progress_path(output_dir, stem)
+        mapping_path = output_dir / f"{stem}_mapping.json"
+        json_path = output_dir / f"{stem}_transcription.json"
+        vtt_path = output_dir / vtt_name_for_stem(stem)
         with _timed_stage(file_metrics, "cache_invalidation"):
             if force:
                 # A forced run trusts nothing it finds.
