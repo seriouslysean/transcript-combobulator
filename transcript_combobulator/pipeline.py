@@ -2,7 +2,6 @@
 
 import json
 import logging
-import shutil
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,7 +10,6 @@ from typing import Any, Generator, MutableMapping, Optional
 from transcript_combobulator.audio_utils import (
     AudioValidationError,
     convert_to_wav,
-    needs_conversion,
     validate_audio_file,
 )
 from transcript_combobulator.config import (
@@ -140,17 +138,11 @@ def process_file(
                 # A cache miss must not reuse audio derived from an older source.
                 if output_file.resolve() != input_file:
                     output_file.unlink(missing_ok=True)
-                conversion_required = needs_conversion(input_file)
-                file_metrics["conversion"] = {
-                    "required": conversion_required,
-                    "action": "converted" if conversion_required else "copied",
-                }
-                if conversion_required:
-                    convert_to_wav(input_file, output_file)
-                else:
-                    if not output_file.exists():
-                        shutil.copy(input_file, output_file)
-                    logger.info("No conversion needed, copied to output directory")
+                # Even a 16 kHz mono WAV is converted: conversion is where the
+                # peak normalisation happens, so VAD sees the same level
+                # whatever the container.
+                file_metrics["conversion"] = {"required": True, "action": "converted"}
+                convert_to_wav(input_file, output_file)
                 record_stage(
                     manifest_path,
                     "conversion",
@@ -242,11 +234,12 @@ def process_file(
             )
 
         if not stage_is_complete(stages, "inference", fingerprints["inference"]):
+            # Only the JSON: a missing VTT is rewritten from it, not re-inferred.
             record_stage(
                 manifest_path,
                 "inference",
                 fingerprints["inference"],
-                [Path(transcription["json_file"]), Path(transcription["vtt_file"])],
+                [Path(transcription["json_file"])],
             )
 
         artifacts = [

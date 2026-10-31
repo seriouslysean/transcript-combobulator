@@ -46,19 +46,6 @@ def validate_audio_file(file_path: Path) -> dict[str, Any]:
         raise AudioValidationError(f"Failed to read audio file {file_path}: {e}") from e
 
 
-def needs_conversion(file_path: Path, target_sample_rate: int = 16000) -> bool:
-    """True if the file isn't already 16kHz mono WAV."""
-    try:
-        info = validate_audio_file(file_path)
-    except AudioValidationError:
-        return True
-    return bool(
-        info["format"] != ".wav"
-        or info["sample_rate"] != target_sample_rate
-        or info["channels"] != 1
-    )
-
-
 def convert_to_wav(
     input_path: Path, output_path: Path, target_sample_rate: int = 16000
 ) -> None:
