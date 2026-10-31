@@ -144,6 +144,9 @@ calls, so it fails fast and leaves a trail:
 - Before any worker starts, `transcript_combobulator.combine.validate_speaker_mapping` runs
   against the input stems before any worker starts. Same errors as the combine
   step, minutes earlier.
+- Two inputs whose stems match ignoring case (`1-cadderly.flac` and
+  `1-cadderly.wav`) exit 1 before any work: the stem names the output folder,
+  so both workers would write the same files. Bundles reject the same pair.
 - A missing `ENV_FILE` raises at import instead of silently loading nothing.
 - `LOG_FILE` (default empty) persists worker and parent logs to
   `tmp/output/<session>/<session>.log`; workers tag lines with their audio
@@ -384,8 +387,10 @@ fails loudly.
   logic because silero only accepts a whole-file tensor. Bumping `silero-vad`
   must keep `tests/test_vad_streaming.py` green; if silero changes the
   algorithm, port the change, do not paper over the diff.
-- `ffmpeg` must be on `PATH`. Makefile recipes run under `/bin/sh` (dash on
-  Debian), so keep them POSIX: `>/dev/null 2>&1`, never `&>`.
+- `ffmpeg` must be on `PATH`, and its `ffprobe`: libsndfile cannot read
+  `.m4a` or `.aac`, so conversion and the timing report take their duration
+  from ffprobe. Makefile recipes run under `/bin/sh` (dash on Debian), so keep
+  them POSIX: `>/dev/null 2>&1`, never `&>`.
 
 ## Error Handling Style
 
