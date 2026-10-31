@@ -11,8 +11,8 @@ from typing import Any, Generator, MutableMapping, Optional
 from transcript_combobulator.audio_utils import (
     AudioValidationError,
     convert_to_wav,
+    input_duration,
     needs_conversion,
-    validate_audio_file,
 )
 from transcript_combobulator.config import (
     get_output_path_for_input,
@@ -89,13 +89,11 @@ def process_file(
     try:
         with _timed_stage(file_metrics, "input_probe"):
             try:
-                audio_info = validate_audio_file(input_file)
+                duration = input_duration(input_file)
             except AudioValidationError:
                 file_metrics["input_audio_seconds"] = None
             else:
-                file_metrics["input_audio_seconds"] = round(
-                    float(audio_info["duration"]), 6
-                )
+                file_metrics["input_audio_seconds"] = round(duration, 6)
 
         with _timed_stage(file_metrics, "setup"):
             output_dir = get_output_path_for_input(Path(input_path), session)

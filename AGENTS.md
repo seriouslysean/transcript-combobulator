@@ -384,8 +384,10 @@ fails loudly.
   logic because silero only accepts a whole-file tensor. Bumping `silero-vad`
   must keep `tests/test_vad_streaming.py` green; if silero changes the
   algorithm, port the change, do not paper over the diff.
-- `ffmpeg` must be on `PATH`. Makefile recipes run under `/bin/sh` (dash on
-  Debian), so keep them POSIX: `>/dev/null 2>&1`, never `&>`.
+- `ffmpeg` must be on `PATH`, and its `ffprobe`: libsndfile cannot read
+  `.m4a` or `.aac`, so conversion and the timing report take their duration
+  from ffprobe. Makefile recipes run under `/bin/sh` (dash on Debian), so keep
+  them POSIX: `>/dev/null 2>&1`, never `&>`.
 
 ## Error Handling Style
 

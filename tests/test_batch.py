@@ -2,6 +2,7 @@
 """Test batch processing utilities."""
 
 import json
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -262,6 +263,44 @@ class TestProcessSingleFile:
         assert metrics["total_seconds"] >= 0
         assert "cache_check_seconds" in metrics["stages"]
         process_audio.assert_not_called()
+
+    @pytest.mark.parametrize("suffix", [".m4a", ".aac"])
+    def test_input_seconds_recorded_for_formats_libsndfile_cannot_read(
+        self, tmp_path, suffix
+    ):
+        """The timing report reads .m4a/.aac duration too, so speed and totals count it."""
+        from transcript_combobulator.pipeline import process_file as main
+
+        input_file = tmp_path / f"1-cadderly{suffix}"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-c:a",
+                "aac",
+                str(input_file),
+            ],
+            check=True,
+        )
+        with (
+            patch(
+                "transcript_combobulator.pipeline.get_output_path_for_input",
+                return_value=tmp_path,
+            ),
+            patch(
+                "transcript_combobulator.pipeline.is_pipeline_complete",
+                return_value=True,
+            ),
+        ):
+            metrics = main(str(input_file))
+
+        assert metrics["input_audio_seconds"] == pytest.approx(2.0, abs=0.1)
 
     def test_force_ignores_completed_pipeline(self, tmp_path):
         """Force mode runs processing even when a completion manifest exists."""
