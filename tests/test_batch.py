@@ -739,6 +739,48 @@ class TestOutputPlacement:
         assert out.call_args.args == (link, None)
         assert ts.call_args.args[1] == tmp_path / "out"
 
+    def test_link_named_unlike_its_target_writes_the_vtt_combine_reads(
+        self, tmp_path, monkeypatch
+    ):
+        from transcript_combobulator import config
+        from transcript_combobulator.pipeline import process_file
+
+        monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path / "output")
+        real = tmp_path / "archive" / "4-pikel_123.wav"
+        real.parent.mkdir()
+        real.write_bytes(b"audio")
+        link = tmp_path / "s11" / "4-pikel.wav"
+        link.parent.mkdir()
+        link.symlink_to(real)
+
+        def fake_transcribe(audio_path, output_dir, **kwargs):
+            # Names its files from the audio it is handed, as the real one does.
+            vtt = output_dir / config.vtt_name_for_stem(audio_path.stem)
+            vtt.write_text("WEBVTT\n")
+            return {
+                "vtt_file": str(vtt),
+                "json_file": str(output_dir / f"{audio_path.stem}_transcription.json"),
+                "mapping_file": str(output_dir / f"{audio_path.stem}_mapping.json"),
+                "metrics": {"chunk_count": 0, "failed_chunk_count": 0, "chunks": []},
+            }
+
+        with (
+            patch(
+                "transcript_combobulator.pipeline.needs_conversion", return_value=False
+            ),
+            patch(
+                "transcript_combobulator.pipeline.process_audio",
+                return_value=(tmp_path, []),
+            ),
+            patch(
+                "transcript_combobulator.pipeline.transcribe_segments",
+                side_effect=fake_transcribe,
+            ),
+            patch("transcript_combobulator.pipeline.write_pipeline_manifest"),
+        ):
+            process_file(str(link), session="s11")
+        assert config.vtt_path_for_input(link, "s11").exists()
+
     def test_session_is_passed_through(self, tmp_path):
         track = tmp_path / "1-cadderly.wav"
         track.touch()
