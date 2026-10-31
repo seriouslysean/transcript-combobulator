@@ -80,7 +80,7 @@ def convert_to_wav(
             logger.info(f"Existing file {output_path} is invalid, reconverting...")
 
     try:
-        duration = _input_duration(input_path)
+        duration = input_duration(input_path)
         logger.info(f"Converting {input_path} ({duration:.2f}s) to WAV")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         _convert_with_ffmpeg(
@@ -99,7 +99,7 @@ def convert_to_wav(
         raise AudioValidationError(f"Failed to convert {input_path} to WAV: {e}") from e
 
 
-def _input_duration(input_path: Path) -> float:
+def input_duration(input_path: Path) -> float:
     """Duration of a supported input in seconds, read by ffprobe if libsndfile can't.
 
     libsndfile has no AAC/MP4 decoder, so .m4a and .aac only open in ffmpeg.
