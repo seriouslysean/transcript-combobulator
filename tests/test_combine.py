@@ -14,6 +14,11 @@ from transcript_combobulator.combine import (
     should_skip_content,
     validate_speaker_mapping,
 )
+from transcript_combobulator.pipeline_cache import (
+    FINAL_STAGE,
+    get_manifest_path,
+    record_stage,
+)
 
 VTT_SAMPLE = """WEBVTT
 
@@ -30,6 +35,14 @@ This is a test.
 
 def _write_vtt(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
+
+
+def _write_finished_vtt(path: Path, content: str) -> None:
+    """A VTT plus the completion record a finished pipeline run leaves."""
+    _write_vtt(path, content)
+    record_stage(
+        get_manifest_path(path.parent, path.parent.name), FINAL_STAGE, "done", [path]
+    )
 
 
 class TestNormalizeForDedup:
@@ -239,7 +252,7 @@ def test_quote_marks_in_speaker_fields_survive(tmp_path, monkeypatch):
     monkeypatch.setenv("CHUNKS", "1")
     for stem in ("1-regis", "4-catti_brie"):
         (tmp_path / "night" / stem).mkdir(parents=True)
-        _write_vtt(
+        _write_finished_vtt(
             tmp_path / "night" / stem / f"{stem}.vtt",
             "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n",
         )
@@ -261,7 +274,7 @@ class TestCombineFromEnvExplicitFiles:
         stale = session / "3-cadderly-v0"
         for d in (current, stale):
             d.mkdir(parents=True)
-            _write_vtt(
+            _write_finished_vtt(
                 d / "3-cadderly.vtt",
                 "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nRoll for initiative.\n\n",
             )
@@ -284,6 +297,23 @@ class TestCombineFromEnvExplicitFiles:
         out = combine_transcripts_from_env(tmp_path, "night")
         assert out[0].read_text().count("Roll for initiative.") >= 1
         assert len(list(session.glob("**/*.vtt"))) == 2
+
+    def test_glob_refuses_a_track_whose_run_did_not_finish(self, tmp_path, monkeypatch):
+        """whisper writes the VTT when some chunks fail; combine must not merge it."""
+        from transcript_combobulator.combine import combine_transcripts_from_env
+
+        session, _, _ = self._session(tmp_path, monkeypatch)
+        partial = session / "5-danica"
+        partial.mkdir()
+        _write_vtt(
+            partial / "5-danica.vtt",
+            "WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nI check for traps.\n\n",
+        )
+        _set_mapping(monkeypatch, ["cadderly", "danica"])
+
+        with pytest.raises(CombineError, match="5-danica.vtt"):
+            combine_transcripts_from_env(tmp_path, "night")
+        assert not (session / "night-combined.txt").exists()
 
     def test_missing_explicit_file_is_loud(self, tmp_path, monkeypatch):
         from transcript_combobulator.combine import combine_transcripts_from_env

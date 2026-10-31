@@ -159,6 +159,23 @@ def is_pipeline_complete(input_path: Path, manifest_path: Path) -> bool:
     )
 
 
+def is_vtt_recorded_complete(vtt_path: Path) -> bool:
+    """Whether a finished run recorded this VTT in its folder's manifest.
+
+    Needs no input audio, so it cannot check the fingerprint against the
+    current config. It does catch a VTT left by a run that failed or was
+    interrupted: such a run drops or never writes the final record.
+    """
+    manifest_path = get_manifest_path(vtt_path.parent, vtt_path.parent.name)
+    record = load_manifest(manifest_path).get(FINAL_STAGE)
+    if not isinstance(record, dict):
+        return False
+    artifacts = record.get("artifacts")
+    if not isinstance(artifacts, list) or str(vtt_path.resolve()) not in artifacts:
+        return False
+    return all(isinstance(path, str) and Path(path).is_file() for path in artifacts)
+
+
 def write_pipeline_manifest(
     input_path: Path,
     manifest_path: Path,

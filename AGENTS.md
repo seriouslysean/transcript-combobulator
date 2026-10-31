@@ -66,7 +66,9 @@ The standard pipeline: `transcript_combobulator.batch.main` →
 - **Partial transcription is a failure.** Any failed chunk raises before the
   manifest is written, so the cache cannot
   hide a transcript with gaps. A track with no speech at all is an empty
-  transcript, not an error.
+  transcript, not an error. whisper still writes that track's VTT, so a
+  manual `combobulator combine` refuses any VTT its folder's manifest does
+  not record as finished.
 - **Usernames match as whole tokens** in per-speaker dir names, so `wulf`
   never claims `5-wulfgar`. Batch runs hand combine the exact VTTs they
   produced; stale sibling dirs are ignored.
